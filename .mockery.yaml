@@ -1,0 +1,13 @@
+template: testify
+template-data:
+  unroll-variadic: true
+force-file-write: true
+all: true
+packages:
+  github.com/allora-network/allora-sdk-go:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      filename: "mocks.go"
+      pkgname: "mocks"
+      structname: "{{.Mock}}{{.InterfaceName}}"
+
