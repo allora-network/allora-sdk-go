@@ -1,7 +1,6 @@
 module github.com/allora-network/allora-sdk-go
 
 go 1.25
-
 toolchain go1.25.1
 
 require (
@@ -10,7 +9,7 @@ require (
 	github.com/allora-network/allora-chain v0.12.4
 	github.com/brynbellomy/go-utils v0.0.0-20250825055819-60c6be9b3b8d
 	github.com/cometbft/cometbft v0.38.17
-	github.com/cosmos/cosmos-sdk v0.50.14
+	github.com/cosmos/cosmos-sdk v0.50.13
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/prometheus/client_golang v1.20.5
