@@ -9,6 +9,7 @@ import (
 
 	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
+	"github.com/allora-network/allora-sdk-go/tmrpc"
 	"github.com/brynbellomy/go-utils"
 	"github.com/cometbft/cometbft/types"
 	mock "github.com/stretchr/testify/mock"
@@ -1048,6 +1049,52 @@ func (_c *MockIClient_Tx_Call) Return(txClient interfaces.TxClient) *MockIClient
 }
 
 func (_c *MockIClient_Tx_Call) RunAndReturn(run func() interfaces.TxClient) *MockIClient_Tx_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// TendermintRPC provides a mock function for the type MockIClient
+func (_mock *MockIClient) TendermintRPC() tmrpc.Client {
+	ret := _mock.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for TendermintRPC")
+	}
+
+	var r0 tmrpc.Client
+	if returnFunc, ok := ret.Get(0).(func() tmrpc.Client); ok {
+		r0 = returnFunc()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(tmrpc.Client)
+		}
+	}
+	return r0
+}
+
+// MockIClient_TendermintRPC_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TendermintRPC'
+type MockIClient_TendermintRPC_Call struct {
+	*mock.Call
+}
+
+// TendermintRPC is a helper method to define mock.On call
+func (_e *MockIClient_Expecter) TendermintRPC() *MockIClient_TendermintRPC_Call {
+	return &MockIClient_TendermintRPC_Call{Call: _e.mock.On("TendermintRPC")}
+}
+
+func (_c *MockIClient_TendermintRPC_Call) Run(run func()) *MockIClient_TendermintRPC_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *MockIClient_TendermintRPC_Call) Return(client tmrpc.Client) *MockIClient_TendermintRPC_Call {
+	_c.Call.Return(client)
+	return _c
+}
+
+func (_c *MockIClient_TendermintRPC_Call) RunAndReturn(run func() tmrpc.Client) *MockIClient_TendermintRPC_Call {
 	_c.Call.Return(run)
 	return _c
 }

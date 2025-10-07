@@ -15,12 +15,14 @@ import (
 	"github.com/allora-network/allora-sdk-go/gen/wrapper"
 	"github.com/allora-network/allora-sdk-go/metrics"
 	"github.com/allora-network/allora-sdk-go/pool"
+	"github.com/allora-network/allora-sdk-go/tmrpc"
 )
 
 type Client interface {
 	interfaces.Client
 	Subscribe(mb *butils.Mailbox[ctypes.TMEventData], query string)
 	GetHealthStatus() map[string]any
+	TendermintRPC() tmrpc.Client
 }
 
 // Client is the Allora Network client that provides access to all query services.
@@ -29,6 +31,7 @@ type client struct {
 	poolManager *pool.ClientPoolManager
 	logger      zerolog.Logger
 	config      *config.ClientConfig
+	tmRPC       tmrpc.Client
 
 	*wrapper.WrapperClient
 	*CometRPCWebsocket
@@ -43,16 +46,36 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		return nil, fmt.Errorf("at least one endpoint must be specified")
 	}
 
-	clients := make([]pool.Client, 0, len(cfg.Endpoints))
+	clients := []pool.Client{}
+	tmRPCClients := []tmrpc.Client{}
 	for _, endpoint := range cfg.Endpoints {
-		var client pool.Client
-		var err error
-
+		fmt.Println("PROTO:", endpoint.Protocol)
 		switch endpoint.Protocol {
 		case config.ProtocolGRPC:
-			client, err = grpc.NewGRPCClient(endpoint, logger)
+			client, err := grpc.NewGRPCClient(endpoint, logger)
+			if err != nil {
+				logger.Error().
+					Str("endpoint", endpoint.URL).
+					Str("protocol", string(endpoint.Protocol)).
+					Err(err).
+					Msg("failed to create client for endpoint")
+				continue
+			}
+			clients = append(clients, client)
 		case config.ProtocolREST:
-			client = rest.NewRESTClient(endpoint.URL, logger)
+			client := rest.NewRESTClient(endpoint.URL, logger)
+			clients = append(clients, client)
+		case config.ProtocolTendermintRPC:
+			tmClient, err := tmrpc.NewHTTPClient(endpoint.URL, cfg.WebsocketEndpoint, cfg.RequestTimeout, logger)
+			if err != nil {
+				logger.Error().
+					Str("endpoint", endpoint.URL).
+					Str("protocol", string(endpoint.Protocol)).
+					Err(err).
+					Msg("failed to create tendermint rpc client for endpoint")
+				continue
+			}
+			tmRPCClients = append(tmRPCClients, tmClient)
 		case "":
 			logger.Error().
 				Str("endpoint", endpoint.URL).
@@ -64,22 +87,17 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 				Msgf("unsupported protocol")
 			continue
 		}
-
-		if err != nil {
-			// Log the error but continue with other endpoints
-			logger.Error().
-				Str("endpoint", endpoint.URL).
-				Str("protocol", string(endpoint.Protocol)).
-				Err(err).
-				Msg("failed to create client for endpoint")
-			continue
-		}
-		clients = append(clients, client)
 	}
 
 	if len(clients) == 0 {
 		return nil, fmt.Errorf("failed to create any clients from the provided endpoints")
 	}
+
+	var tmPool tmrpc.Client
+	if len(tmRPCClients) > 0 {
+		tmPool = tmrpc.NewPool(tmRPCClients, logger)
+	}
+	fmt.Println("LEN TM RPC", len(tmRPCClients))
 
 	poolManager := pool.NewClientPoolManager(clients, logger)
 	clientLogger := logger.With().Str("component", "allora_client").Logger()
@@ -95,6 +113,7 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		poolManager:       poolManager,
 		logger:            clientLogger,
 		config:            cfg,
+		tmRPC:             tmPool,
 	}, nil
 }
 
@@ -103,6 +122,11 @@ func (c *client) Close() error {
 	if c.CometRPCWebsocket != nil {
 		c.CometRPCWebsocket.Close()
 	}
+	if c.tmRPC != nil {
+		if err := c.tmRPC.Close(); err != nil {
+			c.logger.Error().Err(err).Msg("error closing tendermint rpc clients")
+		}
+	}
 	c.poolManager.Close()
 	return nil
 }
@@ -110,6 +134,10 @@ func (c *client) Close() error {
 // GetHealthStatus returns the current health status of all clients in the pool
 func (c *client) GetHealthStatus() map[string]any {
 	return c.poolManager.GetHealthStatus()
+}
+
+func (c *client) TendermintRPC() tmrpc.Client {
+	return c.tmRPC
 }
 
 var SetMetricsPrefix = metrics.SetPrefix

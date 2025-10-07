@@ -19,8 +19,9 @@ type EndpointConfig struct {
 type Protocol string
 
 const (
-	ProtocolGRPC Protocol = "grpc"
-	ProtocolREST Protocol = "rest"
+	ProtocolGRPC          Protocol = "grpc"
+	ProtocolREST          Protocol = "rest"
+	ProtocolTendermintRPC Protocol = "tendermint_rpc"
 )
 
 func DefaultClientConfig() *ClientConfig {

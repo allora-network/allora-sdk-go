@@ -3,7 +3,7 @@ package rest
 import (
 	"bytes"
 	"context"
-	"encoding/json/v2"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
