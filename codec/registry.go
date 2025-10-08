@@ -146,3 +146,38 @@ func (c *Codec) ParseUntypedEvent(event *abcitypes.Event) (json.RawMessage, erro
 	}
 	return attrBytes, nil
 }
+
+func (c *Codec) ParseTx(txBytes []byte) (*txtypes.Tx, error) {
+	var txMsg txtypes.Tx
+	err := c.Unmarshal(txBytes, &txMsg)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to unmarshal txBytes")
+	}
+	return &txMsg, nil
+}
+
+func (c *Codec) ParseTxMessages(messages []*codectypes.Any) ([]proto.Message, error) {
+	var parsedMessages []proto.Message
+	var parseErrors []error
+	for _, msgAny := range messages {
+		msg, err := c.ParseTxMessage(msgAny)
+		if err != nil {
+			parseErrors = append(parseErrors, err)
+			continue
+		}
+		parsedMessages = append(parsedMessages, msg)
+	}
+	if len(parseErrors) > 0 {
+		return parsedMessages, errors.WithMessage(errors.Join(parseErrors...), "failed to parse some messages")
+	}
+	return parsedMessages, nil
+}
+
+func (c *Codec) ParseTxMessage(message *codectypes.Any) (proto.Message, error) {
+	var msg cosmossdktypes.Msg
+	err := c.UnpackAny(message, &msg)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to unpack any")
+	}
+	return msg, nil
+}

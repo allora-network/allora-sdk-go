@@ -5,6 +5,7 @@ go 1.25
 toolchain go1.25.1
 
 replace github.com/cosmos/cosmos-sdk => github.com/cosmos/cosmos-sdk v0.50.13
+
 replace github.com/cometbft/cometbft => github.com/cometbft/cometbft v0.38.17
 
 require (
