@@ -2,10 +2,9 @@ package codec
 
 import (
 	"encoding/json"
-	"errors"
-	"fmt"
 	"sync"
 
+	"github.com/brynbellomy/go-utils/errors"
 	"google.golang.org/grpc/encoding"
 
 	feegrant "cosmossdk.io/x/feegrant"
@@ -127,9 +126,9 @@ func (c *Codec) ParseTypedEvent(event *abcitypes.Event) (proto.Message, error) {
 		eventCopy.Attributes = eventCopy.Attributes[:len(eventCopy.Attributes)-1]
 	}
 
-	protoEvent, err := c.sdkTypes.ParseTypedEvent(eventCopy)
+	protoEvent, err := cosmossdktypes.ParseTypedEvent(eventCopy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse typed event: %w", err)
+		return nil, errors.WithMessage(err, "failed to parse typed event")
 	}
 
 	return protoEvent, nil

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	stderrors "errors"
+
 	"github.com/brynbellomy/go-utils/errors"
 	"github.com/rs/zerolog"
 
@@ -32,15 +33,19 @@ type apiClient struct {
 	logger     zerolog.Logger
 }
 
-func NewAPIClient(url string, apiKey string, logger zerolog.Logger, opts ...APIClientOption) *apiClient {
+func NewAPIClient(apiKey string, opts ...APIClientOption) *apiClient {
+	if apiKey == "" {
+		apiKey = "UP-8cbc632a67a84ac1b4078661"
+	}
+
 	client := &apiClient{
-		url:    url,
+		url:    "https://api.allora.network/v2",
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: http.DefaultTransport,
 		},
-		logger: logger,
+		logger: zerolog.Nop(),
 	}
 
 	for _, opt := range opts {
@@ -94,6 +99,13 @@ func WithTimeout(d time.Duration) APIClientOption {
 	}
 }
 
+// WithLogger sets the logger
+func WithLogger(logger zerolog.Logger) APIClientOption {
+	return func(c *apiClient) {
+		c.logger = logger
+	}
+}
+
 type APIResponse[T any] struct {
 	RequestID string `json:"request_id"`
 	Status    bool   `json:"status"`
@@ -129,8 +141,8 @@ type Topic struct {
 	WorkerSubmissionWindow    int        `json:"worker_submission_window"`
 	WorkerCount               int        `json:"worker_count"`
 	ReputerCount              int        `json:"reputer_count"`
-	TotalStakedAllo           int        `json:"total_staked_allo"`
-	TotalEmissionsAllo        int        `json:"total_emissions_allo"`
+	TotalStakedAllo           float64    `json:"total_staked_allo"`
+	TotalEmissionsAllo        float64    `json:"total_emissions_allo"`
 	IsActive                  bool       `json:"is_active"`
 	IsEndorsed                bool       `json:"is_endorsed"`
 	ForgeCompetitionID        *int       `json:"forge_competition_id"`
