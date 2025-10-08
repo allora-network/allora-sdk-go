@@ -5,6 +5,7 @@ go 1.25
 toolchain go1.25.1
 
 replace github.com/cosmos/cosmos-sdk => github.com/cosmos/cosmos-sdk v0.50.13
+
 replace github.com/cometbft/cometbft => github.com/cometbft/cometbft v0.38.17
 
 require (
@@ -13,7 +14,7 @@ require (
 	github.com/allora-network/allora-chain v0.12.4
 	github.com/brynbellomy/go-utils v0.0.0-20250825055819-60c6be9b3b8d
 	github.com/cometbft/cometbft v0.38.17
-	github.com/cosmos/cosmos-sdk v0.50.14
+	github.com/cosmos/cosmos-sdk v0.50.13
 	github.com/cosmos/gogoproto v1.7.0
 	github.com/cosmos/ibc-go/v8 v8.7.0
 	github.com/gogo/protobuf v1.3.2
