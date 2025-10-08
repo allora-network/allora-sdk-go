@@ -110,6 +110,10 @@ type Codec struct {
 	*cosmoscodec.ProtoCodec
 }
 
+func NewCodec() *Codec {
+	return &Codec{&cosmosCodec}
+}
+
 func (c *Codec) IsTypedEvent(event *abcitypes.Event) bool {
 	concreteGoType := proto.MessageType(event.Type)
 	return concreteGoType != nil
