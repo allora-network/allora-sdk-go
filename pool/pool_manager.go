@@ -18,14 +18,13 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/allora-network/allora-sdk-go/config"
-	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 	"github.com/allora-network/allora-sdk-go/metrics"
 )
 
 // ClientPoolManager manages a pool of Client instances with health tracking and load balancing
-type ClientPoolManager struct {
+type ClientPoolManager[T PoolParticipant] struct {
 	mu                       sync.RWMutex
-	active, cooling          []ClientInfo
+	active, cooling          []ClientInfo[T]
 	currentIndex             int // round-robin index for load distribution
 	checkRate                time.Duration
 	coolingThreshold         float64
@@ -42,16 +41,16 @@ type ClientPoolManager struct {
 	jitterFrac float64
 }
 
-type Client interface {
-	interfaces.Client
+type PoolParticipant interface {
+	Close() error
 	GetEndpointURL() string
 	GetProtocol() config.Protocol
-	Status(ctx context.Context) error
+	HealthCheck(ctx context.Context) error
 }
 
 // ClientInfo wraps an Client with health tracking metadata
-type ClientInfo struct {
-	Client         Client
+type ClientInfo[T PoolParticipant] struct {
+	Client         T
 	MaxRetries     int
 	successRate    float64
 	latEWMA        float64 // exponential-weighted moving average in milliseconds
@@ -79,14 +78,14 @@ type backoffState struct {
 }
 
 // NewClientPoolManager creates a new client pool manager with the provided clients
-func NewClientPoolManager(clients []Client, logger zerolog.Logger) *ClientPoolManager {
+func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger) *ClientPoolManager[T] {
 	if len(clients) == 0 {
 		panic("ClientPoolManager requires at least one client")
 	}
 
-	clientInfos := make([]ClientInfo, len(clients))
+	clientInfos := make([]ClientInfo[T], len(clients))
 	for i, client := range clients {
-		clientInfos[i] = ClientInfo{
+		clientInfos[i] = ClientInfo[T]{
 			Client:      client,
 			MaxRetries:  2,   // Default retry count (matches NodeManager LB=2)
 			successRate: 1.0, // Start with perfect success rate
@@ -99,7 +98,7 @@ func NewClientPoolManager(clients []Client, logger zerolog.Logger) *ClientPoolMa
 		startOffset = int(time.Now().UnixNano()) % len(clients)
 	}
 
-	cpm := &ClientPoolManager{
+	cpm := &ClientPoolManager[T]{
 		active:                   clientInfos,
 		currentIndex:             startOffset,
 		checkRate:                defaultClientCheckRate,
@@ -124,7 +123,7 @@ func NewClientPoolManager(clients []Client, logger zerolog.Logger) *ClientPoolMa
 	return cpm
 }
 
-func (cpm *ClientPoolManager) Close() {
+func (cpm *ClientPoolManager[T]) Close() {
 	cpm.mu.Lock()
 	defer cpm.mu.Unlock()
 
@@ -142,9 +141,10 @@ func (cpm *ClientPoolManager) Close() {
 
 // GetClient returns the next client using round-robin selection among active clients
 // The skip function allows filtering clients based on custom criteria (e.g. backoff state)
-func (cpm *ClientPoolManager) GetClient(skip func(Client) bool) (Client, bool) {
+func (cpm *ClientPoolManager[T]) GetClient(skip func(T) bool) (T, bool) {
+	var zero T
 	if skip == nil {
-		skip = func(Client) bool { return false } // Default: don't skip anything
+		skip = func(T) bool { return false } // Default: don't skip anything
 	}
 	cpm.mu.Lock()
 	defer cpm.mu.Unlock()
@@ -159,7 +159,7 @@ func (cpm *ClientPoolManager) GetClient(skip func(Client) bool) (Client, bool) {
 				return client, true
 			}
 		}
-		return nil, false
+		return zero, false
 	}
 
 	// Round-robin through active clients
@@ -184,11 +184,11 @@ func (cpm *ClientPoolManager) GetClient(skip func(Client) bool) (Client, bool) {
 		}
 	}
 
-	return nil, false
+	return zero, false
 }
 
 // ReportHealth reports the health status of a client operation
-func (cpm *ClientPoolManager) ReportHealth(client Client, tries int, latencyMS float64, success bool) {
+func (cpm *ClientPoolManager[T]) ReportHealth(client T, tries int, latencyMS float64, success bool) {
 	cpm.mu.Lock()
 	defer cpm.mu.Unlock()
 
@@ -197,7 +197,7 @@ func (cpm *ClientPoolManager) ReportHealth(client Client, tries int, latencyMS f
 	}
 
 	clientURL := client.GetEndpointURL()
-	var clientInfo *ClientInfo
+	var clientInfo *ClientInfo[T]
 	var foundInActive bool
 	var activeIndex int
 
@@ -256,7 +256,7 @@ func (cpm *ClientPoolManager) ReportHealth(client Client, tries int, latencyMS f
 }
 
 // UpdateRateLimitDelay increases the rate limit delay for a client
-func (cpm *ClientPoolManager) UpdateRateLimitDelay(client Client) {
+func (cpm *ClientPoolManager[T]) UpdateRateLimitDelay(client T) {
 	cpm.mu.Lock()
 	defer cpm.mu.Unlock()
 
@@ -280,7 +280,7 @@ func (cpm *ClientPoolManager) UpdateRateLimitDelay(client Client) {
 }
 
 // Helper methods (reused from NodeManager)
-func (cpm *ClientPoolManager) increaseRateLimit(current time.Duration) time.Duration {
+func (cpm *ClientPoolManager[T]) increaseRateLimit(current time.Duration) time.Duration {
 	newDelay := current + cpm.rateLimitDelayIncrease
 	if newDelay > cpm.maxRateLimitDelay {
 		return cpm.maxRateLimitDelay
@@ -288,7 +288,7 @@ func (cpm *ClientPoolManager) increaseRateLimit(current time.Duration) time.Dura
 	return newDelay
 }
 
-func (cpm *ClientPoolManager) coolClientByIndex(index int) {
+func (cpm *ClientPoolManager[T]) coolClientByIndex(index int) {
 	if index >= len(cpm.active) {
 		return
 	}
@@ -303,19 +303,19 @@ func (cpm *ClientPoolManager) coolClientByIndex(index int) {
 	}
 }
 
-func (cpm *ClientPoolManager) sortActive() {
+func (cpm *ClientPoolManager[T]) sortActive() {
 	// Use the exact same sorting algorithm as NodeManager.sortPool()
 	sortClientPool(cpm.active)
 }
 
-func (cpm *ClientPoolManager) sortCooling() {
+func (cpm *ClientPoolManager[T]) sortCooling() {
 	// Use the exact same sorting algorithm as NodeManager.sortPool()
 	sortClientPool(cpm.cooling)
 }
 
 // sortClientPool uses the exact same sorting algorithm as NodeManager.sortPool()
 // Higher successRate is better; lower latency is better
-func sortClientPool(clients []ClientInfo) {
+func sortClientPool[T PoolParticipant](clients []ClientInfo[T]) {
 	sort.Slice(clients, func(i, j int) bool {
 		// Higher successRate is better; lower latency is better
 		ci, cj := clients[i], clients[j]
@@ -336,7 +336,7 @@ func sortClientPool(clients []ClientInfo) {
 
 // healthLoop continuously probes cooling clients to check if they should be reactivated
 // This matches the behavior of NodeManager.healthLoop()
-func (cpm *ClientPoolManager) healthLoop() {
+func (cpm *ClientPoolManager[T]) healthLoop() {
 	tk := time.NewTicker(cpm.checkRate)
 	defer tk.Stop()
 
@@ -346,7 +346,7 @@ func (cpm *ClientPoolManager) healthLoop() {
 }
 
 // probeCooling checks each cooling client and reactivates healthy ones
-func (cpm *ClientPoolManager) probeCooling() {
+func (cpm *ClientPoolManager[T]) probeCooling() {
 	cpm.mu.Lock()
 	defer cpm.mu.Unlock()
 
@@ -377,12 +377,12 @@ func (cpm *ClientPoolManager) probeCooling() {
 // pingClient performs a health check on the client
 // For JSON-RPC clients, it calls /status endpoint
 // For gRPC clients, it calls the Status method
-func (cpm *ClientPoolManager) pingClient(client Client) bool {
+func (cpm *ClientPoolManager[T]) pingClient(client T) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
 	// Use the client's Status method for health checking
-	err := client.Status(ctx)
+	err := client.HealthCheck(ctx)
 	if err != nil {
 		cpm.logger.Debug().Err(err).Str("client_url", client.GetEndpointURL()).Msg("client health check failed")
 		return false
@@ -393,7 +393,7 @@ func (cpm *ClientPoolManager) pingClient(client Client) bool {
 }
 
 // activateClientByIndex moves a client from cooling to active pool
-func (cpm *ClientPoolManager) activateClientByIndex(index int) {
+func (cpm *ClientPoolManager[T]) activateClientByIndex(index int) {
 	if index >= len(cpm.cooling) {
 		return
 	}
@@ -411,28 +411,28 @@ func (cpm *ClientPoolManager) activateClientByIndex(index int) {
 // Backoff management methods (from RoundRobinTransport)
 
 // IsClientInBackoff returns the remaining backoff duration for a client
-func (cpm *ClientPoolManager) IsClientInBackoff(client Client) time.Duration {
+func (cpm *ClientPoolManager[T]) IsClientInBackoff(client T) time.Duration {
 	return cpm.backoffWait(client.GetEndpointURL())
 }
 
 // ApplyBackoffPenalty applies a backoff penalty to a client
-func (cpm *ClientPoolManager) ApplyBackoffPenalty(client Client, base time.Duration) time.Duration {
+func (cpm *ClientPoolManager[T]) ApplyBackoffPenalty(client T, base time.Duration) time.Duration {
 	return cpm.computeAndSetBackoff(client.GetEndpointURL(), base)
 }
 
 // ClearBackoff clears the backoff for a client if the window has expired
-func (cpm *ClientPoolManager) ClearBackoff(client Client) {
+func (cpm *ClientPoolManager[T]) ClearBackoff(client T) {
 	cpm.clearBackoff(client.GetEndpointURL())
 }
 
 // GetShortestBackoff returns the shortest backoff duration across all clients
-func (cpm *ClientPoolManager) GetShortestBackoff() time.Duration {
+func (cpm *ClientPoolManager[T]) GetShortestBackoff() time.Duration {
 	return cpm.shortestBackoff()
 }
 
 // Private backoff methods (adapted from RoundRobinTransport)
 
-func (cpm *ClientPoolManager) backoffWait(clientURL string) time.Duration {
+func (cpm *ClientPoolManager[T]) backoffWait(clientURL string) time.Duration {
 	cpm.backMu.Lock()
 	defer cpm.backMu.Unlock()
 
@@ -446,7 +446,7 @@ func (cpm *ClientPoolManager) backoffWait(clientURL string) time.Duration {
 	return 0
 }
 
-func (cpm *ClientPoolManager) computeAndSetBackoff(clientURL string, base time.Duration) time.Duration {
+func (cpm *ClientPoolManager[T]) computeAndSetBackoff(clientURL string, base time.Duration) time.Duration {
 	cpm.backMu.Lock()
 	defer cpm.backMu.Unlock()
 
@@ -479,7 +479,7 @@ func (cpm *ClientPoolManager) computeAndSetBackoff(clientURL string, base time.D
 	return delay
 }
 
-func (cpm *ClientPoolManager) clearBackoff(clientURL string) {
+func (cpm *ClientPoolManager[T]) clearBackoff(clientURL string) {
 	cpm.backMu.Lock()
 	if bs, ok := cpm.backoff[clientURL]; ok && time.Now().After(bs.until) {
 		delete(cpm.backoff, clientURL)
@@ -488,7 +488,7 @@ func (cpm *ClientPoolManager) clearBackoff(clientURL string) {
 	cpm.backMu.Unlock()
 }
 
-func (cpm *ClientPoolManager) shortestBackoff() time.Duration {
+func (cpm *ClientPoolManager[T]) shortestBackoff() time.Duration {
 	cpm.backMu.Lock()
 	defer cpm.backMu.Unlock()
 
@@ -504,7 +504,7 @@ func (cpm *ClientPoolManager) shortestBackoff() time.Duration {
 }
 
 // GetMaxRetries returns the MaxRetries value for a given client
-func (cpm *ClientPoolManager) GetMaxRetries(client Client) int {
+func (cpm *ClientPoolManager[T]) GetMaxRetries(client T) int {
 	cpm.mu.RLock()
 	defer cpm.mu.RUnlock()
 
@@ -528,7 +528,7 @@ func (cpm *ClientPoolManager) GetMaxRetries(client Client) int {
 }
 
 // GetRateLimitDelay returns the current rate limit delay for a client
-func (cpm *ClientPoolManager) GetRateLimitDelay(client Client) time.Duration {
+func (cpm *ClientPoolManager[T]) GetRateLimitDelay(client T) time.Duration {
 	cpm.mu.RLock()
 	defer cpm.mu.RUnlock()
 
@@ -552,7 +552,7 @@ func (cpm *ClientPoolManager) GetRateLimitDelay(client Client) time.Duration {
 }
 
 // ExpDelay calculates exponential delay for retry attempt i
-func (cpm *ClientPoolManager) ExpDelay(attempt int) time.Duration {
+func (cpm *ClientPoolManager[T]) ExpDelay(attempt int) time.Duration {
 	d := float64(cpm.baseDelay) * math.Pow(2, float64(attempt))
 	if d > float64(cpm.maxDelay) {
 		d = float64(cpm.maxDelay)
@@ -563,15 +563,15 @@ func (cpm *ClientPoolManager) ExpDelay(attempt int) time.Duration {
 
 // GetClientWithBackoff returns a client while respecting backoff states
 // This is a convenience method that combines GetClient with backoff checking
-func (cpm *ClientPoolManager) GetClientWithBackoff() (Client, bool) {
-	return cpm.GetClient(func(client Client) bool {
+func (cpm *ClientPoolManager[T]) GetClientWithBackoff() (T, bool) {
+	return cpm.GetClient(func(client T) bool {
 		// Skip clients that are in backoff
 		return cpm.IsClientInBackoff(client) > 0
 	})
 }
 
 // GetHealthStatus returns a summary of the client pool health
-func (cpm *ClientPoolManager) GetHealthStatus() map[string]any {
+func (cpm *ClientPoolManager[T]) GetHealthStatus() map[string]any {
 	cpm.mu.RLock()
 	defer cpm.mu.RUnlock()
 
@@ -625,11 +625,11 @@ func (cpm *ClientPoolManager) GetHealthStatus() map[string]any {
 //   - operation: Function that receives an Client and returns the result
 //
 // Returns the result with full type safety, or an error if all clients fail.
-func ExecuteWithRetry[Result any](
+func ExecuteWithRetry[T PoolParticipant, Result any](
 	ctx context.Context,
-	poolManager *ClientPoolManager,
+	poolManager *ClientPoolManager[T],
 	logger *zerolog.Logger,
-	operation func(client Client) (Result, error),
+	operation func(client T) (Result, error),
 ) (_ Result, err error) {
 	overallStart := time.Now()
 	service, method := deriveRPCOperation()
@@ -642,10 +642,10 @@ func ExecuteWithRetry[Result any](
 	}
 
 	var (
-		attempts    int
-		lastErr     error
-		lastOutcome = "no_client_available"
-		lastClient  Client
+		attempts     int
+		lastErr      error
+		lastOutcome  = "no_client_available"
+		lastProtocol string
 	)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
@@ -659,8 +659,8 @@ func ExecuteWithRetry[Result any](
 				case <-ctx.Done():
 					o := classifyContextError(ctx.Err())
 					protocol := "unknown"
-					if attempts > 0 && lastClient != nil {
-						protocol = string(lastClient.GetProtocol())
+					if attempts > 0 && lastProtocol != "" {
+						protocol = lastProtocol
 					}
 					metrics.ObserveRPCAttempts(protocol, service, method, o, attempts)
 					if attempts == 0 {
@@ -679,8 +679,8 @@ func ExecuteWithRetry[Result any](
 		}
 
 		attempts++
-		lastClient = aggregatedClient
-		protocol := string(aggregatedClient.GetProtocol())
+		lastProtocol = string(aggregatedClient.GetProtocol())
+		protocol := lastProtocol
 		endpoint := aggregatedClient.GetEndpointURL()
 		attemptStart := time.Now()
 
@@ -727,7 +727,7 @@ func ExecuteWithRetry[Result any](
 		return zero, fmt.Errorf("no clients available")
 	}
 
-	protocol := string(lastClient.GetProtocol())
+	protocol := lastProtocol
 	metrics.ObserveRPCAttempts(protocol, service, method, lastOutcome, attempts)
 
 	if lastErr != nil {

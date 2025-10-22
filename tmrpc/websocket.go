@@ -1,4 +1,4 @@
-package allora
+package tmrpc
 
 import (
 	"net/url"
@@ -14,7 +14,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type CometRPCWebsocket struct {
+type Websocket interface {
+	Subscribe(mb *Mailbox, query string)
+	Close()
+}
+
+type tmWebsocket struct {
 	url    string
 	logger zerolog.Logger
 
@@ -29,13 +34,21 @@ type CometRPCWebsocket struct {
 	wgDone      *sync.WaitGroup
 }
 
+var _ Websocket = (*tmWebsocket)(nil)
+
+type Mailbox = butils.Mailbox[ctypes.TMEventData]
+
+func NewMailbox(capacity uint64) *Mailbox {
+	return butils.NewMailbox[ctypes.TMEventData](capacity)
+}
+
 type sub struct {
 	id    int
 	event string
-	mb    *butils.Mailbox[ctypes.TMEventData]
+	mb    *Mailbox
 }
 
-func NewCometRPCWebsocket(rpcURL string, logger zerolog.Logger) *CometRPCWebsocket {
+func NewTendermintWebsocket(rpcURL string, logger zerolog.Logger) *tmWebsocket {
 	cometLogger := logger.With().Str("component", "websocket").Logger()
 
 	u, err := url.Parse(rpcURL)
@@ -50,7 +63,7 @@ func NewCometRPCWebsocket(rpcURL string, logger zerolog.Logger) *CometRPCWebsock
 
 	url := u.String()
 
-	ws := &CometRPCWebsocket{
+	ws := &tmWebsocket{
 		url:         url,
 		logger:      cometLogger,
 		muConn:      &sync.Mutex{},
@@ -69,12 +82,12 @@ func NewCometRPCWebsocket(rpcURL string, logger zerolog.Logger) *CometRPCWebsock
 	return ws
 }
 
-func (ws *CometRPCWebsocket) Close() {
+func (ws *tmWebsocket) Close() {
 	close(ws.chStop)
 	ws.wgDone.Wait()
 }
 
-func (ws *CometRPCWebsocket) connectionManager() {
+func (ws *tmWebsocket) connectionManager() {
 	defer ws.wgDone.Done()
 	defer ws.terminateConnection()
 
@@ -91,7 +104,7 @@ func (ws *CometRPCWebsocket) connectionManager() {
 	}
 }
 
-func (ws *CometRPCWebsocket) readConnection() {
+func (ws *tmWebsocket) readConnection() {
 	defer func() {
 		if perr := recover(); perr != nil {
 			ws.logger.Error().Msgf("recovered from panic: %v", perr)
@@ -137,14 +150,14 @@ func (ws *CometRPCWebsocket) readConnection() {
 	}
 }
 
-func (ws *CometRPCWebsocket) read(resp any) error {
+func (ws *tmWebsocket) read(resp any) error {
 	ws.muConn.Lock()
 	defer ws.muConn.Unlock()
 
 	return ws.conn.ReadJSON(&resp)
 }
 
-func (ws *CometRPCWebsocket) resetConnection() {
+func (ws *tmWebsocket) resetConnection() {
 	ws.muConn.Lock()
 	defer ws.muConn.Unlock()
 
@@ -187,7 +200,7 @@ func (ws *CometRPCWebsocket) resetConnection() {
 }
 
 // terminateConnection closes the websocket connection and cleans up resources permanently.
-func (ws *CometRPCWebsocket) terminateConnection() {
+func (ws *tmWebsocket) terminateConnection() {
 	ws.muConn.Lock()
 	defer ws.muConn.Unlock()
 
@@ -202,7 +215,7 @@ func (ws *CometRPCWebsocket) terminateConnection() {
 	}
 }
 
-func (ws *CometRPCWebsocket) Subscribe(mb *butils.Mailbox[ctypes.TMEventData], query string) {
+func (ws *tmWebsocket) Subscribe(mb *Mailbox, query string) {
 	ws.subIDNonce++
 
 	sub := sub{
@@ -215,7 +228,7 @@ func (ws *CometRPCWebsocket) Subscribe(mb *butils.Mailbox[ctypes.TMEventData], q
 	ws.sendSubscribeMsg(sub)
 }
 
-func (ws *CometRPCWebsocket) sendSubscribeMsg(sub sub) {
+func (ws *tmWebsocket) sendSubscribeMsg(sub sub) {
 	subMsg := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "subscribe",
@@ -230,5 +243,34 @@ func (ws *CometRPCWebsocket) sendSubscribeMsg(sub sub) {
 	err := ws.conn.WriteJSON(subMsg)
 	if err != nil {
 		ws.logger.Error().Err(err).Msg("could not write subscription message")
+	}
+}
+
+type WebsocketPool interface {
+	Subscribe(mb *Mailbox, query string)
+	Close()
+}
+
+type websocketPool struct {
+	websockets []Websocket
+}
+
+var _ WebsocketPool = (*websocketPool)(nil)
+
+func NewWebsocketPool(websockets []Websocket) *websocketPool {
+	return &websocketPool{
+		websockets: websockets,
+	}
+}
+
+func (p *websocketPool) Close() {
+	for _, ws := range p.websockets {
+		ws.Close()
+	}
+}
+
+func (p *websocketPool) Subscribe(mb *Mailbox, query string) {
+	for _, ws := range p.websockets {
+		ws.Subscribe(mb, query)
 	}
 }

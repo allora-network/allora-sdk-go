@@ -13,7 +13,7 @@ type WrapperClient struct {
     {{- end }}
 }
 
-func NewWrapperClient(poolManager *pool.ClientPoolManager, logger zerolog.Logger) *WrapperClient {
+func NewWrapperClient(poolManager *pool.ClientPoolManager[interfaces.CosmosClient], logger zerolog.Logger) *WrapperClient {
     return &WrapperClient{
         {{- range .Modules }}
         {{ .ModuleName }}: New{{ .ModuleName | title }}ClientWrapper(poolManager, logger),

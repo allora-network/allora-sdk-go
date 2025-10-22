@@ -1,23 +1,31 @@
 package interfaces
 
-// Client defines the interface for protocol clients that aggregate multiple blockchain modules.
-type Client interface {
+import (
+	"github.com/allora-network/allora-sdk-go/pool"
+)
+
+type CosmosClientPool interface {
 	Close() error
 
-	Auth() AuthClient
-	Mint() MintClient
-	Evidence() EvidenceClient
-	Staking() StakingClient
-	Distribution() DistributionClient
-	Emissions() EmissionsClient
-	Params() ParamsClient
-	Feegrant() FeegrantClient
-	Tx() TxClient
-	Bank() BankClient
-	Slashing() SlashingClient
-	Node() NodeClient
-	Authz() AuthzClient
-	Consensus() ConsensusClient
-	Tendermint() TendermintClient
 	Gov() GovClient
+	Evidence() EvidenceClient
+	Auth() AuthClient
+	Tx() TxClient
+	Slashing() SlashingClient
+	Emissions() EmissionsClient
+	Feegrant() FeegrantClient
+	Mint() MintClient
+	Staking() StakingClient
+	Authz() AuthzClient
+	Node() NodeClient
+	Consensus() ConsensusClient
+	Distribution() DistributionClient
+	Bank() BankClient
+	Params() ParamsClient
+	Tendermint() TendermintClient
+}
+
+type CosmosClient interface {
+	CosmosClientPool
+	pool.PoolParticipant
 }

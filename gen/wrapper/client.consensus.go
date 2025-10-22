@@ -7,17 +7,18 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/allora-network/allora-sdk-go/config"
+	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 	"github.com/allora-network/allora-sdk-go/pool"
 )
 
 // ConsensusClientWrapper wraps the consensus module with pool management and retry logic
 type ConsensusClientWrapper struct {
-	poolManager *pool.ClientPoolManager
+	poolManager *pool.ClientPoolManager[interfaces.CosmosClient]
 	logger      zerolog.Logger
 }
 
 // NewConsensusClientWrapper creates a new consensus client wrapper
-func NewConsensusClientWrapper(poolManager *pool.ClientPoolManager, logger zerolog.Logger) *ConsensusClientWrapper {
+func NewConsensusClientWrapper(poolManager *pool.ClientPoolManager[interfaces.CosmosClient], logger zerolog.Logger) *ConsensusClientWrapper {
 	return &ConsensusClientWrapper{
 		poolManager: poolManager,
 		logger:      logger.With().Str("module", "consensus").Logger(),
@@ -25,7 +26,7 @@ func NewConsensusClientWrapper(poolManager *pool.ClientPoolManager, logger zerol
 }
 
 func (c *ConsensusClientWrapper) Params(ctx context.Context, req *consensustypes.QueryParamsRequest, opts ...config.CallOpt) (*consensustypes.QueryParamsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client pool.Client) (*consensustypes.QueryParamsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*consensustypes.QueryParamsResponse, error) {
 		return client.Consensus().Params(ctx, req, opts...)
 	})
 }

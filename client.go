@@ -2,40 +2,36 @@ package allora
 
 import (
 	"fmt"
-	"strings"
 
 	butils "github.com/brynbellomy/go-utils"
 	ctypes "github.com/cometbft/cometbft/types"
 	"github.com/rs/zerolog"
 
 	"github.com/allora-network/allora-sdk-go/config"
+	"github.com/allora-network/allora-sdk-go/cosmosrpc"
 	"github.com/allora-network/allora-sdk-go/gen/grpc"
-	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 	"github.com/allora-network/allora-sdk-go/gen/rest"
-	"github.com/allora-network/allora-sdk-go/gen/wrapper"
 	"github.com/allora-network/allora-sdk-go/metrics"
-	"github.com/allora-network/allora-sdk-go/pool"
 	"github.com/allora-network/allora-sdk-go/tmrpc"
 )
 
 type Client interface {
-	interfaces.Client
+	Cosmos() cosmosrpc.ClientPool
+	Tendermint() tmrpc.ClientPool
 	Subscribe(mb *butils.Mailbox[ctypes.TMEventData], query string)
-	GetHealthStatus() map[string]any
-	TendermintRPC() tmrpc.Client
 }
 
 // Client is the Allora Network client that provides access to all query services.
 // It manages a pool of underlying gRPC and REST clients with automatic load balancing and failover.
 type client struct {
-	poolManager *pool.ClientPoolManager
-	logger      zerolog.Logger
-	config      *config.ClientConfig
-	tmRPC       tmrpc.Client
-
-	*wrapper.WrapperClient
-	*CometRPCWebsocket
+	config         *config.ClientConfig
+	cosmosPool     cosmosrpc.ClientPool
+	tendermintPool tmrpc.ClientPool
+	websocketPool  tmrpc.WebsocketPool
+	logger         zerolog.Logger
 }
+
+var _ Client = (*client)(nil)
 
 func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error) {
 	if cfg == nil {
@@ -46,10 +42,10 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		return nil, fmt.Errorf("at least one endpoint must be specified")
 	}
 
-	clients := []pool.Client{}
+	cosmosClients := []cosmosrpc.Client{}
 	tmRPCClients := []tmrpc.Client{}
+	websockets := []tmrpc.Websocket{}
 	for _, endpoint := range cfg.Endpoints {
-		fmt.Println("PROTO:", endpoint.Protocol)
 		switch endpoint.Protocol {
 		case config.ProtocolGRPC:
 			client, err := grpc.NewGRPCClient(endpoint, logger)
@@ -61,21 +57,27 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 					Msg("failed to create client for endpoint")
 				continue
 			}
-			clients = append(clients, client)
+			cosmosClients = append(cosmosClients, client)
 		case config.ProtocolREST:
 			client := rest.NewRESTClient(endpoint.URL, logger)
-			clients = append(clients, client)
+			cosmosClients = append(cosmosClients, client)
 		case config.ProtocolTendermintRPC:
-			tmClient, err := tmrpc.NewHTTPClient(endpoint.URL, cfg.WebsocketEndpoint, cfg.RequestTimeout, logger)
-			if err != nil {
-				logger.Error().
-					Str("endpoint", endpoint.URL).
-					Str("protocol", string(endpoint.Protocol)).
-					Err(err).
-					Msg("failed to create tendermint rpc client for endpoint")
-				continue
+			if endpoint.URL != "" {
+				tmClient, err := tmrpc.NewHTTPClient(endpoint.URL, endpoint.WebsocketURL, cfg.RequestTimeout, logger)
+				if err != nil {
+					logger.Error().
+						Str("endpoint", endpoint.URL).
+						Str("protocol", string(endpoint.Protocol)).
+						Err(err).
+						Msg("failed to create tendermint rpc client for endpoint")
+					continue
+				}
+				tmRPCClients = append(tmRPCClients, tmClient)
 			}
-			tmRPCClients = append(tmRPCClients, tmClient)
+			if endpoint.WebsocketURL != "" {
+				ws := tmrpc.NewTendermintWebsocket(endpoint.WebsocketURL, logger)
+				websockets = append(websockets, ws)
+			}
 		case "":
 			logger.Error().
 				Str("endpoint", endpoint.URL).
@@ -89,55 +91,44 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		}
 	}
 
-	if len(clients) == 0 {
-		return nil, fmt.Errorf("failed to create any clients from the provided endpoints")
-	}
-
-	var tmPool tmrpc.Client
-	if len(tmRPCClients) > 0 {
-		tmPool = tmrpc.NewPool(tmRPCClients, logger)
-	}
-	fmt.Println("LEN TM RPC", len(tmRPCClients))
-
-	poolManager := pool.NewClientPoolManager(clients, logger)
-	clientLogger := logger.With().Str("component", "allora_client").Logger()
-
-	var ws *CometRPCWebsocket
-	if strings.TrimSpace(cfg.WebsocketEndpoint) != "" {
-		ws = NewCometRPCWebsocket(strings.TrimSpace(cfg.WebsocketEndpoint), logger)
-	}
+	logger = logger.With().
+		Str("component", "allora_client").
+		Logger()
 
 	return &client{
-		WrapperClient:     wrapper.NewWrapperClient(poolManager, clientLogger),
-		CometRPCWebsocket: ws,
-		poolManager:       poolManager,
-		logger:            clientLogger,
-		config:            cfg,
-		tmRPC:             tmPool,
+		cosmosPool:     cosmosrpc.NewClientPoolManager(cosmosClients, logger),
+		tendermintPool: tmrpc.NewClientPoolManager(tmRPCClients, logger),
+		websocketPool:  tmrpc.NewWebsocketPool(websockets),
+		logger:         logger,
+		config:         cfg,
 	}, nil
 }
 
 func (c *client) Close() error {
 	c.logger.Info().Msg("shutting down Allora client")
-	if c.CometRPCWebsocket != nil {
-		c.CometRPCWebsocket.Close()
-	}
-	if c.tmRPC != nil {
-		if err := c.tmRPC.Close(); err != nil {
-			c.logger.Error().Err(err).Msg("error closing tendermint rpc clients")
-		}
-	}
-	c.poolManager.Close()
+	c.cosmosPool.Close()
+	c.tendermintPool.Close()
+	c.websocketPool.Close()
 	return nil
 }
 
-// GetHealthStatus returns the current health status of all clients in the pool
 func (c *client) GetHealthStatus() map[string]any {
-	return c.poolManager.GetHealthStatus()
+	return map[string]any{
+		"cosmos":     c.cosmosPool.GetHealthStatus(),
+		"tendermint": c.tendermintPool.GetHealthStatus(),
+	}
 }
 
-func (c *client) TendermintRPC() tmrpc.Client {
-	return c.tmRPC
+func (c *client) Cosmos() cosmosrpc.ClientPool {
+	return c.cosmosPool
+}
+
+func (c *client) Tendermint() tmrpc.ClientPool {
+	return c.tendermintPool
+}
+
+func (c *client) Subscribe(mb *butils.Mailbox[ctypes.TMEventData], query string) {
+	c.websocketPool.Subscribe(mb, query)
 }
 
 var SetMetricsPrefix = metrics.SetPrefix

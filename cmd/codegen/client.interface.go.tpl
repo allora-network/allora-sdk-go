@@ -2,13 +2,20 @@ package interfaces
 
 import (
     "context"
+
+    "github.com/allora-network/allora-sdk-go/pool"
 )
 
-// Client defines the interface for protocol clients that aggregate multiple blockchain modules.
-type Client interface {
+type CosmosClientPool interface {
     Close() error
 
     {{ range .Modules }}
     {{ .ModuleName | title }}() {{ .ModuleName | title }}Client
     {{- end }}
 }
+
+type CosmosClient interface {
+    CosmosClientPool
+    pool.PoolParticipant
+}
+

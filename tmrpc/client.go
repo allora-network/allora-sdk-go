@@ -4,23 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	tmhttp "github.com/cometbft/cometbft/rpc/client/http"
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
 	"github.com/rs/zerolog"
+
+	"github.com/allora-network/allora-sdk-go/config"
+	"github.com/allora-network/allora-sdk-go/pool"
 )
 
 // Client exposes the subset of CometBFT RPC functionality required by the SDK.
 // Implementations should be safe for concurrent use.
 type Client interface {
+	pool.PoolParticipant
 	BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error)
 	Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error)
 	Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error)
 	ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error)
 	Status(ctx context.Context) (*coretypes.ResultStatus, error)
-	Close() error
 }
 
 // NewHTTPClient constructs a Tendermint RPC client backed by CometBFT's HTTP implementation.
@@ -54,6 +56,19 @@ type httpClient struct {
 	logger zerolog.Logger
 }
 
+func (c *httpClient) HealthCheck(ctx context.Context) error {
+	_, err := c.Status(ctx)
+	return err
+}
+
+func (c *httpClient) GetEndpointURL() string {
+	return c.remote
+}
+
+func (c *httpClient) GetProtocol() config.Protocol {
+	return config.ProtocolTendermintRPC
+}
+
 func (c *httpClient) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
 	return c.http.BlockResults(ctx, height)
 }
@@ -82,128 +97,74 @@ func (c *httpClient) Close() error {
 	return nil
 }
 
-func (c *httpClient) endpoint() string {
-	return c.remote
+type ClientPool interface {
+	Close()
+	GetHealthStatus() map[string]any
+
+	BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error)
+	Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error)
+	Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error)
+	ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error)
+	Status(ctx context.Context) (*coretypes.ResultStatus, error)
+	HealthCheck(ctx context.Context) error
 }
 
-type pooledClient struct {
-	Client
-	endpoint string
-}
-
-// Pool provides simple round-robin load balancing with retry semantics across
-// multiple Tendermint RPC endpoints.
-type Pool struct {
-	logger  zerolog.Logger
-	clients []pooledClient
-	mu      sync.Mutex
-	nextIdx int
+type clientPool struct {
+	logger      zerolog.Logger
+	poolManager *pool.ClientPoolManager[Client]
 }
 
 // NewPool constructs a pool from the provided clients. The pool will panic if
 // no clients are supplied.
-func NewPool(clients []Client, logger zerolog.Logger) *Pool {
-	if len(clients) == 0 {
-		panic("tmrpc: NewPool requires at least one client")
-	}
-
-	pooled := make([]pooledClient, len(clients))
-	for i, client := range clients {
-		endpoint := ""
-		if provider, ok := client.(interface{ endpoint() string }); ok {
-			endpoint = provider.endpoint()
-		}
-		pooled[i] = pooledClient{Client: client, endpoint: endpoint}
-	}
-
-	return &Pool{
-		logger:  logger.With().Str("component", "tmrpc_pool").Logger(),
-		clients: pooled,
+func NewClientPoolManager(clients []Client, logger zerolog.Logger) *clientPool {
+	poolLogger := logger.With().Str("component", "tmrpc_pool").Logger()
+	return &clientPool{
+		logger:      poolLogger,
+		poolManager: pool.NewClientPoolManager(clients, poolLogger),
 	}
 }
 
-func (p *Pool) Close() error {
-	var errs error
-	for _, client := range p.clients {
-		if err := client.Close(); err != nil {
-			errs = errors.Join(errs, err)
-		}
-	}
-	return errs
+func (p *clientPool) Close() {
+	p.poolManager.Close()
 }
 
-func (p *Pool) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
-	return doWithRetry(ctx, p, "BlockResults", func(c Client) (*coretypes.ResultBlockResults, error) {
+func (p *clientPool) GetHealthStatus() map[string]any {
+	return p.poolManager.GetHealthStatus()
+}
+
+func (p *clientPool) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultBlockResults, error) {
 		return c.BlockResults(ctx, height)
 	})
 }
 
-func (p *Pool) Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error) {
-	return doWithRetry(ctx, p, "Block", func(c Client) (*coretypes.ResultBlock, error) {
+func (p *clientPool) Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultBlock, error) {
 		return c.Block(ctx, height)
 	})
 }
 
-func (p *Pool) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
-	return doWithRetry(ctx, p, "Commit", func(c Client) (*coretypes.ResultCommit, error) {
+func (p *clientPool) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultCommit, error) {
 		return c.Commit(ctx, height)
 	})
 }
 
-func (p *Pool) ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error) {
-	return doWithRetry(ctx, p, "ABCIQuery", func(c Client) (*coretypes.ResultABCIQuery, error) {
+func (p *clientPool) ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultABCIQuery, error) {
 		return c.ABCIQuery(ctx, path, data)
 	})
 }
 
-func (p *Pool) Status(ctx context.Context) (*coretypes.ResultStatus, error) {
-	return doWithRetry(ctx, p, "Status", func(c Client) (*coretypes.ResultStatus, error) {
+func (p *clientPool) Status(ctx context.Context) (*coretypes.ResultStatus, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultStatus, error) {
 		return c.Status(ctx)
 	})
 }
 
-func doWithRetry[R any](ctx context.Context, p *Pool, op string, fn func(Client) (R, error)) (R, error) {
-	var zero R
-	if len(p.clients) == 0 {
-		return zero, fmt.Errorf("tmrpc: no clients configured for %s", op)
-	}
-
-	var lastErr error
-	attempts := len(p.clients)
-	for attempt := 0; attempt < attempts; attempt++ {
-		select {
-		case <-ctx.Done():
-			return zero, ctx.Err()
-		default:
-		}
-
-		client := p.next()
-		result, err := fn(client.Client)
-		if err != nil {
-			lastErr = err
-			p.logger.Debug().
-				Str("endpoint", client.endpoint).
-				Int("attempt", attempt+1).
-				Err(err).
-				Msgf("tendermint rpc %s failed", op)
-			continue
-		}
-		return result, nil
-	}
-
-	if lastErr != nil {
-		return zero, fmt.Errorf("tmrpc: all clients failed for %s, last error: %w", op, lastErr)
-	}
-	return zero, fmt.Errorf("tmrpc: no clients available for %s", op)
+func (p *clientPool) HealthCheck(ctx context.Context) error {
+	_, err := pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (struct{}, error) {
+		return struct{}{}, c.HealthCheck(ctx)
+	})
+	return err
 }
-
-func (p *Pool) next() pooledClient {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	client := p.clients[p.nextIdx]
-	p.nextIdx = (p.nextIdx + 1) % len(p.clients)
-	return client
-}
-
-var _ Client = (*Pool)(nil)

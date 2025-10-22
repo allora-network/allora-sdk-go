@@ -3,7 +3,7 @@ package rest
 import (
     "bytes"
     "context"
-    "encoding/json/v2"
+    "encoding/json"
     "fmt"
     "net/http"
     "net/url"
@@ -26,7 +26,7 @@ import (
     "github.com/allora-network/allora-sdk-go/metrics"
 )
 
-// RESTClient implements the interfaces.Client interface using REST/JSON-RPC
+// RESTClient implements the interfaces.CosmosClient interface using REST/JSON-RPC
 type RESTClient struct {
     baseURL string
     logger  zerolog.Logger
@@ -38,7 +38,7 @@ type RESTClient struct {
     {{- end }}
 }
 
-var _ interfaces.Client = (*RESTClient)(nil)
+var _ interfaces.CosmosClient = (*RESTClient)(nil)
 
 // NewRESTClient creates a new REST aggregated client
 // Constructor takes a base URL and a logger
@@ -95,6 +95,11 @@ func (c *RESTClient) {{ .ModuleName | title }}() interfaces.{{ .ModuleName | tit
 func (c *RESTClient) Status(ctx context.Context) error {
     _, err := c.tendermint.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
     return err
+}
+
+// HealthCheck wraps Status to satisfy pool requirements
+func (c *RESTClient) HealthCheck(ctx context.Context) error {
+    return c.Status(ctx)
 }
 
 type RESTClientCore struct {

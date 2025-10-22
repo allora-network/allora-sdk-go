@@ -6,14 +6,14 @@ import (
 
 type ClientConfig struct {
 	Endpoints         []EndpointConfig
-	WebsocketEndpoint string
 	RequestTimeout    time.Duration
 	ConnectionTimeout time.Duration
 }
 
 type EndpointConfig struct {
-	URL      string
-	Protocol Protocol
+	URL          string
+	WebsocketURL string
+	Protocol     Protocol
 }
 
 type Protocol string

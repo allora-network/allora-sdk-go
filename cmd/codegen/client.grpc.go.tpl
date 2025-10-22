@@ -43,7 +43,7 @@ type GRPCClient struct {
     {{- end }}
 }
 
-var _ interfaces.Client = (*GRPCClient)(nil)
+var _ interfaces.CosmosClient = (*GRPCClient)(nil)
 
 var (
     grpcCodecOnce sync.Once
@@ -165,4 +165,9 @@ func queryWithHeight[In any, Out any](ctx context.Context, height int64, queryFn
 func (c *GRPCClient) Status(ctx context.Context) error {
     _, err := c.tendermint.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
     return err
+}
+
+// HealthCheck wraps Status to satisfy pool requirements
+func (c *GRPCClient) HealthCheck(ctx context.Context) error {
+    return c.Status(ctx)
 }
