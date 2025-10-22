@@ -15,9 +15,10 @@ import (
 
 	butils "github.com/brynbellomy/go-utils"
 	annotations "google.golang.org/genproto/googleapis/api/annotations"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 

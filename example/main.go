@@ -11,6 +11,7 @@ import (
 	emissionstypes "github.com/allora-network/allora-chain/x/emissions/types"
 	minttypes "github.com/allora-network/allora-chain/x/mint/types"
 	allorasdk "github.com/allora-network/allora-sdk-go"
+	butils "github.com/brynbellomy/go-utils"
 	ctypes "github.com/cometbft/cometbft/types"
 	cmtservice "github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -23,10 +24,11 @@ import (
 
 func main() {
 	// Setup logger
-	logger := zerolog.New(os.Stdout).With().Caller().Timestamp().Logger()
+	consoleOutput := zerolog.ConsoleWriter{Out: os.Stdout, TimeFormat: time.RFC3339}
+	logger := zerolog.New(consoleOutput).With().Caller().Timestamp().Logger()
 
 	// Create client configuration with mixed protocols
-	config := &config.ClientConfig{
+	cfg := &config.ClientConfig{
 		Endpoints: []config.EndpointConfig{
 			{
 				URL:      "allora-grpc.testnet.allora.network:443",
@@ -56,6 +58,12 @@ func main() {
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	resp, err := client.Cosmos().Mint().EmissionInfo(ctx, &minttypes.QueryServiceEmissionInfoRequest{}, config.Height(5601386))
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to create Allora client")
+	}
+	fmt.Println(butils.PrettyJSON(resp))
 
 	// Execute multiple requests to test all endpoints through round-robin
 	fmt.Println("🔄 Testing gRPC and JSON-RPC endpoints with comprehensive module demonstrations...")
@@ -218,6 +226,6 @@ func main() {
 
 	fmt.Println("\n🎉 Example completed successfully!")
 	fmt.Println("📋 Demonstrated modules: Staking, Bank, Tendermint, Emissions, Mint")
-	fmt.Printf("📊 Total requests made: 12 (demonstrating load balancing across %d endpoints)\n", len(config.Endpoints))
+	fmt.Printf("📊 Total requests made: 12 (demonstrating load balancing across %d endpoints)\n", len(cfg.Endpoints))
 	fmt.Println("🚀 Mixed protocol support: gRPC and JSON-RPC clients in the same pool")
 }

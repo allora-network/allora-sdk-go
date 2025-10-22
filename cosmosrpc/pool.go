@@ -21,7 +21,7 @@ type clientPool struct {
 
 var _ ClientPool = (*clientPool)(nil)
 
-func NewClientPoolManager(clients []Client, logger zerolog.Logger) *clientPool {
+func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
 	mgr := pool.NewClientPoolManager(clients, logger)
 	return &clientPool{
 		WrapperClient: wrapper.NewWrapperClient(mgr, logger),

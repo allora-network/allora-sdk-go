@@ -29,6 +29,7 @@ import (
     emissionstypes "github.com/allora-network/allora-chain/x/emissions/types"
     minttypes "github.com/allora-network/allora-chain/x/mint/types"
 
+    "github.com/allora-network/allora-sdk-go/codec"
     "github.com/allora-network/allora-sdk-go/config"
     "github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
@@ -49,26 +50,6 @@ var (
     grpcCodecOnce sync.Once
     grpcCodec     encoding.Codec
 )
-
-func buildGRPCCodec() encoding.Codec {
-    grpcCodecOnce.Do(func() {
-        registry := codectypes.NewInterfaceRegistry()
-        registerFuncs := []func(codectypes.InterfaceRegistry){
-            std.RegisterInterfaces,
-            banktypes.RegisterInterfaces,
-            stakingtypes.RegisterInterfaces,
-            slashingtypes.RegisterInterfaces,
-            distributiontypes.RegisterInterfaces,
-            minttypes.RegisterInterfaces,
-            emissionstypes.RegisterInterfaces,
-        }
-        for _, register := range registerFuncs {
-            register(registry)
-        }
-        grpcCodec = cosmoscodec.NewProtoCodec(registry).GRPCCodec()
-    })
-    return grpcCodec
-}
 
 // NewGRPCClient creates a new gRPC aggregated client
 func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClient, error) {
@@ -109,7 +90,7 @@ func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClien
     conn, err := grpc.DialContext(ctx, address,
         grpc.WithTransportCredentials(creds),
         grpc.WithBlock(),
-        grpc.WithDefaultCallOptions(), //grpc.ForceCodec(buildGRPCCodec())),
+        grpc.WithDefaultCallOptions(grpc.ForceCodec(codec.GRPCCodec())),
     )
     if err != nil {
         return nil, errors.Errorf("failed to connect to %s: %w", address, err)

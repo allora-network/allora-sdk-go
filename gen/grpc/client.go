@@ -18,17 +18,8 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	cmtservice "github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
-	cosmoscodec "github.com/cosmos/cosmos-sdk/codec"
-	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
-	"github.com/cosmos/cosmos-sdk/std"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
-	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
-	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 
-	emissionstypes "github.com/allora-network/allora-chain/x/emissions/types"
-	minttypes "github.com/allora-network/allora-chain/x/mint/types"
-
+	"github.com/allora-network/allora-sdk-go/codec"
 	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
@@ -37,22 +28,22 @@ import (
 type GRPCClient struct {
 	endpointURL  string
 	conn         *grpc.ClientConn
-	gov          *GovGRPCClient
-	evidence     *EvidenceGRPCClient
-	auth         *AuthGRPCClient
-	tx           *TxGRPCClient
-	slashing     *SlashingGRPCClient
+	bank         *BankGRPCClient
+	tendermint   *TendermintGRPCClient
+	params       *ParamsGRPCClient
 	emissions    *EmissionsGRPCClient
-	feegrant     *FeegrantGRPCClient
-	mint         *MintGRPCClient
+	distribution *DistributionGRPCClient
+	consensus    *ConsensusGRPCClient
 	staking      *StakingGRPCClient
+	auth         *AuthGRPCClient
+	mint         *MintGRPCClient
+	tx           *TxGRPCClient
+	evidence     *EvidenceGRPCClient
+	feegrant     *FeegrantGRPCClient
+	slashing     *SlashingGRPCClient
+	gov          *GovGRPCClient
 	authz        *AuthzGRPCClient
 	node         *NodeGRPCClient
-	consensus    *ConsensusGRPCClient
-	distribution *DistributionGRPCClient
-	bank         *BankGRPCClient
-	params       *ParamsGRPCClient
-	tendermint   *TendermintGRPCClient
 }
 
 var _ interfaces.CosmosClient = (*GRPCClient)(nil)
@@ -61,26 +52,6 @@ var (
 	grpcCodecOnce sync.Once
 	grpcCodec     encoding.Codec
 )
-
-func buildGRPCCodec() encoding.Codec {
-	grpcCodecOnce.Do(func() {
-		registry := codectypes.NewInterfaceRegistry()
-		registerFuncs := []func(codectypes.InterfaceRegistry){
-			std.RegisterInterfaces,
-			banktypes.RegisterInterfaces,
-			stakingtypes.RegisterInterfaces,
-			slashingtypes.RegisterInterfaces,
-			distributiontypes.RegisterInterfaces,
-			minttypes.RegisterInterfaces,
-			emissionstypes.RegisterInterfaces,
-		}
-		for _, register := range registerFuncs {
-			register(registry)
-		}
-		grpcCodec = cosmoscodec.NewProtoCodec(registry).GRPCCodec()
-	})
-	return grpcCodec
-}
 
 // NewGRPCClient creates a new gRPC aggregated client
 func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClient, error) {
@@ -121,7 +92,7 @@ func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClien
 	conn, err := grpc.DialContext(ctx, address,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithBlock(),
-		grpc.WithDefaultCallOptions(), //grpc.ForceCodec(buildGRPCCodec())),
+		grpc.WithDefaultCallOptions(grpc.ForceCodec(codec.GRPCCodec())),
 	)
 	if err != nil {
 		return nil, errors.Errorf("failed to connect to %s: %w", address, err)
@@ -130,22 +101,22 @@ func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClien
 	client := &GRPCClient{
 		endpointURL:  cfg.URL,
 		conn:         conn,
-		gov:          NewGovGRPCClient(conn, logger),
-		evidence:     NewEvidenceGRPCClient(conn, logger),
-		auth:         NewAuthGRPCClient(conn, logger),
-		tx:           NewTxGRPCClient(conn, logger),
-		slashing:     NewSlashingGRPCClient(conn, logger),
+		bank:         NewBankGRPCClient(conn, logger),
+		tendermint:   NewTendermintGRPCClient(conn, logger),
+		params:       NewParamsGRPCClient(conn, logger),
 		emissions:    NewEmissionsGRPCClient(conn, logger),
-		feegrant:     NewFeegrantGRPCClient(conn, logger),
-		mint:         NewMintGRPCClient(conn, logger),
+		distribution: NewDistributionGRPCClient(conn, logger),
+		consensus:    NewConsensusGRPCClient(conn, logger),
 		staking:      NewStakingGRPCClient(conn, logger),
+		auth:         NewAuthGRPCClient(conn, logger),
+		mint:         NewMintGRPCClient(conn, logger),
+		tx:           NewTxGRPCClient(conn, logger),
+		evidence:     NewEvidenceGRPCClient(conn, logger),
+		feegrant:     NewFeegrantGRPCClient(conn, logger),
+		slashing:     NewSlashingGRPCClient(conn, logger),
+		gov:          NewGovGRPCClient(conn, logger),
 		authz:        NewAuthzGRPCClient(conn, logger),
 		node:         NewNodeGRPCClient(conn, logger),
-		consensus:    NewConsensusGRPCClient(conn, logger),
-		distribution: NewDistributionGRPCClient(conn, logger),
-		bank:         NewBankGRPCClient(conn, logger),
-		params:       NewParamsGRPCClient(conn, logger),
-		tendermint:   NewTendermintGRPCClient(conn, logger),
 	}
 
 	return client, nil
@@ -163,53 +134,53 @@ func (c *GRPCClient) GetProtocol() config.Protocol {
 func (c *GRPCClient) GetEndpointURL() string {
 	return c.endpointURL
 }
-func (c *GRPCClient) Gov() interfaces.GovClient {
-	return c.gov
+func (c *GRPCClient) Bank() interfaces.BankClient {
+	return c.bank
 }
-func (c *GRPCClient) Evidence() interfaces.EvidenceClient {
-	return c.evidence
+func (c *GRPCClient) Tendermint() interfaces.TendermintClient {
+	return c.tendermint
 }
-func (c *GRPCClient) Auth() interfaces.AuthClient {
-	return c.auth
-}
-func (c *GRPCClient) Tx() interfaces.TxClient {
-	return c.tx
-}
-func (c *GRPCClient) Slashing() interfaces.SlashingClient {
-	return c.slashing
+func (c *GRPCClient) Params() interfaces.ParamsClient {
+	return c.params
 }
 func (c *GRPCClient) Emissions() interfaces.EmissionsClient {
 	return c.emissions
 }
-func (c *GRPCClient) Feegrant() interfaces.FeegrantClient {
-	return c.feegrant
+func (c *GRPCClient) Distribution() interfaces.DistributionClient {
+	return c.distribution
+}
+func (c *GRPCClient) Consensus() interfaces.ConsensusClient {
+	return c.consensus
+}
+func (c *GRPCClient) Staking() interfaces.StakingClient {
+	return c.staking
+}
+func (c *GRPCClient) Auth() interfaces.AuthClient {
+	return c.auth
 }
 func (c *GRPCClient) Mint() interfaces.MintClient {
 	return c.mint
 }
-func (c *GRPCClient) Staking() interfaces.StakingClient {
-	return c.staking
+func (c *GRPCClient) Tx() interfaces.TxClient {
+	return c.tx
+}
+func (c *GRPCClient) Evidence() interfaces.EvidenceClient {
+	return c.evidence
+}
+func (c *GRPCClient) Feegrant() interfaces.FeegrantClient {
+	return c.feegrant
+}
+func (c *GRPCClient) Slashing() interfaces.SlashingClient {
+	return c.slashing
+}
+func (c *GRPCClient) Gov() interfaces.GovClient {
+	return c.gov
 }
 func (c *GRPCClient) Authz() interfaces.AuthzClient {
 	return c.authz
 }
 func (c *GRPCClient) Node() interfaces.NodeClient {
 	return c.node
-}
-func (c *GRPCClient) Consensus() interfaces.ConsensusClient {
-	return c.consensus
-}
-func (c *GRPCClient) Distribution() interfaces.DistributionClient {
-	return c.distribution
-}
-func (c *GRPCClient) Bank() interfaces.BankClient {
-	return c.bank
-}
-func (c *GRPCClient) Params() interfaces.ParamsClient {
-	return c.params
-}
-func (c *GRPCClient) Tendermint() interfaces.TendermintClient {
-	return c.tendermint
 }
 
 type callFn[In, Out any] func(ctx context.Context, i In, opts ...grpc.CallOption) (Out, error)

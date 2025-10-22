@@ -79,10 +79,6 @@ type backoffState struct {
 
 // NewClientPoolManager creates a new client pool manager with the provided clients
 func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger) *ClientPoolManager[T] {
-	if len(clients) == 0 {
-		panic("ClientPoolManager requires at least one client")
-	}
-
 	clientInfos := make([]ClientInfo[T], len(clients))
 	for i, client := range clients {
 		clientInfos[i] = ClientInfo[T]{
@@ -304,17 +300,13 @@ func (cpm *ClientPoolManager[T]) coolClientByIndex(index int) {
 }
 
 func (cpm *ClientPoolManager[T]) sortActive() {
-	// Use the exact same sorting algorithm as NodeManager.sortPool()
 	sortClientPool(cpm.active)
 }
 
 func (cpm *ClientPoolManager[T]) sortCooling() {
-	// Use the exact same sorting algorithm as NodeManager.sortPool()
 	sortClientPool(cpm.cooling)
 }
 
-// sortClientPool uses the exact same sorting algorithm as NodeManager.sortPool()
-// Higher successRate is better; lower latency is better
 func sortClientPool[T PoolParticipant](clients []ClientInfo[T]) {
 	sort.Slice(clients, func(i, j int) bool {
 		// Higher successRate is better; lower latency is better
@@ -325,7 +317,7 @@ func sortClientPool[T PoolParticipant](clients []ClientInfo[T]) {
 		}
 		li, lj := ci.latEWMA, cj.latEWMA
 		if li == 0 {
-			li = 9e9 // Same as NodeManager - treat zero latency as infinite
+			li = 9e9 // treat zero latency as infinite
 		}
 		if lj == 0 {
 			lj = 9e9
@@ -335,7 +327,6 @@ func sortClientPool[T PoolParticipant](clients []ClientInfo[T]) {
 }
 
 // healthLoop continuously probes cooling clients to check if they should be reactivated
-// This matches the behavior of NodeManager.healthLoop()
 func (cpm *ClientPoolManager[T]) healthLoop() {
 	tk := time.NewTicker(cpm.checkRate)
 	defer tk.Stop()

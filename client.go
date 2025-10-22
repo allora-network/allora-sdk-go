@@ -96,8 +96,8 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		Logger()
 
 	return &client{
-		cosmosPool:     cosmosrpc.NewClientPoolManager(cosmosClients, logger),
-		tendermintPool: tmrpc.NewClientPoolManager(tmRPCClients, logger),
+		cosmosPool:     cosmosrpc.NewClientPool(cosmosClients, logger),
+		tendermintPool: tmrpc.NewClientPool(tmRPCClients, logger),
 		websocketPool:  tmrpc.NewWebsocketPool(websockets),
 		logger:         logger,
 		config:         cfg,

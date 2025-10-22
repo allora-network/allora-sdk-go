@@ -116,7 +116,7 @@ type clientPool struct {
 
 // NewPool constructs a pool from the provided clients. The pool will panic if
 // no clients are supplied.
-func NewClientPoolManager(clients []Client, logger zerolog.Logger) *clientPool {
+func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
 	poolLogger := logger.With().Str("component", "tmrpc_pool").Logger()
 	return &clientPool{
 		logger:      poolLogger,
