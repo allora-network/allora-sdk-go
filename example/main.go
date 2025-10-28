@@ -49,7 +49,7 @@ func main() {
 	}
 
 	// Create the Allora client
-	client, err := allorasdk.NewClient(config, logger)
+	client, err := allorasdk.NewClient(cfg, logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("failed to create Allora client")
 	}

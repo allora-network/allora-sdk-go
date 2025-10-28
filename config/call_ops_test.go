@@ -1,4 +1,4 @@
-package allora
+package config
 
 import (
 	"testing"
@@ -59,4 +59,3 @@ func TestCallOptsUsage(t *testing.T) {
 		t.Errorf("Expected height to be 100, got %d", callOpts.Height)
 	}
 }
-
