@@ -91,6 +91,11 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		}
 	}
 
+	// Validate that at least one client was successfully created
+	if len(cosmosClients) == 0 && len(tmRPCClients) == 0 {
+		return nil, fmt.Errorf("failed to create any valid clients from the provided endpoints")
+	}
+
 	logger = logger.With().
 		Str("component", "allora_client").
 		Logger()
