@@ -2,27 +2,23 @@ package codec
 
 import (
 	"encoding/json"
-	"sync"
 
+	"cosmossdk.io/x/feegrant"
+	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/brynbellomy/go-utils/errors"
-	"google.golang.org/grpc/encoding"
-
-	feegrant "cosmossdk.io/x/feegrant"
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	cosmoscodec "github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	stdtypes "github.com/cosmos/cosmos-sdk/std"
 	cosmossdktypes "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
-	bank "github.com/cosmos/cosmos-sdk/x/bank/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
-	distribution "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
-	slashing "github.com/cosmos/cosmos-sdk/x/slashing/types"
+	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
-	staking "github.com/cosmos/cosmos-sdk/x/staking/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/gogo/protobuf/proto"
+	"google.golang.org/grpc/encoding"
 
 	// IBC modules
 	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
@@ -54,7 +50,6 @@ import (
 )
 
 var (
-	once        sync.Once
 	grpcCodec   encoding.Codec
 	cosmosCodec *cosmoscodec.ProtoCodec
 	registry    = codectypes.NewInterfaceRegistry()
@@ -62,18 +57,16 @@ var (
 
 func init() {
 	registerFuncs := []func(codectypes.InterfaceRegistry){
+		upgradetypes.RegisterInterfaces,
 		banktypes.RegisterInterfaces,
 		distributiontypes.RegisterInterfaces,
 		slashingtypes.RegisterInterfaces,
 		stakingtypes.RegisterInterfaces,
 		feegrant.RegisterInterfaces,
+		govv1types.RegisterInterfaces,
 		stdtypes.RegisterInterfaces,
 		cosmossdktypes.RegisterInterfaces,
 		txtypes.RegisterInterfaces,
-		bank.RegisterInterfaces,
-		distribution.RegisterInterfaces,
-		slashing.RegisterInterfaces,
-		staking.RegisterInterfaces,
 		ibctransfertypes.RegisterInterfaces,
 		ibcclient.RegisterInterfaces,
 		ibcconnection.RegisterInterfaces,
