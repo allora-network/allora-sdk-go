@@ -7,22 +7,22 @@ import (
 type CosmosClientPool interface {
 	Close() error
 
-	Distribution() DistributionClient
-	Gov() GovClient
-	Evidence() EvidenceClient
-	Tendermint() TendermintClient
 	Consensus() ConsensusClient
-	Tx() TxClient
-	Authz() AuthzClient
-	Node() NodeClient
-	Mint() MintClient
-	Emissions() EmissionsClient
-	Staking() StakingClient
-	Feegrant() FeegrantClient
-	Slashing() SlashingClient
+	Gov() GovClient
 	Params() ParamsClient
-	Bank() BankClient
+	Mint() MintClient
+	Authz() AuthzClient
+	Distribution() DistributionClient
+	Tendermint() TendermintClient
 	Auth() AuthClient
+	Slashing() SlashingClient
+	Bank() BankClient
+	Emissions() EmissionsClient
+	Tx() TxClient
+	Evidence() EvidenceClient
+	Node() NodeClient
+	Feegrant() FeegrantClient
+	Staking() StakingClient
 }
 
 type CosmosClient interface {

@@ -32,22 +32,22 @@ type RESTClient struct {
 	logger  zerolog.Logger
 
 	core         *RESTClientCore
-	distribution *DistributionRESTClient
-	gov          *GovRESTClient
-	evidence     *EvidenceRESTClient
-	tendermint   *TendermintRESTClient
 	consensus    *ConsensusRESTClient
-	tx           *TxRESTClient
-	authz        *AuthzRESTClient
-	node         *NodeRESTClient
-	mint         *MintRESTClient
-	emissions    *EmissionsRESTClient
-	staking      *StakingRESTClient
-	feegrant     *FeegrantRESTClient
-	slashing     *SlashingRESTClient
+	gov          *GovRESTClient
 	params       *ParamsRESTClient
-	bank         *BankRESTClient
+	mint         *MintRESTClient
+	authz        *AuthzRESTClient
+	distribution *DistributionRESTClient
+	tendermint   *TendermintRESTClient
 	auth         *AuthRESTClient
+	slashing     *SlashingRESTClient
+	bank         *BankRESTClient
+	emissions    *EmissionsRESTClient
+	tx           *TxRESTClient
+	evidence     *EvidenceRESTClient
+	node         *NodeRESTClient
+	feegrant     *FeegrantRESTClient
+	staking      *StakingRESTClient
 }
 
 var _ interfaces.CosmosClient = (*RESTClient)(nil)
@@ -61,22 +61,22 @@ func NewRESTClient(baseURL string, logger zerolog.Logger, opts ...RESTClientOpti
 		baseURL:      baseURL,
 		logger:       logger.With().Str("protocol", "json-rpc").Str("endpoint", baseURL).Logger(),
 		core:         core,
-		distribution: NewDistributionRESTClient(core, logger),
-		gov:          NewGovRESTClient(core, logger),
-		evidence:     NewEvidenceRESTClient(core, logger),
-		tendermint:   NewTendermintRESTClient(core, logger),
 		consensus:    NewConsensusRESTClient(core, logger),
-		tx:           NewTxRESTClient(core, logger),
-		authz:        NewAuthzRESTClient(core, logger),
-		node:         NewNodeRESTClient(core, logger),
-		mint:         NewMintRESTClient(core, logger),
-		emissions:    NewEmissionsRESTClient(core, logger),
-		staking:      NewStakingRESTClient(core, logger),
-		feegrant:     NewFeegrantRESTClient(core, logger),
-		slashing:     NewSlashingRESTClient(core, logger),
+		gov:          NewGovRESTClient(core, logger),
 		params:       NewParamsRESTClient(core, logger),
-		bank:         NewBankRESTClient(core, logger),
+		mint:         NewMintRESTClient(core, logger),
+		authz:        NewAuthzRESTClient(core, logger),
+		distribution: NewDistributionRESTClient(core, logger),
+		tendermint:   NewTendermintRESTClient(core, logger),
 		auth:         NewAuthRESTClient(core, logger),
+		slashing:     NewSlashingRESTClient(core, logger),
+		bank:         NewBankRESTClient(core, logger),
+		emissions:    NewEmissionsRESTClient(core, logger),
+		tx:           NewTxRESTClient(core, logger),
+		evidence:     NewEvidenceRESTClient(core, logger),
+		node:         NewNodeRESTClient(core, logger),
+		feegrant:     NewFeegrantRESTClient(core, logger),
+		staking:      NewStakingRESTClient(core, logger),
 	}
 }
 
@@ -110,68 +110,68 @@ func (c *RESTClient) GetProtocol() config.Protocol {
 	return config.ProtocolREST
 }
 
-func (c *RESTClient) Distribution() interfaces.DistributionClient {
-	return c.distribution
+func (c *RESTClient) Consensus() interfaces.ConsensusClient {
+	return c.consensus
 }
 
 func (c *RESTClient) Gov() interfaces.GovClient {
 	return c.gov
 }
 
-func (c *RESTClient) Evidence() interfaces.EvidenceClient {
-	return c.evidence
-}
-
-func (c *RESTClient) Tendermint() interfaces.TendermintClient {
-	return c.tendermint
-}
-
-func (c *RESTClient) Consensus() interfaces.ConsensusClient {
-	return c.consensus
-}
-
-func (c *RESTClient) Tx() interfaces.TxClient {
-	return c.tx
-}
-
-func (c *RESTClient) Authz() interfaces.AuthzClient {
-	return c.authz
-}
-
-func (c *RESTClient) Node() interfaces.NodeClient {
-	return c.node
+func (c *RESTClient) Params() interfaces.ParamsClient {
+	return c.params
 }
 
 func (c *RESTClient) Mint() interfaces.MintClient {
 	return c.mint
 }
 
-func (c *RESTClient) Emissions() interfaces.EmissionsClient {
-	return c.emissions
+func (c *RESTClient) Authz() interfaces.AuthzClient {
+	return c.authz
 }
 
-func (c *RESTClient) Staking() interfaces.StakingClient {
-	return c.staking
+func (c *RESTClient) Distribution() interfaces.DistributionClient {
+	return c.distribution
 }
 
-func (c *RESTClient) Feegrant() interfaces.FeegrantClient {
-	return c.feegrant
+func (c *RESTClient) Tendermint() interfaces.TendermintClient {
+	return c.tendermint
+}
+
+func (c *RESTClient) Auth() interfaces.AuthClient {
+	return c.auth
 }
 
 func (c *RESTClient) Slashing() interfaces.SlashingClient {
 	return c.slashing
 }
 
-func (c *RESTClient) Params() interfaces.ParamsClient {
-	return c.params
-}
-
 func (c *RESTClient) Bank() interfaces.BankClient {
 	return c.bank
 }
 
-func (c *RESTClient) Auth() interfaces.AuthClient {
-	return c.auth
+func (c *RESTClient) Emissions() interfaces.EmissionsClient {
+	return c.emissions
+}
+
+func (c *RESTClient) Tx() interfaces.TxClient {
+	return c.tx
+}
+
+func (c *RESTClient) Evidence() interfaces.EvidenceClient {
+	return c.evidence
+}
+
+func (c *RESTClient) Node() interfaces.NodeClient {
+	return c.node
+}
+
+func (c *RESTClient) Feegrant() interfaces.FeegrantClient {
+	return c.feegrant
+}
+
+func (c *RESTClient) Staking() interfaces.StakingClient {
+	return c.staking
 }
 
 // Status implements a basic health check using the Tendermint service

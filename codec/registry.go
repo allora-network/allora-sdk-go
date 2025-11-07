@@ -12,9 +12,11 @@ import (
 	stdtypes "github.com/cosmos/cosmos-sdk/std"
 	cosmossdktypes "github.com/cosmos/cosmos-sdk/types"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
+	govv1beta1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/gogo/protobuf/proto"
@@ -62,8 +64,10 @@ func init() {
 		distributiontypes.RegisterInterfaces,
 		slashingtypes.RegisterInterfaces,
 		stakingtypes.RegisterInterfaces,
+		authz.RegisterInterfaces,
 		feegrant.RegisterInterfaces,
 		govv1types.RegisterInterfaces,
+		govv1beta1types.RegisterInterfaces,
 		stdtypes.RegisterInterfaces,
 		cosmossdktypes.RegisterInterfaces,
 		txtypes.RegisterInterfaces,
