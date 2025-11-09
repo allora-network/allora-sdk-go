@@ -19,7 +19,7 @@ import (
 	govv1beta1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
-	"github.com/gogo/protobuf/proto"
+	"github.com/cosmos/gogoproto/proto"
 	"google.golang.org/grpc/encoding"
 
 	// IBC modules
@@ -122,7 +122,6 @@ func (c *Codec) ParseTypedEvent(event *abcitypes.Event) (proto.Message, error) {
 	}
 
 	eventCopy := *event
-	// Remove the last attribute if the key is "mode"
 	if eventCopy.Attributes[len(eventCopy.Attributes)-1].Key == "mode" {
 		eventCopy.Attributes = eventCopy.Attributes[:len(eventCopy.Attributes)-1]
 	}
