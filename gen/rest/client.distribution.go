@@ -25,82 +25,18 @@ func NewDistributionRESTClient(core *RESTClientCore, logger zerolog.Logger) *Dis
 	}
 }
 
-func (c *DistributionRESTClient) Params(ctx context.Context, req *distributiontypes.QueryParamsRequest, opts ...config.CallOpt) (*distributiontypes.QueryParamsResponse, error) {
+func (c *DistributionRESTClient) CommunityPool(ctx context.Context, req *distributiontypes.QueryCommunityPoolRequest, opts ...config.CallOpt) (*distributiontypes.QueryCommunityPoolResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &distributiontypes.QueryParamsResponse{}
+	resp := &distributiontypes.QueryCommunityPoolResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/distribution/v1beta1/params",
+		"GET", "/cosmos/distribution/v1beta1/community_pool",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling DistributionRESTClient.Params")
-	}
-	return resp, nil
-}
-
-func (c *DistributionRESTClient) ValidatorDistributionInfo(ctx context.Context, req *distributiontypes.QueryValidatorDistributionInfoRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorDistributionInfoResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &distributiontypes.QueryValidatorDistributionInfoResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}",
-		[]string{"validator_address"}, nil,
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorDistributionInfo")
-	}
-	return resp, nil
-}
-
-func (c *DistributionRESTClient) ValidatorOutstandingRewards(ctx context.Context, req *distributiontypes.QueryValidatorOutstandingRewardsRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorOutstandingRewardsResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &distributiontypes.QueryValidatorOutstandingRewardsResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}/outstanding_rewards",
-		[]string{"validator_address"}, nil,
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorOutstandingRewards")
-	}
-	return resp, nil
-}
-
-func (c *DistributionRESTClient) ValidatorCommission(ctx context.Context, req *distributiontypes.QueryValidatorCommissionRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorCommissionResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &distributiontypes.QueryValidatorCommissionResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}/commission",
-		[]string{"validator_address"}, nil,
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorCommission")
-	}
-	return resp, nil
-}
-
-func (c *DistributionRESTClient) ValidatorSlashes(ctx context.Context, req *distributiontypes.QueryValidatorSlashesRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorSlashesResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &distributiontypes.QueryValidatorSlashesResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}/slashes",
-		[]string{"validator_address"}, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse", "starting_height", "ending_height"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorSlashes")
+		return nil, errors.Wrap(err, "while calling DistributionRESTClient.CommunityPool")
 	}
 	return resp, nil
 }
@@ -169,18 +105,82 @@ func (c *DistributionRESTClient) DelegatorWithdrawAddress(ctx context.Context, r
 	return resp, nil
 }
 
-func (c *DistributionRESTClient) CommunityPool(ctx context.Context, req *distributiontypes.QueryCommunityPoolRequest, opts ...config.CallOpt) (*distributiontypes.QueryCommunityPoolResponse, error) {
+func (c *DistributionRESTClient) Params(ctx context.Context, req *distributiontypes.QueryParamsRequest, opts ...config.CallOpt) (*distributiontypes.QueryParamsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &distributiontypes.QueryCommunityPoolResponse{}
+	resp := &distributiontypes.QueryParamsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/distribution/v1beta1/community_pool",
+		"GET", "/cosmos/distribution/v1beta1/params",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling DistributionRESTClient.CommunityPool")
+		return nil, errors.Wrap(err, "while calling DistributionRESTClient.Params")
+	}
+	return resp, nil
+}
+
+func (c *DistributionRESTClient) ValidatorCommission(ctx context.Context, req *distributiontypes.QueryValidatorCommissionRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorCommissionResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &distributiontypes.QueryValidatorCommissionResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}/commission",
+		[]string{"validator_address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorCommission")
+	}
+	return resp, nil
+}
+
+func (c *DistributionRESTClient) ValidatorDistributionInfo(ctx context.Context, req *distributiontypes.QueryValidatorDistributionInfoRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorDistributionInfoResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &distributiontypes.QueryValidatorDistributionInfoResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}",
+		[]string{"validator_address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorDistributionInfo")
+	}
+	return resp, nil
+}
+
+func (c *DistributionRESTClient) ValidatorOutstandingRewards(ctx context.Context, req *distributiontypes.QueryValidatorOutstandingRewardsRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorOutstandingRewardsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &distributiontypes.QueryValidatorOutstandingRewardsResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}/outstanding_rewards",
+		[]string{"validator_address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorOutstandingRewards")
+	}
+	return resp, nil
+}
+
+func (c *DistributionRESTClient) ValidatorSlashes(ctx context.Context, req *distributiontypes.QueryValidatorSlashesRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorSlashesResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &distributiontypes.QueryValidatorSlashesResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/distribution/v1beta1/validators/{validator_address}/slashes",
+		[]string{"validator_address"}, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse", "starting_height", "ending_height"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling DistributionRESTClient.ValidatorSlashes")
 	}
 	return resp, nil
 }

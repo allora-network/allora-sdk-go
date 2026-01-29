@@ -25,22 +25,6 @@ func NewBankRESTClient(core *RESTClientCore, logger zerolog.Logger) *BankRESTCli
 	}
 }
 
-func (c *BankRESTClient) Balance(ctx context.Context, req *banktypes.QueryBalanceRequest, opts ...config.CallOpt) (*banktypes.QueryBalanceResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &banktypes.QueryBalanceResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/balances/{address}/by_denom",
-		[]string{"address"}, []string{"denom"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.Balance")
-	}
-	return resp, nil
-}
-
 func (c *BankRESTClient) AllBalances(ctx context.Context, req *banktypes.QueryAllBalancesRequest, opts ...config.CallOpt) (*banktypes.QueryAllBalancesResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -57,82 +41,18 @@ func (c *BankRESTClient) AllBalances(ctx context.Context, req *banktypes.QueryAl
 	return resp, nil
 }
 
-func (c *BankRESTClient) SpendableBalances(ctx context.Context, req *banktypes.QuerySpendableBalancesRequest, opts ...config.CallOpt) (*banktypes.QuerySpendableBalancesResponse, error) {
+func (c *BankRESTClient) Balance(ctx context.Context, req *banktypes.QueryBalanceRequest, opts ...config.CallOpt) (*banktypes.QueryBalanceResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &banktypes.QuerySpendableBalancesResponse{}
+	resp := &banktypes.QueryBalanceResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/spendable_balances/{address}",
-		[]string{"address"}, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.SpendableBalances")
-	}
-	return resp, nil
-}
-
-func (c *BankRESTClient) SpendableBalanceByDenom(ctx context.Context, req *banktypes.QuerySpendableBalanceByDenomRequest, opts ...config.CallOpt) (*banktypes.QuerySpendableBalanceByDenomResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &banktypes.QuerySpendableBalanceByDenomResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/spendable_balances/{address}/by_denom",
+		"GET", "/cosmos/bank/v1beta1/balances/{address}/by_denom",
 		[]string{"address"}, []string{"denom"},
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.SpendableBalanceByDenom")
-	}
-	return resp, nil
-}
-
-func (c *BankRESTClient) TotalSupply(ctx context.Context, req *banktypes.QueryTotalSupplyRequest, opts ...config.CallOpt) (*banktypes.QueryTotalSupplyResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &banktypes.QueryTotalSupplyResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/supply",
-		nil, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.TotalSupply")
-	}
-	return resp, nil
-}
-
-func (c *BankRESTClient) SupplyOf(ctx context.Context, req *banktypes.QuerySupplyOfRequest, opts ...config.CallOpt) (*banktypes.QuerySupplyOfResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &banktypes.QuerySupplyOfResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/supply/by_denom",
-		nil, []string{"denom"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.SupplyOf")
-	}
-	return resp, nil
-}
-
-func (c *BankRESTClient) Params(ctx context.Context, req *banktypes.QueryParamsRequest, opts ...config.CallOpt) (*banktypes.QueryParamsResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &banktypes.QueryParamsResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/params",
-		nil, nil,
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.Params")
+		return nil, errors.Wrap(err, "while calling BankRESTClient.Balance")
 	}
 	return resp, nil
 }
@@ -169,22 +89,6 @@ func (c *BankRESTClient) DenomMetadataByQueryString(ctx context.Context, req *ba
 	return resp, nil
 }
 
-func (c *BankRESTClient) DenomsMetadata(ctx context.Context, req *banktypes.QueryDenomsMetadataRequest, opts ...config.CallOpt) (*banktypes.QueryDenomsMetadataResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &banktypes.QueryDenomsMetadataResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/bank/v1beta1/denoms_metadata",
-		nil, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling BankRESTClient.DenomsMetadata")
-	}
-	return resp, nil
-}
-
 func (c *BankRESTClient) DenomOwners(ctx context.Context, req *banktypes.QueryDenomOwnersRequest, opts ...config.CallOpt) (*banktypes.QueryDenomOwnersResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -217,6 +121,38 @@ func (c *BankRESTClient) DenomOwnersByQuery(ctx context.Context, req *banktypes.
 	return resp, nil
 }
 
+func (c *BankRESTClient) DenomsMetadata(ctx context.Context, req *banktypes.QueryDenomsMetadataRequest, opts ...config.CallOpt) (*banktypes.QueryDenomsMetadataResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &banktypes.QueryDenomsMetadataResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/bank/v1beta1/denoms_metadata",
+		nil, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling BankRESTClient.DenomsMetadata")
+	}
+	return resp, nil
+}
+
+func (c *BankRESTClient) Params(ctx context.Context, req *banktypes.QueryParamsRequest, opts ...config.CallOpt) (*banktypes.QueryParamsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &banktypes.QueryParamsResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/bank/v1beta1/params",
+		nil, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling BankRESTClient.Params")
+	}
+	return resp, nil
+}
+
 func (c *BankRESTClient) SendEnabled(ctx context.Context, req *banktypes.QuerySendEnabledRequest, opts ...config.CallOpt) (*banktypes.QuerySendEnabledResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -229,6 +165,70 @@ func (c *BankRESTClient) SendEnabled(ctx context.Context, req *banktypes.QuerySe
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "while calling BankRESTClient.SendEnabled")
+	}
+	return resp, nil
+}
+
+func (c *BankRESTClient) SpendableBalanceByDenom(ctx context.Context, req *banktypes.QuerySpendableBalanceByDenomRequest, opts ...config.CallOpt) (*banktypes.QuerySpendableBalanceByDenomResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &banktypes.QuerySpendableBalanceByDenomResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/bank/v1beta1/spendable_balances/{address}/by_denom",
+		[]string{"address"}, []string{"denom"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling BankRESTClient.SpendableBalanceByDenom")
+	}
+	return resp, nil
+}
+
+func (c *BankRESTClient) SpendableBalances(ctx context.Context, req *banktypes.QuerySpendableBalancesRequest, opts ...config.CallOpt) (*banktypes.QuerySpendableBalancesResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &banktypes.QuerySpendableBalancesResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/bank/v1beta1/spendable_balances/{address}",
+		[]string{"address"}, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling BankRESTClient.SpendableBalances")
+	}
+	return resp, nil
+}
+
+func (c *BankRESTClient) SupplyOf(ctx context.Context, req *banktypes.QuerySupplyOfRequest, opts ...config.CallOpt) (*banktypes.QuerySupplyOfResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &banktypes.QuerySupplyOfResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/bank/v1beta1/supply/by_denom",
+		nil, []string{"denom"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling BankRESTClient.SupplyOf")
+	}
+	return resp, nil
+}
+
+func (c *BankRESTClient) TotalSupply(ctx context.Context, req *banktypes.QueryTotalSupplyRequest, opts ...config.CallOpt) (*banktypes.QueryTotalSupplyResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &banktypes.QueryTotalSupplyResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/bank/v1beta1/supply",
+		nil, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling BankRESTClient.TotalSupply")
 	}
 	return resp, nil
 }

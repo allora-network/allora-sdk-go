@@ -6,7 +6,6 @@ import (
     "github.com/rs/zerolog"
 {{if eq .ModuleName "emissions" "mint"}}    {{ .PackageName }} "{{ .ImportPath }}"{{else}}  {{ .PackageName }} "{{ .ImportPath }}"{{end}}
 
-    "github.com/allora-network/allora-sdk-go"
     "github.com/allora-network/allora-sdk-go/config"
     "github.com/allora-network/allora-sdk-go/gen/interfaces"
     "github.com/allora-network/allora-sdk-go/pool"

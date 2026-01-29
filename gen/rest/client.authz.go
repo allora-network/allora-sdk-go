@@ -25,18 +25,18 @@ func NewAuthzRESTClient(core *RESTClientCore, logger zerolog.Logger) *AuthzRESTC
 	}
 }
 
-func (c *AuthzRESTClient) Grants(ctx context.Context, req *authz.QueryGrantsRequest, opts ...config.CallOpt) (*authz.QueryGrantsResponse, error) {
+func (c *AuthzRESTClient) GranteeGrants(ctx context.Context, req *authz.QueryGranteeGrantsRequest, opts ...config.CallOpt) (*authz.QueryGranteeGrantsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &authz.QueryGrantsResponse{}
+	resp := &authz.QueryGranteeGrantsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/authz/v1beta1/grants",
-		nil, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse", "granter", "grantee", "msg_type_url"},
+		"GET", "/cosmos/authz/v1beta1/grants/grantee/{grantee}",
+		[]string{"grantee"}, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling AuthzRESTClient.Grants")
+		return nil, errors.Wrap(err, "while calling AuthzRESTClient.GranteeGrants")
 	}
 	return resp, nil
 }
@@ -57,18 +57,18 @@ func (c *AuthzRESTClient) GranterGrants(ctx context.Context, req *authz.QueryGra
 	return resp, nil
 }
 
-func (c *AuthzRESTClient) GranteeGrants(ctx context.Context, req *authz.QueryGranteeGrantsRequest, opts ...config.CallOpt) (*authz.QueryGranteeGrantsResponse, error) {
+func (c *AuthzRESTClient) Grants(ctx context.Context, req *authz.QueryGrantsRequest, opts ...config.CallOpt) (*authz.QueryGrantsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &authz.QueryGranteeGrantsResponse{}
+	resp := &authz.QueryGrantsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/authz/v1beta1/grants/grantee/{grantee}",
-		[]string{"grantee"}, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse"},
+		"GET", "/cosmos/authz/v1beta1/grants",
+		nil, []string{"pagination.key", "pagination.offset", "pagination.limit", "pagination.count_total", "pagination.reverse", "granter", "grantee", "msg_type_url"},
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling AuthzRESTClient.GranteeGrants")
+		return nil, errors.Wrap(err, "while calling AuthzRESTClient.Grants")
 	}
 	return resp, nil
 }

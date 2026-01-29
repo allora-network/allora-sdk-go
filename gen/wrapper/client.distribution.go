@@ -25,33 +25,9 @@ func NewDistributionClientWrapper(poolManager *pool.ClientPoolManager[interfaces
 	}
 }
 
-func (c *DistributionClientWrapper) Params(ctx context.Context, req *distributiontypes.QueryParamsRequest, opts ...config.CallOpt) (*distributiontypes.QueryParamsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryParamsResponse, error) {
-		return client.Distribution().Params(ctx, req, opts...)
-	})
-}
-
-func (c *DistributionClientWrapper) ValidatorDistributionInfo(ctx context.Context, req *distributiontypes.QueryValidatorDistributionInfoRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorDistributionInfoResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorDistributionInfoResponse, error) {
-		return client.Distribution().ValidatorDistributionInfo(ctx, req, opts...)
-	})
-}
-
-func (c *DistributionClientWrapper) ValidatorOutstandingRewards(ctx context.Context, req *distributiontypes.QueryValidatorOutstandingRewardsRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorOutstandingRewardsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorOutstandingRewardsResponse, error) {
-		return client.Distribution().ValidatorOutstandingRewards(ctx, req, opts...)
-	})
-}
-
-func (c *DistributionClientWrapper) ValidatorCommission(ctx context.Context, req *distributiontypes.QueryValidatorCommissionRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorCommissionResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorCommissionResponse, error) {
-		return client.Distribution().ValidatorCommission(ctx, req, opts...)
-	})
-}
-
-func (c *DistributionClientWrapper) ValidatorSlashes(ctx context.Context, req *distributiontypes.QueryValidatorSlashesRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorSlashesResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorSlashesResponse, error) {
-		return client.Distribution().ValidatorSlashes(ctx, req, opts...)
+func (c *DistributionClientWrapper) CommunityPool(ctx context.Context, req *distributiontypes.QueryCommunityPoolRequest, opts ...config.CallOpt) (*distributiontypes.QueryCommunityPoolResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryCommunityPoolResponse, error) {
+		return client.Distribution().CommunityPool(ctx, req, opts...)
 	})
 }
 
@@ -79,8 +55,32 @@ func (c *DistributionClientWrapper) DelegatorWithdrawAddress(ctx context.Context
 	})
 }
 
-func (c *DistributionClientWrapper) CommunityPool(ctx context.Context, req *distributiontypes.QueryCommunityPoolRequest, opts ...config.CallOpt) (*distributiontypes.QueryCommunityPoolResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryCommunityPoolResponse, error) {
-		return client.Distribution().CommunityPool(ctx, req, opts...)
+func (c *DistributionClientWrapper) Params(ctx context.Context, req *distributiontypes.QueryParamsRequest, opts ...config.CallOpt) (*distributiontypes.QueryParamsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryParamsResponse, error) {
+		return client.Distribution().Params(ctx, req, opts...)
+	})
+}
+
+func (c *DistributionClientWrapper) ValidatorCommission(ctx context.Context, req *distributiontypes.QueryValidatorCommissionRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorCommissionResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorCommissionResponse, error) {
+		return client.Distribution().ValidatorCommission(ctx, req, opts...)
+	})
+}
+
+func (c *DistributionClientWrapper) ValidatorDistributionInfo(ctx context.Context, req *distributiontypes.QueryValidatorDistributionInfoRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorDistributionInfoResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorDistributionInfoResponse, error) {
+		return client.Distribution().ValidatorDistributionInfo(ctx, req, opts...)
+	})
+}
+
+func (c *DistributionClientWrapper) ValidatorOutstandingRewards(ctx context.Context, req *distributiontypes.QueryValidatorOutstandingRewardsRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorOutstandingRewardsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorOutstandingRewardsResponse, error) {
+		return client.Distribution().ValidatorOutstandingRewards(ctx, req, opts...)
+	})
+}
+
+func (c *DistributionClientWrapper) ValidatorSlashes(ctx context.Context, req *distributiontypes.QueryValidatorSlashesRequest, opts ...config.CallOpt) (*distributiontypes.QueryValidatorSlashesResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*distributiontypes.QueryValidatorSlashesResponse, error) {
+		return client.Distribution().ValidatorSlashes(ctx, req, opts...)
 	})
 }

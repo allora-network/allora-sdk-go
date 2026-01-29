@@ -8,7 +8,6 @@ import (
 
 {{if eq .ModuleName "emissions" "mint"}}    {{ .PackageName }} "{{ .ImportPath }}"{{else}}    {{ .PackageName }} "{{ .ImportPath }}"{{end}}
 
-    "github.com/allora-network/allora-sdk-go"
     "github.com/allora-network/allora-sdk-go/config"
 )
 

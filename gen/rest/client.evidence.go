@@ -25,22 +25,6 @@ func NewEvidenceRESTClient(core *RESTClientCore, logger zerolog.Logger) *Evidenc
 	}
 }
 
-func (c *EvidenceRESTClient) Evidence(ctx context.Context, req *evidencetypes.QueryEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryEvidenceResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp := &evidencetypes.QueryEvidenceResponse{}
-	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/cosmos/evidence/v1beta1/evidence/{hash}",
-		[]string{"hash"}, []string{"evidence_hash"},
-		req, resp, callOpts.Height,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "while calling EvidenceRESTClient.Evidence")
-	}
-	return resp, nil
-}
-
 func (c *EvidenceRESTClient) AllEvidence(ctx context.Context, req *evidencetypes.QueryAllEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryAllEvidenceResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -53,6 +37,22 @@ func (c *EvidenceRESTClient) AllEvidence(ctx context.Context, req *evidencetypes
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "while calling EvidenceRESTClient.AllEvidence")
+	}
+	return resp, nil
+}
+
+func (c *EvidenceRESTClient) Evidence(ctx context.Context, req *evidencetypes.QueryEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryEvidenceResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &evidencetypes.QueryEvidenceResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/cosmos/evidence/v1beta1/evidence/{hash}",
+		[]string{"hash"}, []string{"evidence_hash"},
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EvidenceRESTClient.Evidence")
 	}
 	return resp, nil
 }

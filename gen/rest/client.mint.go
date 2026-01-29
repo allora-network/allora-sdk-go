@@ -25,18 +25,18 @@ func NewMintRESTClient(core *RESTClientCore, logger zerolog.Logger) *MintRESTCli
 	}
 }
 
-func (c *MintRESTClient) Params(ctx context.Context, req *minttypes.QueryServiceParamsRequest, opts ...config.CallOpt) (*minttypes.QueryServiceParamsResponse, error) {
+func (c *MintRESTClient) EmissionInfo(ctx context.Context, req *minttypes.QueryServiceEmissionInfoRequest, opts ...config.CallOpt) (*minttypes.QueryServiceEmissionInfoResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &minttypes.QueryServiceParamsResponse{}
+	resp := &minttypes.QueryServiceEmissionInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/mint/v5/params",
+		"GET", "/mint/v5/emission_info",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling MintRESTClient.Params")
+		return nil, errors.Wrap(err, "while calling MintRESTClient.EmissionInfo")
 	}
 	return resp, nil
 }
@@ -57,18 +57,18 @@ func (c *MintRESTClient) Inflation(ctx context.Context, req *minttypes.QueryServ
 	return resp, nil
 }
 
-func (c *MintRESTClient) EmissionInfo(ctx context.Context, req *minttypes.QueryServiceEmissionInfoRequest, opts ...config.CallOpt) (*minttypes.QueryServiceEmissionInfoResponse, error) {
+func (c *MintRESTClient) Params(ctx context.Context, req *minttypes.QueryServiceParamsRequest, opts ...config.CallOpt) (*minttypes.QueryServiceParamsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &minttypes.QueryServiceEmissionInfoResponse{}
+	resp := &minttypes.QueryServiceParamsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/mint/v5/emission_info",
+		"GET", "/mint/v5/params",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling MintRESTClient.EmissionInfo")
+		return nil, errors.Wrap(err, "while calling MintRESTClient.Params")
 	}
 	return resp, nil
 }

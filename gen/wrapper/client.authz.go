@@ -25,9 +25,9 @@ func NewAuthzClientWrapper(poolManager *pool.ClientPoolManager[interfaces.Cosmos
 	}
 }
 
-func (c *AuthzClientWrapper) Grants(ctx context.Context, req *authz.QueryGrantsRequest, opts ...config.CallOpt) (*authz.QueryGrantsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*authz.QueryGrantsResponse, error) {
-		return client.Authz().Grants(ctx, req, opts...)
+func (c *AuthzClientWrapper) GranteeGrants(ctx context.Context, req *authz.QueryGranteeGrantsRequest, opts ...config.CallOpt) (*authz.QueryGranteeGrantsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*authz.QueryGranteeGrantsResponse, error) {
+		return client.Authz().GranteeGrants(ctx, req, opts...)
 	})
 }
 
@@ -37,8 +37,8 @@ func (c *AuthzClientWrapper) GranterGrants(ctx context.Context, req *authz.Query
 	})
 }
 
-func (c *AuthzClientWrapper) GranteeGrants(ctx context.Context, req *authz.QueryGranteeGrantsRequest, opts ...config.CallOpt) (*authz.QueryGranteeGrantsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*authz.QueryGranteeGrantsResponse, error) {
-		return client.Authz().GranteeGrants(ctx, req, opts...)
+func (c *AuthzClientWrapper) Grants(ctx context.Context, req *authz.QueryGrantsRequest, opts ...config.CallOpt) (*authz.QueryGrantsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*authz.QueryGrantsResponse, error) {
+		return client.Authz().Grants(ctx, req, opts...)
 	})
 }

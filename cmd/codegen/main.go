@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+    "slices"
 	"strings"
 	"text/template"
 
@@ -179,6 +180,11 @@ func generateFromProtos(args []string) {
 			if len(methods) == 0 {
 				continue
 			}
+
+            slices.SortFunc(methods, func(a, b ClientMethod) int {
+                return strings.Compare(a.Name, b.Name)
+            })
+
 			modules = append(modules, ModuleInfo{
 				ModuleName:  moduleName,
 				PackageName: pkgAlias,
@@ -189,6 +195,10 @@ func generateFromProtos(args []string) {
 		}
 		return true
 	})
+
+    slices.SortFunc(modules, func(a, b ModuleInfo) int {
+        return strings.Compare(a.ImportPath, b.ImportPath)
+    })
 
 	if len(modules) == 0 {
 		log.Println("No modules discovered in provided protos")

@@ -31,36 +31,6 @@ func (c *GovClientWrapper) Constitution(ctx context.Context, req *govv1.QueryCon
 	})
 }
 
-func (c *GovClientWrapper) Proposal(ctx context.Context, req *govv1.QueryProposalRequest, opts ...config.CallOpt) (*govv1.QueryProposalResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryProposalResponse, error) {
-		return client.Gov().Proposal(ctx, req, opts...)
-	})
-}
-
-func (c *GovClientWrapper) Proposals(ctx context.Context, req *govv1.QueryProposalsRequest, opts ...config.CallOpt) (*govv1.QueryProposalsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryProposalsResponse, error) {
-		return client.Gov().Proposals(ctx, req, opts...)
-	})
-}
-
-func (c *GovClientWrapper) Vote(ctx context.Context, req *govv1.QueryVoteRequest, opts ...config.CallOpt) (*govv1.QueryVoteResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryVoteResponse, error) {
-		return client.Gov().Vote(ctx, req, opts...)
-	})
-}
-
-func (c *GovClientWrapper) Votes(ctx context.Context, req *govv1.QueryVotesRequest, opts ...config.CallOpt) (*govv1.QueryVotesResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryVotesResponse, error) {
-		return client.Gov().Votes(ctx, req, opts...)
-	})
-}
-
-func (c *GovClientWrapper) Params(ctx context.Context, req *govv1.QueryParamsRequest, opts ...config.CallOpt) (*govv1.QueryParamsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryParamsResponse, error) {
-		return client.Gov().Params(ctx, req, opts...)
-	})
-}
-
 func (c *GovClientWrapper) Deposit(ctx context.Context, req *govv1.QueryDepositRequest, opts ...config.CallOpt) (*govv1.QueryDepositResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryDepositResponse, error) {
 		return client.Gov().Deposit(ctx, req, opts...)
@@ -73,8 +43,38 @@ func (c *GovClientWrapper) Deposits(ctx context.Context, req *govv1.QueryDeposit
 	})
 }
 
+func (c *GovClientWrapper) Params(ctx context.Context, req *govv1.QueryParamsRequest, opts ...config.CallOpt) (*govv1.QueryParamsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryParamsResponse, error) {
+		return client.Gov().Params(ctx, req, opts...)
+	})
+}
+
+func (c *GovClientWrapper) Proposal(ctx context.Context, req *govv1.QueryProposalRequest, opts ...config.CallOpt) (*govv1.QueryProposalResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryProposalResponse, error) {
+		return client.Gov().Proposal(ctx, req, opts...)
+	})
+}
+
+func (c *GovClientWrapper) Proposals(ctx context.Context, req *govv1.QueryProposalsRequest, opts ...config.CallOpt) (*govv1.QueryProposalsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryProposalsResponse, error) {
+		return client.Gov().Proposals(ctx, req, opts...)
+	})
+}
+
 func (c *GovClientWrapper) TallyResult(ctx context.Context, req *govv1.QueryTallyResultRequest, opts ...config.CallOpt) (*govv1.QueryTallyResultResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryTallyResultResponse, error) {
 		return client.Gov().TallyResult(ctx, req, opts...)
+	})
+}
+
+func (c *GovClientWrapper) Vote(ctx context.Context, req *govv1.QueryVoteRequest, opts ...config.CallOpt) (*govv1.QueryVoteResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryVoteResponse, error) {
+		return client.Gov().Vote(ctx, req, opts...)
+	})
+}
+
+func (c *GovClientWrapper) Votes(ctx context.Context, req *govv1.QueryVotesRequest, opts ...config.CallOpt) (*govv1.QueryVotesResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*govv1.QueryVotesResponse, error) {
+		return client.Gov().Votes(ctx, req, opts...)
 	})
 }

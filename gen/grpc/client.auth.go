@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 
@@ -28,17 +27,6 @@ func NewAuthGRPCClient(conn *grpc.ClientConn, logger zerolog.Logger) *AuthGRPCCl
 		client: authtypes.NewQueryClient(conn),
 		logger: logger.With().Str("module", "auth").Str("protocol", "grpc").Logger(),
 	}
-}
-
-func (c *AuthGRPCClient) Accounts(ctx context.Context, req *authtypes.QueryAccountsRequest, opts ...config.CallOpt) (*authtypes.QueryAccountsResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Accounts, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthGRPCClient.Accounts")
-	}
-	return resp, nil
 }
 
 func (c *AuthGRPCClient) Account(ctx context.Context, req *authtypes.QueryAccountRequest, opts ...config.CallOpt) (*authtypes.QueryAccountResponse, error) {
@@ -63,46 +51,24 @@ func (c *AuthGRPCClient) AccountAddressByID(ctx context.Context, req *authtypes.
 	return resp, nil
 }
 
-func (c *AuthGRPCClient) Params(ctx context.Context, req *authtypes.QueryParamsRequest, opts ...config.CallOpt) (*authtypes.QueryParamsResponse, error) {
+func (c *AuthGRPCClient) AccountInfo(ctx context.Context, req *authtypes.QueryAccountInfoRequest, opts ...config.CallOpt) (*authtypes.QueryAccountInfoResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Params, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.AccountInfo, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthGRPCClient.Params")
+		return resp, errors.Wrap(err, "while calling AuthGRPCClient.AccountInfo")
 	}
 	return resp, nil
 }
 
-func (c *AuthGRPCClient) ModuleAccounts(ctx context.Context, req *authtypes.QueryModuleAccountsRequest, opts ...config.CallOpt) (*authtypes.QueryModuleAccountsResponse, error) {
+func (c *AuthGRPCClient) Accounts(ctx context.Context, req *authtypes.QueryAccountsRequest, opts ...config.CallOpt) (*authtypes.QueryAccountsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.ModuleAccounts, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Accounts, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthGRPCClient.ModuleAccounts")
-	}
-	return resp, nil
-}
-
-func (c *AuthGRPCClient) ModuleAccountByName(ctx context.Context, req *authtypes.QueryModuleAccountByNameRequest, opts ...config.CallOpt) (*authtypes.QueryModuleAccountByNameResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.ModuleAccountByName, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthGRPCClient.ModuleAccountByName")
-	}
-	return resp, nil
-}
-
-func (c *AuthGRPCClient) Bech32Prefix(ctx context.Context, req *authtypes.Bech32PrefixRequest, opts ...config.CallOpt) (*authtypes.Bech32PrefixResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Bech32Prefix, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthGRPCClient.Bech32Prefix")
+		return resp, errors.Wrap(err, "while calling AuthGRPCClient.Accounts")
 	}
 	return resp, nil
 }
@@ -129,13 +95,46 @@ func (c *AuthGRPCClient) AddressStringToBytes(ctx context.Context, req *authtype
 	return resp, nil
 }
 
-func (c *AuthGRPCClient) AccountInfo(ctx context.Context, req *authtypes.QueryAccountInfoRequest, opts ...config.CallOpt) (*authtypes.QueryAccountInfoResponse, error) {
+func (c *AuthGRPCClient) Bech32Prefix(ctx context.Context, req *authtypes.Bech32PrefixRequest, opts ...config.CallOpt) (*authtypes.Bech32PrefixResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.AccountInfo, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Bech32Prefix, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthGRPCClient.AccountInfo")
+		return resp, errors.Wrap(err, "while calling AuthGRPCClient.Bech32Prefix")
+	}
+	return resp, nil
+}
+
+func (c *AuthGRPCClient) ModuleAccountByName(ctx context.Context, req *authtypes.QueryModuleAccountByNameRequest, opts ...config.CallOpt) (*authtypes.QueryModuleAccountByNameResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.ModuleAccountByName, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling AuthGRPCClient.ModuleAccountByName")
+	}
+	return resp, nil
+}
+
+func (c *AuthGRPCClient) ModuleAccounts(ctx context.Context, req *authtypes.QueryModuleAccountsRequest, opts ...config.CallOpt) (*authtypes.QueryModuleAccountsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.ModuleAccounts, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling AuthGRPCClient.ModuleAccounts")
+	}
+	return resp, nil
+}
+
+func (c *AuthGRPCClient) Params(ctx context.Context, req *authtypes.QueryParamsRequest, opts ...config.CallOpt) (*authtypes.QueryParamsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Params, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling AuthGRPCClient.Params")
 	}
 	return resp, nil
 }

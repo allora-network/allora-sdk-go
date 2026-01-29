@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	evidencetypes "cosmossdk.io/x/evidence/types"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 
@@ -30,17 +29,6 @@ func NewEvidenceGRPCClient(conn *grpc.ClientConn, logger zerolog.Logger) *Eviden
 	}
 }
 
-func (c *EvidenceGRPCClient) Evidence(ctx context.Context, req *evidencetypes.QueryEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryEvidenceResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Evidence, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling EvidenceGRPCClient.Evidence")
-	}
-	return resp, nil
-}
-
 func (c *EvidenceGRPCClient) AllEvidence(ctx context.Context, req *evidencetypes.QueryAllEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryAllEvidenceResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -48,6 +36,17 @@ func (c *EvidenceGRPCClient) AllEvidence(ctx context.Context, req *evidencetypes
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.AllEvidence, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling EvidenceGRPCClient.AllEvidence")
+	}
+	return resp, nil
+}
+
+func (c *EvidenceGRPCClient) Evidence(ctx context.Context, req *evidencetypes.QueryEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryEvidenceResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Evidence, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EvidenceGRPCClient.Evidence")
 	}
 	return resp, nil
 }
