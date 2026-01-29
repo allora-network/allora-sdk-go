@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	authz "github.com/cosmos/cosmos-sdk/x/authz"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 
@@ -30,13 +29,13 @@ func NewAuthzGRPCClient(conn *grpc.ClientConn, logger zerolog.Logger) *AuthzGRPC
 	}
 }
 
-func (c *AuthzGRPCClient) Grants(ctx context.Context, req *authz.QueryGrantsRequest, opts ...config.CallOpt) (*authz.QueryGrantsResponse, error) {
+func (c *AuthzGRPCClient) GranteeGrants(ctx context.Context, req *authz.QueryGranteeGrantsRequest, opts ...config.CallOpt) (*authz.QueryGranteeGrantsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Grants, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GranteeGrants, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthzGRPCClient.Grants")
+		return resp, errors.Wrap(err, "while calling AuthzGRPCClient.GranteeGrants")
 	}
 	return resp, nil
 }
@@ -52,13 +51,13 @@ func (c *AuthzGRPCClient) GranterGrants(ctx context.Context, req *authz.QueryGra
 	return resp, nil
 }
 
-func (c *AuthzGRPCClient) GranteeGrants(ctx context.Context, req *authz.QueryGranteeGrantsRequest, opts ...config.CallOpt) (*authz.QueryGranteeGrantsResponse, error) {
+func (c *AuthzGRPCClient) Grants(ctx context.Context, req *authz.QueryGrantsRequest, opts ...config.CallOpt) (*authz.QueryGrantsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GranteeGrants, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Grants, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling AuthzGRPCClient.GranteeGrants")
+		return resp, errors.Wrap(err, "while calling AuthzGRPCClient.Grants")
 	}
 	return resp, nil
 }

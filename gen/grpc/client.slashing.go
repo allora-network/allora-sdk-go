@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 

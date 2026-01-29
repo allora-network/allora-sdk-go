@@ -25,14 +25,14 @@ func NewEvidenceClientWrapper(poolManager *pool.ClientPoolManager[interfaces.Cos
 	}
 }
 
-func (c *EvidenceClientWrapper) Evidence(ctx context.Context, req *evidencetypes.QueryEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryEvidenceResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*evidencetypes.QueryEvidenceResponse, error) {
-		return client.Evidence().Evidence(ctx, req, opts...)
-	})
-}
-
 func (c *EvidenceClientWrapper) AllEvidence(ctx context.Context, req *evidencetypes.QueryAllEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryAllEvidenceResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*evidencetypes.QueryAllEvidenceResponse, error) {
 		return client.Evidence().AllEvidence(ctx, req, opts...)
+	})
+}
+
+func (c *EvidenceClientWrapper) Evidence(ctx context.Context, req *evidencetypes.QueryEvidenceRequest, opts ...config.CallOpt) (*evidencetypes.QueryEvidenceResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*evidencetypes.QueryEvidenceResponse, error) {
+		return client.Evidence().Evidence(ctx, req, opts...)
 	})
 }

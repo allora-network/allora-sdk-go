@@ -25,9 +25,9 @@ func NewMintClientWrapper(poolManager *pool.ClientPoolManager[interfaces.CosmosC
 	}
 }
 
-func (c *MintClientWrapper) Params(ctx context.Context, req *minttypes.QueryServiceParamsRequest, opts ...config.CallOpt) (*minttypes.QueryServiceParamsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*minttypes.QueryServiceParamsResponse, error) {
-		return client.Mint().Params(ctx, req, opts...)
+func (c *MintClientWrapper) EmissionInfo(ctx context.Context, req *minttypes.QueryServiceEmissionInfoRequest, opts ...config.CallOpt) (*minttypes.QueryServiceEmissionInfoResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*minttypes.QueryServiceEmissionInfoResponse, error) {
+		return client.Mint().EmissionInfo(ctx, req, opts...)
 	})
 }
 
@@ -37,8 +37,8 @@ func (c *MintClientWrapper) Inflation(ctx context.Context, req *minttypes.QueryS
 	})
 }
 
-func (c *MintClientWrapper) EmissionInfo(ctx context.Context, req *minttypes.QueryServiceEmissionInfoRequest, opts ...config.CallOpt) (*minttypes.QueryServiceEmissionInfoResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*minttypes.QueryServiceEmissionInfoResponse, error) {
-		return client.Mint().EmissionInfo(ctx, req, opts...)
+func (c *MintClientWrapper) Params(ctx context.Context, req *minttypes.QueryServiceParamsRequest, opts ...config.CallOpt) (*minttypes.QueryServiceParamsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*minttypes.QueryServiceParamsResponse, error) {
+		return client.Mint().Params(ctx, req, opts...)
 	})
 }

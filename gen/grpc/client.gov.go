@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	govv1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 
@@ -41,61 +40,6 @@ func (c *GovGRPCClient) Constitution(ctx context.Context, req *govv1.QueryConsti
 	return resp, nil
 }
 
-func (c *GovGRPCClient) Proposal(ctx context.Context, req *govv1.QueryProposalRequest, opts ...config.CallOpt) (*govv1.QueryProposalResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Proposal, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling GovGRPCClient.Proposal")
-	}
-	return resp, nil
-}
-
-func (c *GovGRPCClient) Proposals(ctx context.Context, req *govv1.QueryProposalsRequest, opts ...config.CallOpt) (*govv1.QueryProposalsResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Proposals, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling GovGRPCClient.Proposals")
-	}
-	return resp, nil
-}
-
-func (c *GovGRPCClient) Vote(ctx context.Context, req *govv1.QueryVoteRequest, opts ...config.CallOpt) (*govv1.QueryVoteResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Vote, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling GovGRPCClient.Vote")
-	}
-	return resp, nil
-}
-
-func (c *GovGRPCClient) Votes(ctx context.Context, req *govv1.QueryVotesRequest, opts ...config.CallOpt) (*govv1.QueryVotesResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Votes, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling GovGRPCClient.Votes")
-	}
-	return resp, nil
-}
-
-func (c *GovGRPCClient) Params(ctx context.Context, req *govv1.QueryParamsRequest, opts ...config.CallOpt) (*govv1.QueryParamsResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Params, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling GovGRPCClient.Params")
-	}
-	return resp, nil
-}
-
 func (c *GovGRPCClient) Deposit(ctx context.Context, req *govv1.QueryDepositRequest, opts ...config.CallOpt) (*govv1.QueryDepositResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -118,6 +62,39 @@ func (c *GovGRPCClient) Deposits(ctx context.Context, req *govv1.QueryDepositsRe
 	return resp, nil
 }
 
+func (c *GovGRPCClient) Params(ctx context.Context, req *govv1.QueryParamsRequest, opts ...config.CallOpt) (*govv1.QueryParamsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Params, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling GovGRPCClient.Params")
+	}
+	return resp, nil
+}
+
+func (c *GovGRPCClient) Proposal(ctx context.Context, req *govv1.QueryProposalRequest, opts ...config.CallOpt) (*govv1.QueryProposalResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Proposal, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling GovGRPCClient.Proposal")
+	}
+	return resp, nil
+}
+
+func (c *GovGRPCClient) Proposals(ctx context.Context, req *govv1.QueryProposalsRequest, opts ...config.CallOpt) (*govv1.QueryProposalsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Proposals, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling GovGRPCClient.Proposals")
+	}
+	return resp, nil
+}
+
 func (c *GovGRPCClient) TallyResult(ctx context.Context, req *govv1.QueryTallyResultRequest, opts ...config.CallOpt) (*govv1.QueryTallyResultResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -125,6 +102,28 @@ func (c *GovGRPCClient) TallyResult(ctx context.Context, req *govv1.QueryTallyRe
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.TallyResult, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling GovGRPCClient.TallyResult")
+	}
+	return resp, nil
+}
+
+func (c *GovGRPCClient) Vote(ctx context.Context, req *govv1.QueryVoteRequest, opts ...config.CallOpt) (*govv1.QueryVoteResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Vote, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling GovGRPCClient.Vote")
+	}
+	return resp, nil
+}
+
+func (c *GovGRPCClient) Votes(ctx context.Context, req *govv1.QueryVotesRequest, opts ...config.CallOpt) (*govv1.QueryVotesResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Votes, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling GovGRPCClient.Votes")
 	}
 	return resp, nil
 }

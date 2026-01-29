@@ -1,8 +1,6 @@
 package interfaces
 
 import (
-    "context"
-
     "github.com/allora-network/allora-sdk-go/pool"
 )
 

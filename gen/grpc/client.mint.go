@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	minttypes "github.com/allora-network/allora-chain/x/mint/types"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 
@@ -30,13 +29,13 @@ func NewMintGRPCClient(conn *grpc.ClientConn, logger zerolog.Logger) *MintGRPCCl
 	}
 }
 
-func (c *MintGRPCClient) Params(ctx context.Context, req *minttypes.QueryServiceParamsRequest, opts ...config.CallOpt) (*minttypes.QueryServiceParamsResponse, error) {
+func (c *MintGRPCClient) EmissionInfo(ctx context.Context, req *minttypes.QueryServiceEmissionInfoRequest, opts ...config.CallOpt) (*minttypes.QueryServiceEmissionInfoResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Params, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.EmissionInfo, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling MintGRPCClient.Params")
+		return resp, errors.Wrap(err, "while calling MintGRPCClient.EmissionInfo")
 	}
 	return resp, nil
 }
@@ -52,13 +51,13 @@ func (c *MintGRPCClient) Inflation(ctx context.Context, req *minttypes.QueryServ
 	return resp, nil
 }
 
-func (c *MintGRPCClient) EmissionInfo(ctx context.Context, req *minttypes.QueryServiceEmissionInfoRequest, opts ...config.CallOpt) (*minttypes.QueryServiceEmissionInfoResponse, error) {
+func (c *MintGRPCClient) Params(ctx context.Context, req *minttypes.QueryServiceParamsRequest, opts ...config.CallOpt) (*minttypes.QueryServiceParamsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.EmissionInfo, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Params, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling MintGRPCClient.EmissionInfo")
+		return resp, errors.Wrap(err, "while calling MintGRPCClient.Params")
 	}
 	return resp, nil
 }

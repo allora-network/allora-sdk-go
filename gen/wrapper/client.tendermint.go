@@ -25,6 +25,30 @@ func NewTendermintClientWrapper(poolManager *pool.ClientPoolManager[interfaces.C
 	}
 }
 
+func (c *TendermintClientWrapper) ABCIQuery(ctx context.Context, req *cmtservice.ABCIQueryRequest, opts ...config.CallOpt) (*cmtservice.ABCIQueryResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.ABCIQueryResponse, error) {
+		return client.Tendermint().ABCIQuery(ctx, req, opts...)
+	})
+}
+
+func (c *TendermintClientWrapper) GetBlockByHeight(ctx context.Context, req *cmtservice.GetBlockByHeightRequest, opts ...config.CallOpt) (*cmtservice.GetBlockByHeightResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetBlockByHeightResponse, error) {
+		return client.Tendermint().GetBlockByHeight(ctx, req, opts...)
+	})
+}
+
+func (c *TendermintClientWrapper) GetLatestBlock(ctx context.Context, req *cmtservice.GetLatestBlockRequest, opts ...config.CallOpt) (*cmtservice.GetLatestBlockResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetLatestBlockResponse, error) {
+		return client.Tendermint().GetLatestBlock(ctx, req, opts...)
+	})
+}
+
+func (c *TendermintClientWrapper) GetLatestValidatorSet(ctx context.Context, req *cmtservice.GetLatestValidatorSetRequest, opts ...config.CallOpt) (*cmtservice.GetLatestValidatorSetResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetLatestValidatorSetResponse, error) {
+		return client.Tendermint().GetLatestValidatorSet(ctx, req, opts...)
+	})
+}
+
 func (c *TendermintClientWrapper) GetNodeInfo(ctx context.Context, req *cmtservice.GetNodeInfoRequest, opts ...config.CallOpt) (*cmtservice.GetNodeInfoResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetNodeInfoResponse, error) {
 		return client.Tendermint().GetNodeInfo(ctx, req, opts...)
@@ -37,32 +61,8 @@ func (c *TendermintClientWrapper) GetSyncing(ctx context.Context, req *cmtservic
 	})
 }
 
-func (c *TendermintClientWrapper) GetLatestBlock(ctx context.Context, req *cmtservice.GetLatestBlockRequest, opts ...config.CallOpt) (*cmtservice.GetLatestBlockResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetLatestBlockResponse, error) {
-		return client.Tendermint().GetLatestBlock(ctx, req, opts...)
-	})
-}
-
-func (c *TendermintClientWrapper) GetBlockByHeight(ctx context.Context, req *cmtservice.GetBlockByHeightRequest, opts ...config.CallOpt) (*cmtservice.GetBlockByHeightResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetBlockByHeightResponse, error) {
-		return client.Tendermint().GetBlockByHeight(ctx, req, opts...)
-	})
-}
-
-func (c *TendermintClientWrapper) GetLatestValidatorSet(ctx context.Context, req *cmtservice.GetLatestValidatorSetRequest, opts ...config.CallOpt) (*cmtservice.GetLatestValidatorSetResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetLatestValidatorSetResponse, error) {
-		return client.Tendermint().GetLatestValidatorSet(ctx, req, opts...)
-	})
-}
-
 func (c *TendermintClientWrapper) GetValidatorSetByHeight(ctx context.Context, req *cmtservice.GetValidatorSetByHeightRequest, opts ...config.CallOpt) (*cmtservice.GetValidatorSetByHeightResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.GetValidatorSetByHeightResponse, error) {
 		return client.Tendermint().GetValidatorSetByHeight(ctx, req, opts...)
-	})
-}
-
-func (c *TendermintClientWrapper) ABCIQuery(ctx context.Context, req *cmtservice.ABCIQueryRequest, opts ...config.CallOpt) (*cmtservice.ABCIQueryResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*cmtservice.ABCIQueryResponse, error) {
-		return client.Tendermint().ABCIQuery(ctx, req, opts...)
 	})
 }

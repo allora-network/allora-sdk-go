@@ -7,10 +7,9 @@ import (
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 
-	"github.com/allora-network/allora-sdk-go/config"
-
 	tx "github.com/cosmos/cosmos-sdk/types/tx"
 
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 )
 
@@ -30,28 +29,6 @@ func NewTxGRPCClient(conn *grpc.ClientConn, logger zerolog.Logger) *TxGRPCClient
 	}
 }
 
-func (c *TxGRPCClient) Simulate(ctx context.Context, req *tx.SimulateRequest, opts ...config.CallOpt) (*tx.SimulateResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Simulate, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling TxGRPCClient.Simulate")
-	}
-	return resp, nil
-}
-
-func (c *TxGRPCClient) GetTx(ctx context.Context, req *tx.GetTxRequest, opts ...config.CallOpt) (*tx.GetTxResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetTx, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling TxGRPCClient.GetTx")
-	}
-	return resp, nil
-}
-
 func (c *TxGRPCClient) BroadcastTx(ctx context.Context, req *tx.BroadcastTxRequest, opts ...config.CallOpt) (*tx.BroadcastTxResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -59,17 +36,6 @@ func (c *TxGRPCClient) BroadcastTx(ctx context.Context, req *tx.BroadcastTxReque
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.BroadcastTx, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling TxGRPCClient.BroadcastTx")
-	}
-	return resp, nil
-}
-
-func (c *TxGRPCClient) GetTxsEvent(ctx context.Context, req *tx.GetTxsEventRequest, opts ...config.CallOpt) (*tx.GetTxsEventResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetTxsEvent, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling TxGRPCClient.GetTxsEvent")
 	}
 	return resp, nil
 }
@@ -85,6 +51,39 @@ func (c *TxGRPCClient) GetBlockWithTxs(ctx context.Context, req *tx.GetBlockWith
 	return resp, nil
 }
 
+func (c *TxGRPCClient) GetTx(ctx context.Context, req *tx.GetTxRequest, opts ...config.CallOpt) (*tx.GetTxResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetTx, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling TxGRPCClient.GetTx")
+	}
+	return resp, nil
+}
+
+func (c *TxGRPCClient) GetTxsEvent(ctx context.Context, req *tx.GetTxsEventRequest, opts ...config.CallOpt) (*tx.GetTxsEventResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetTxsEvent, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling TxGRPCClient.GetTxsEvent")
+	}
+	return resp, nil
+}
+
+func (c *TxGRPCClient) Simulate(ctx context.Context, req *tx.SimulateRequest, opts ...config.CallOpt) (*tx.SimulateResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.Simulate, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling TxGRPCClient.Simulate")
+	}
+	return resp, nil
+}
+
 func (c *TxGRPCClient) TxDecode(ctx context.Context, req *tx.TxDecodeRequest, opts ...config.CallOpt) (*tx.TxDecodeResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -92,6 +91,17 @@ func (c *TxGRPCClient) TxDecode(ctx context.Context, req *tx.TxDecodeRequest, op
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.TxDecode, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling TxGRPCClient.TxDecode")
+	}
+	return resp, nil
+}
+
+func (c *TxGRPCClient) TxDecodeAmino(ctx context.Context, req *tx.TxDecodeAminoRequest, opts ...config.CallOpt) (*tx.TxDecodeAminoResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.TxDecodeAmino, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling TxGRPCClient.TxDecodeAmino")
 	}
 	return resp, nil
 }
@@ -114,17 +124,6 @@ func (c *TxGRPCClient) TxEncodeAmino(ctx context.Context, req *tx.TxEncodeAminoR
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.TxEncodeAmino, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling TxGRPCClient.TxEncodeAmino")
-	}
-	return resp, nil
-}
-
-func (c *TxGRPCClient) TxDecodeAmino(ctx context.Context, req *tx.TxDecodeAminoRequest, opts ...config.CallOpt) (*tx.TxDecodeAminoResponse, error) {
-	callOpts := config.DefaultCallOpts()
-	callOpts.Apply(opts...)
-
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.TxDecodeAmino, req)
-	if err != nil {
-		return resp, errors.Wrap(err, "while calling TxGRPCClient.TxDecodeAmino")
 	}
 	return resp, nil
 }
