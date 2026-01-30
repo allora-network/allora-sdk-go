@@ -14,12 +14,14 @@ import (
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	consensustypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	govv1beta1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 	"github.com/cosmos/gogoproto/proto"
+	feemarkettypes "github.com/skip-mev/feemarket/x/feemarket/types"
 	"google.golang.org/grpc/encoding"
 
 	// IBC modules
@@ -68,6 +70,8 @@ func init() {
 		feegrant.RegisterInterfaces,
 		govv1types.RegisterInterfaces,
 		govv1beta1types.RegisterInterfaces,
+		consensustypes.RegisterInterfaces,
+		feemarkettypes.RegisterInterfaces,
 		stdtypes.RegisterInterfaces,
 		cosmossdktypes.RegisterInterfaces,
 		txtypes.RegisterInterfaces,
