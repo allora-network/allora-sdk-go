@@ -31,7 +31,7 @@ func (c *EmissionsRESTClient) CanCreateTopic(ctx context.Context, req *emissions
 
 	resp := &emissionstypes.CanCreateTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_create_topic/{address}",
+		"GET", "/emissions/v10/can_create_topic/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -47,7 +47,7 @@ func (c *EmissionsRESTClient) CanSubmitReputerPayload(ctx context.Context, req *
 
 	resp := &emissionstypes.CanSubmitReputerPayloadResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_submit_reputer_payload/{topic_id}/{address}",
+		"GET", "/emissions/v10/can_submit_reputer_payload/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -63,7 +63,7 @@ func (c *EmissionsRESTClient) CanSubmitWorkerPayload(ctx context.Context, req *e
 
 	resp := &emissionstypes.CanSubmitWorkerPayloadResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_submit_worker_payload/{topic_id}/{address}",
+		"GET", "/emissions/v10/can_submit_worker_payload/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -79,7 +79,7 @@ func (c *EmissionsRESTClient) CanUpdateAllGlobalWhitelists(ctx context.Context, 
 
 	resp := &emissionstypes.CanUpdateAllGlobalWhitelistsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_update_all_global_whitelists/{address}",
+		"GET", "/emissions/v10/can_update_all_global_whitelists/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -95,7 +95,7 @@ func (c *EmissionsRESTClient) CanUpdateGlobalReputerWhitelist(ctx context.Contex
 
 	resp := &emissionstypes.CanUpdateGlobalReputerWhitelistResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_update_global_reputer_whitelist/{address}",
+		"GET", "/emissions/v10/can_update_global_reputer_whitelist/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -111,7 +111,7 @@ func (c *EmissionsRESTClient) CanUpdateGlobalWorkerWhitelist(ctx context.Context
 
 	resp := &emissionstypes.CanUpdateGlobalWorkerWhitelistResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_update_global_worker_whitelist/{address}",
+		"GET", "/emissions/v10/can_update_global_worker_whitelist/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -127,7 +127,7 @@ func (c *EmissionsRESTClient) CanUpdateParams(ctx context.Context, req *emission
 
 	resp := &emissionstypes.CanUpdateParamsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_update_params/{address}",
+		"GET", "/emissions/v10/can_update_params/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -143,7 +143,7 @@ func (c *EmissionsRESTClient) CanUpdateTopicWhitelist(ctx context.Context, req *
 
 	resp := &emissionstypes.CanUpdateTopicWhitelistResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/can_update_topic_whitelist/{topic_id}/{address}",
+		"GET", "/emissions/v10/can_update_topic_whitelist/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -159,7 +159,7 @@ func (c *EmissionsRESTClient) GetActiveTopicsAtBlock(ctx context.Context, req *e
 
 	resp := &emissionstypes.GetActiveTopicsAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/active_topics_at_block/{block_height}",
+		"GET", "/emissions/v10/active_topics_at_block/{block_height}",
 		[]string{"block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -175,7 +175,7 @@ func (c *EmissionsRESTClient) GetCountForecasterInclusionsInTopic(ctx context.Co
 
 	resp := &emissionstypes.GetCountForecasterInclusionsInTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/count_forecaster_inclusions_in_topic/{topic_id}/{forecaster}",
+		"GET", "/emissions/v10/count_forecaster_inclusions_in_topic/{topic_id}/{forecaster}",
 		[]string{"topic_id", "forecaster"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -191,7 +191,7 @@ func (c *EmissionsRESTClient) GetCountInfererInclusionsInTopic(ctx context.Conte
 
 	resp := &emissionstypes.GetCountInfererInclusionsInTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/count_inferer_inclusions_in_topic/{topic_id}/{inferer}",
+		"GET", "/emissions/v10/count_inferer_inclusions_in_topic/{topic_id}/{inferer}",
 		[]string{"topic_id", "inferer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -207,7 +207,7 @@ func (c *EmissionsRESTClient) GetCurrentLowestForecasterScore(ctx context.Contex
 
 	resp := &emissionstypes.GetCurrentLowestForecasterScoreResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/current_lowest_forecaster_score/{topic_id}",
+		"GET", "/emissions/v10/current_lowest_forecaster_score/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -223,7 +223,7 @@ func (c *EmissionsRESTClient) GetCurrentLowestInfererScore(ctx context.Context, 
 
 	resp := &emissionstypes.GetCurrentLowestInfererScoreResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/current_lowest_inferer_score/{topic_id}",
+		"GET", "/emissions/v10/current_lowest_inferer_score/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -239,7 +239,7 @@ func (c *EmissionsRESTClient) GetCurrentLowestReputerScore(ctx context.Context, 
 
 	resp := &emissionstypes.GetCurrentLowestReputerScoreResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/current_lowest_reputer_score/{topic_id}",
+		"GET", "/emissions/v10/current_lowest_reputer_score/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -255,7 +255,7 @@ func (c *EmissionsRESTClient) GetDelegateRewardPerShare(ctx context.Context, req
 
 	resp := &emissionstypes.GetDelegateRewardPerShareResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_reward_per_share/{topic_id}/{reputer}",
+		"GET", "/emissions/v10/delegate_reward_per_share/{topic_id}/{reputer}",
 		[]string{"topic_id", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -271,7 +271,7 @@ func (c *EmissionsRESTClient) GetDelegateStakeInTopicInReputer(ctx context.Conte
 
 	resp := &emissionstypes.GetDelegateStakeInTopicInReputerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_delegate_stake/{reputer_address}/{topic_id}",
+		"GET", "/emissions/v10/reputer_delegate_stake/{reputer_address}/{topic_id}",
 		[]string{"reputer_address", "topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -287,7 +287,7 @@ func (c *EmissionsRESTClient) GetDelegateStakePlacement(ctx context.Context, req
 
 	resp := &emissionstypes.GetDelegateStakePlacementResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake_placement/{topic_id}/{delegator}/{target}",
+		"GET", "/emissions/v10/delegate_stake_placement/{topic_id}/{delegator}/{target}",
 		[]string{"topic_id", "delegator", "target"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -303,7 +303,7 @@ func (c *EmissionsRESTClient) GetDelegateStakeRemoval(ctx context.Context, req *
 
 	resp := &emissionstypes.GetDelegateStakeRemovalResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake_removal/{block_height}/{topic_id}/{delegator}/{reputer}",
+		"GET", "/emissions/v10/delegate_stake_removal/{block_height}/{topic_id}/{delegator}/{reputer}",
 		[]string{"block_height", "topic_id", "delegator", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -319,7 +319,7 @@ func (c *EmissionsRESTClient) GetDelegateStakeRemovalInfo(ctx context.Context, r
 
 	resp := &emissionstypes.GetDelegateStakeRemovalInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake_removal/{topic_id}/{delegator}/{reputer}",
+		"GET", "/emissions/v10/delegate_stake_removal/{topic_id}/{delegator}/{reputer}",
 		[]string{"topic_id", "delegator", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -335,7 +335,7 @@ func (c *EmissionsRESTClient) GetDelegateStakeRemovalsUpUntilBlock(ctx context.C
 
 	resp := &emissionstypes.GetDelegateStakeRemovalsUpUntilBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake_removals/{block_height}",
+		"GET", "/emissions/v10/delegate_stake_removals/{block_height}",
 		[]string{"block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -351,7 +351,7 @@ func (c *EmissionsRESTClient) GetDelegateStakeUponReputer(ctx context.Context, r
 
 	resp := &emissionstypes.GetDelegateStakeUponReputerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake_upon_reputer/{topic_id}/{target}",
+		"GET", "/emissions/v10/delegate_stake_upon_reputer/{topic_id}/{target}",
 		[]string{"topic_id", "target"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -367,7 +367,7 @@ func (c *EmissionsRESTClient) GetForecastScoresUntilBlock(ctx context.Context, r
 
 	resp := &emissionstypes.GetForecastScoresUntilBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/forecast_scores_until_block/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/forecast_scores_until_block/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -383,7 +383,7 @@ func (c *EmissionsRESTClient) GetForecasterNetworkRegret(ctx context.Context, re
 
 	resp := &emissionstypes.GetForecasterNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/forecaster_network_regret/{topic_id}/{worker}",
+		"GET", "/emissions/v10/forecaster_network_regret/{topic_id}/{worker}",
 		[]string{"topic_id", "worker"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -399,7 +399,7 @@ func (c *EmissionsRESTClient) GetForecasterScoreEma(ctx context.Context, req *em
 
 	resp := &emissionstypes.GetForecasterScoreEmaResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/forecaster_score_ema/{topic_id}/{forecaster}",
+		"GET", "/emissions/v10/forecaster_score_ema/{topic_id}/{forecaster}",
 		[]string{"topic_id", "forecaster"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -415,7 +415,7 @@ func (c *EmissionsRESTClient) GetForecastsAtBlock(ctx context.Context, req *emis
 
 	resp := &emissionstypes.GetForecastsAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/forecasts/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/forecasts/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -431,7 +431,7 @@ func (c *EmissionsRESTClient) GetInferenceScoresUntilBlock(ctx context.Context, 
 
 	resp := &emissionstypes.GetInferenceScoresUntilBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/inference_scores_until_block/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/inference_scores_until_block/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -447,7 +447,7 @@ func (c *EmissionsRESTClient) GetInferencesAtBlock(ctx context.Context, req *emi
 
 	resp := &emissionstypes.GetInferencesAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/inferences/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/inferences/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -463,7 +463,7 @@ func (c *EmissionsRESTClient) GetInfererNetworkRegret(ctx context.Context, req *
 
 	resp := &emissionstypes.GetInfererNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/inferer_network_regret/{topic_id}/{actor_id}",
+		"GET", "/emissions/v10/inferer_network_regret/{topic_id}/{actor_id}",
 		[]string{"topic_id", "actor_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -479,7 +479,7 @@ func (c *EmissionsRESTClient) GetInfererScoreEma(ctx context.Context, req *emiss
 
 	resp := &emissionstypes.GetInfererScoreEmaResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/inferer_score_ema/{topic_id}/{inferer}",
+		"GET", "/emissions/v10/inferer_score_ema/{topic_id}/{inferer}",
 		[]string{"topic_id", "inferer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -495,7 +495,7 @@ func (c *EmissionsRESTClient) GetLatestForecasterWeight(ctx context.Context, req
 
 	resp := &emissionstypes.GetLatestForecasterWeightResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/latest_forecaster_weight/{topic_id}/{actor_id}",
+		"GET", "/emissions/v10/latest_forecaster_weight/{topic_id}/{actor_id}",
 		[]string{"topic_id", "actor_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -511,7 +511,7 @@ func (c *EmissionsRESTClient) GetLatestInfererWeight(ctx context.Context, req *e
 
 	resp := &emissionstypes.GetLatestInfererWeightResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/latest_inferer_weight/{topic_id}/{actor_id}",
+		"GET", "/emissions/v10/latest_inferer_weight/{topic_id}/{actor_id}",
 		[]string{"topic_id", "actor_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -527,7 +527,7 @@ func (c *EmissionsRESTClient) GetLatestNetworkInferences(ctx context.Context, re
 
 	resp := &emissionstypes.GetLatestNetworkInferencesResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/latest_network_inferences/{topic_id}",
+		"GET", "/emissions/v10/latest_network_inferences/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -543,7 +543,7 @@ func (c *EmissionsRESTClient) GetLatestNetworkInferencesOutlierResistant(ctx con
 
 	resp := &emissionstypes.GetLatestNetworkInferencesOutlierResistantResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/latest_network_inferences_outlier_resistant/{topic_id}",
+		"GET", "/emissions/v10/latest_network_inferences_outlier_resistant/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -559,7 +559,7 @@ func (c *EmissionsRESTClient) GetLatestRegretStdNorm(ctx context.Context, req *e
 
 	resp := &emissionstypes.GetLatestRegretStdNormResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/latest_regret_stdnorm/{topic_id}",
+		"GET", "/emissions/v10/latest_regret_stdnorm/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -575,7 +575,7 @@ func (c *EmissionsRESTClient) GetLatestTopicInferences(ctx context.Context, req 
 
 	resp := &emissionstypes.GetLatestTopicInferencesResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/latest_inferences/{topic_id}",
+		"GET", "/emissions/v10/latest_inferences/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -591,7 +591,7 @@ func (c *EmissionsRESTClient) GetListeningCoefficient(ctx context.Context, req *
 
 	resp := &emissionstypes.GetListeningCoefficientResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/listening_coefficient/{topic_id}/{reputer}",
+		"GET", "/emissions/v10/listening_coefficient/{topic_id}/{reputer}",
 		[]string{"topic_id", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -607,7 +607,7 @@ func (c *EmissionsRESTClient) GetMultiReputerStakeInTopic(ctx context.Context, r
 
 	resp := &emissionstypes.GetMultiReputerStakeInTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputers_stakes/{topic_id}",
+		"GET", "/emissions/v10/reputers_stakes/{topic_id}",
 		[]string{"topic_id"}, []string{"addresses"},
 		req, resp, callOpts.Height,
 	)
@@ -623,7 +623,7 @@ func (c *EmissionsRESTClient) GetNaiveInfererNetworkRegret(ctx context.Context, 
 
 	resp := &emissionstypes.GetNaiveInfererNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/native_inferer_network_regret",
+		"GET", "/emissions/v10/naive_inferer_network_regret",
 		nil, []string{"topic_id", "inferer"},
 		req, resp, callOpts.Height,
 	)
@@ -639,7 +639,7 @@ func (c *EmissionsRESTClient) GetNetworkInferencesAtBlock(ctx context.Context, r
 
 	resp := &emissionstypes.GetNetworkInferencesAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/network_inferences/{topic_id}/last_inference/{block_height_last_inference}",
+		"GET", "/emissions/v10/network_inferences/{topic_id}/last_inference/{block_height_last_inference}",
 		[]string{"topic_id", "block_height_last_inference"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -655,7 +655,7 @@ func (c *EmissionsRESTClient) GetNetworkInferencesAtBlockOutlierResistant(ctx co
 
 	resp := &emissionstypes.GetNetworkInferencesAtBlockOutlierResistantResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/network_inferences_outlier_resistant/{topic_id}/last_inference/{block_height_last_inference}",
+		"GET", "/emissions/v10/network_inferences_outlier_resistant/{topic_id}/last_inference/{block_height_last_inference}",
 		[]string{"topic_id", "block_height_last_inference"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -671,7 +671,7 @@ func (c *EmissionsRESTClient) GetNetworkLossBundleAtBlock(ctx context.Context, r
 
 	resp := &emissionstypes.GetNetworkLossBundleAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/network_loss/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/network_loss/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -687,7 +687,7 @@ func (c *EmissionsRESTClient) GetNextChurningBlockByTopicId(ctx context.Context,
 
 	resp := &emissionstypes.GetNextChurningBlockByTopicIdResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/next_churning_block_by_topic_id/{topic_id}",
+		"GET", "/emissions/v10/next_churning_block_by_topic_id/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -703,7 +703,7 @@ func (c *EmissionsRESTClient) GetNextTopicId(ctx context.Context, req *emissions
 
 	resp := &emissionstypes.GetNextTopicIdResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/next_topic_id",
+		"GET", "/emissions/v10/next_topic_id",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
@@ -719,7 +719,7 @@ func (c *EmissionsRESTClient) GetOneInForecasterNetworkRegret(ctx context.Contex
 
 	resp := &emissionstypes.GetOneInForecasterNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/one_in_forecaster_network_regret/{topic_id}/{forecaster}/{inferer}",
+		"GET", "/emissions/v10/one_in_forecaster_network_regret/{topic_id}/{forecaster}/{inferer}",
 		[]string{"topic_id", "forecaster", "inferer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -735,7 +735,7 @@ func (c *EmissionsRESTClient) GetOneOutForecasterForecasterNetworkRegret(ctx con
 
 	resp := &emissionstypes.GetOneOutForecasterForecasterNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/one_out_forecaster_forecaster_network_regret",
+		"GET", "/emissions/v10/one_out_forecaster_forecaster_network_regret",
 		nil, []string{"topic_id", "one_out_forecaster", "forecaster"},
 		req, resp, callOpts.Height,
 	)
@@ -751,7 +751,7 @@ func (c *EmissionsRESTClient) GetOneOutForecasterInfererNetworkRegret(ctx contex
 
 	resp := &emissionstypes.GetOneOutForecasterInfererNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/one_out_forecaster_inferer_network_regret",
+		"GET", "/emissions/v10/one_out_forecaster_inferer_network_regret",
 		nil, []string{"topic_id", "one_out_forecaster", "inferer"},
 		req, resp, callOpts.Height,
 	)
@@ -767,7 +767,7 @@ func (c *EmissionsRESTClient) GetOneOutInfererForecasterNetworkRegret(ctx contex
 
 	resp := &emissionstypes.GetOneOutInfererForecasterNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/one_out_inferer_forecaster_network_regret",
+		"GET", "/emissions/v10/one_out_inferer_forecaster_network_regret",
 		nil, []string{"topic_id", "one_out_inferer", "forecaster"},
 		req, resp, callOpts.Height,
 	)
@@ -783,12 +783,44 @@ func (c *EmissionsRESTClient) GetOneOutInfererInfererNetworkRegret(ctx context.C
 
 	resp := &emissionstypes.GetOneOutInfererInfererNetworkRegretResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/one_out_inferer_inferer_network_regret",
+		"GET", "/emissions/v10/one_out_inferer_inferer_network_regret",
 		nil, []string{"topic_id", "one_out_inferer", "inferer"},
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.GetOneOutInfererInfererNetworkRegret")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsRESTClient) GetOpenReputerSubmissionWindows(ctx context.Context, req *emissionstypes.GetOpenReputerSubmissionWindowsRequest, opts ...config.CallOpt) (*emissionstypes.GetOpenReputerSubmissionWindowsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.GetOpenReputerSubmissionWindowsResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/open_reputer_submission_windows/{topic_id}",
+		[]string{"topic_id"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.GetOpenReputerSubmissionWindows")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsRESTClient) GetOpenWorkerSubmissionWindows(ctx context.Context, req *emissionstypes.GetOpenWorkerSubmissionWindowsRequest, opts ...config.CallOpt) (*emissionstypes.GetOpenWorkerSubmissionWindowsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.GetOpenWorkerSubmissionWindowsResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/open_worker_submission_windows/{topic_id}",
+		[]string{"topic_id"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.GetOpenWorkerSubmissionWindows")
 	}
 	return resp, nil
 }
@@ -799,7 +831,7 @@ func (c *EmissionsRESTClient) GetParams(ctx context.Context, req *emissionstypes
 
 	resp := &emissionstypes.GetParamsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/params",
+		"GET", "/emissions/v10/params",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
@@ -815,7 +847,7 @@ func (c *EmissionsRESTClient) GetPreviousForecastRewardFraction(ctx context.Cont
 
 	resp := &emissionstypes.GetPreviousForecastRewardFractionResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/previous_forecast_reward_fraction/{topic_id}/{worker}",
+		"GET", "/emissions/v10/previous_forecast_reward_fraction/{topic_id}/{worker}",
 		[]string{"topic_id", "worker"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -831,7 +863,7 @@ func (c *EmissionsRESTClient) GetPreviousInferenceRewardFraction(ctx context.Con
 
 	resp := &emissionstypes.GetPreviousInferenceRewardFractionResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/previous_inference_reward_fraction/{topic_id}/{worker}",
+		"GET", "/emissions/v10/previous_inference_reward_fraction/{topic_id}/{worker}",
 		[]string{"topic_id", "worker"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -847,7 +879,7 @@ func (c *EmissionsRESTClient) GetPreviousPercentageRewardToStakedReputers(ctx co
 
 	resp := &emissionstypes.GetPreviousPercentageRewardToStakedReputersResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/previous_percentage_reward_to_staked_reputers",
+		"GET", "/emissions/v10/previous_percentage_reward_to_staked_reputers",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
@@ -863,7 +895,7 @@ func (c *EmissionsRESTClient) GetPreviousReputerRewardFraction(ctx context.Conte
 
 	resp := &emissionstypes.GetPreviousReputerRewardFractionResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/previous_reputer_reward_fraction/{topic_id}/{reputer}",
+		"GET", "/emissions/v10/previous_reputer_reward_fraction/{topic_id}/{reputer}",
 		[]string{"topic_id", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -879,7 +911,7 @@ func (c *EmissionsRESTClient) GetPreviousTopicQuantileForecasterScoreEma(ctx con
 
 	resp := &emissionstypes.GetPreviousTopicQuantileForecasterScoreEmaResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_quantile_forecaster_score_ema/{topic_id}",
+		"GET", "/emissions/v10/topic_quantile_forecaster_score_ema/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -895,7 +927,7 @@ func (c *EmissionsRESTClient) GetPreviousTopicQuantileInfererScoreEma(ctx contex
 
 	resp := &emissionstypes.GetPreviousTopicQuantileInfererScoreEmaResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_quantile_inferer_score_ema/{topic_id}",
+		"GET", "/emissions/v10/topic_quantile_inferer_score_ema/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -911,7 +943,7 @@ func (c *EmissionsRESTClient) GetPreviousTopicQuantileReputerScoreEma(ctx contex
 
 	resp := &emissionstypes.GetPreviousTopicQuantileReputerScoreEmaResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_quantile_reputer_score_ema/{topic_id}",
+		"GET", "/emissions/v10/topic_quantile_reputer_score_ema/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -927,7 +959,7 @@ func (c *EmissionsRESTClient) GetPreviousTopicWeight(ctx context.Context, req *e
 
 	resp := &emissionstypes.GetPreviousTopicWeightResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/previous_topic_weight/{topic_id}",
+		"GET", "/emissions/v10/previous_topic_weight/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -943,7 +975,7 @@ func (c *EmissionsRESTClient) GetReputerLossBundlesAtBlock(ctx context.Context, 
 
 	resp := &emissionstypes.GetReputerLossBundlesAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_loss_bundles/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/reputer_loss_bundles/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -959,7 +991,7 @@ func (c *EmissionsRESTClient) GetReputerNodeInfo(ctx context.Context, req *emiss
 
 	resp := &emissionstypes.GetReputerNodeInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer/{address}",
+		"GET", "/emissions/v10/reputer/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -975,7 +1007,7 @@ func (c *EmissionsRESTClient) GetReputerScoreEma(ctx context.Context, req *emiss
 
 	resp := &emissionstypes.GetReputerScoreEmaResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_score_ema/{topic_id}/{reputer}",
+		"GET", "/emissions/v10/reputer_score_ema/{topic_id}/{reputer}",
 		[]string{"topic_id", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -991,7 +1023,7 @@ func (c *EmissionsRESTClient) GetReputerStakeInTopic(ctx context.Context, req *e
 
 	resp := &emissionstypes.GetReputerStakeInTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_stake/{address}/{topic_id}",
+		"GET", "/emissions/v10/reputer_stake/{address}/{topic_id}",
 		[]string{"address", "topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1007,7 +1039,7 @@ func (c *EmissionsRESTClient) GetReputerSubmissionWindowStatus(ctx context.Conte
 
 	resp := &emissionstypes.GetReputerSubmissionWindowStatusResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_submission_window_status/{topic_id}",
+		"GET", "/emissions/v10/reputer_submission_window_status/{topic_id}",
 		[]string{"topic_id"}, []string{"address"},
 		req, resp, callOpts.Height,
 	)
@@ -1023,7 +1055,7 @@ func (c *EmissionsRESTClient) GetReputersScoresAtBlock(ctx context.Context, req 
 
 	resp := &emissionstypes.GetReputersScoresAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputers_scores_at_block/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/reputers_scores_at_block/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1039,7 +1071,7 @@ func (c *EmissionsRESTClient) GetStakeFromDelegatorInTopic(ctx context.Context, 
 
 	resp := &emissionstypes.GetStakeFromDelegatorInTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake/{delegator_address}/{topic_id}",
+		"GET", "/emissions/v10/delegate_stake/{delegator_address}/{topic_id}",
 		[]string{"delegator_address", "topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1055,7 +1087,7 @@ func (c *EmissionsRESTClient) GetStakeFromDelegatorInTopicInReputer(ctx context.
 
 	resp := &emissionstypes.GetStakeFromDelegatorInTopicInReputerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/delegate_stake/{delegator_address}/{reputer_address}/{topic_id}",
+		"GET", "/emissions/v10/delegate_stake/{delegator_address}/{reputer_address}/{topic_id}",
 		[]string{"delegator_address", "reputer_address", "topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1071,7 +1103,7 @@ func (c *EmissionsRESTClient) GetStakeFromReputerInTopicInSelf(ctx context.Conte
 
 	resp := &emissionstypes.GetStakeFromReputerInTopicInSelfResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_stake_self/{reputer_address}/{topic_id}",
+		"GET", "/emissions/v10/reputer_stake_self/{reputer_address}/{topic_id}",
 		[]string{"reputer_address", "topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1087,7 +1119,7 @@ func (c *EmissionsRESTClient) GetStakeRemovalForReputerAndTopicId(ctx context.Co
 
 	resp := &emissionstypes.GetStakeRemovalForReputerAndTopicIdResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/stake_removal/{reputer}/{topic_id}",
+		"GET", "/emissions/v10/stake_removal/{reputer}/{topic_id}",
 		[]string{"reputer", "topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1103,7 +1135,7 @@ func (c *EmissionsRESTClient) GetStakeRemovalInfo(ctx context.Context, req *emis
 
 	resp := &emissionstypes.GetStakeRemovalInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/stake_removal/{topic_id}/{reputer}",
+		"GET", "/emissions/v10/stake_removal/{topic_id}/{reputer}",
 		[]string{"topic_id", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1119,7 +1151,7 @@ func (c *EmissionsRESTClient) GetStakeRemovalsUpUntilBlock(ctx context.Context, 
 
 	resp := &emissionstypes.GetStakeRemovalsUpUntilBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/stake_removals/{block_height}",
+		"GET", "/emissions/v10/stake_removals/{block_height}",
 		[]string{"block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1135,7 +1167,7 @@ func (c *EmissionsRESTClient) GetStakeReputerAuthority(ctx context.Context, req 
 
 	resp := &emissionstypes.GetStakeReputerAuthorityResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/stake_reputer_authority/{topic_id}/{reputer}",
+		"GET", "/emissions/v10/stake_reputer_authority/{topic_id}/{reputer}",
 		[]string{"topic_id", "reputer"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1151,7 +1183,7 @@ func (c *EmissionsRESTClient) GetTopic(ctx context.Context, req *emissionstypes.
 
 	resp := &emissionstypes.GetTopicResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topics/{topic_id}",
+		"GET", "/emissions/v10/topics/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1167,7 +1199,7 @@ func (c *EmissionsRESTClient) GetTopicFeeRevenue(ctx context.Context, req *emiss
 
 	resp := &emissionstypes.GetTopicFeeRevenueResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_fee_revenue/{topic_id}",
+		"GET", "/emissions/v10/topic_fee_revenue/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1183,7 +1215,7 @@ func (c *EmissionsRESTClient) GetTopicInitialForecasterEmaScore(ctx context.Cont
 
 	resp := &emissionstypes.GetTopicInitialForecasterEmaScoreResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/initial_forecaster_ema_score/{topic_id}",
+		"GET", "/emissions/v10/initial_forecaster_ema_score/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1199,7 +1231,7 @@ func (c *EmissionsRESTClient) GetTopicInitialInfererEmaScore(ctx context.Context
 
 	resp := &emissionstypes.GetTopicInitialInfererEmaScoreResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/initial_inferer_ema_score/{topic_id}",
+		"GET", "/emissions/v10/initial_inferer_ema_score/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1215,7 +1247,7 @@ func (c *EmissionsRESTClient) GetTopicInitialReputerEmaScore(ctx context.Context
 
 	resp := &emissionstypes.GetTopicInitialReputerEmaScoreResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/initial_reputer_ema_score/{topic_id}",
+		"GET", "/emissions/v10/initial_reputer_ema_score/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1231,7 +1263,7 @@ func (c *EmissionsRESTClient) GetTopicLastReputerCommitInfo(ctx context.Context,
 
 	resp := &emissionstypes.GetTopicLastReputerCommitInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_last_reputer_commit_info/{topic_id}",
+		"GET", "/emissions/v10/topic_last_reputer_commit_info/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1247,7 +1279,7 @@ func (c *EmissionsRESTClient) GetTopicLastWorkerCommitInfo(ctx context.Context, 
 
 	resp := &emissionstypes.GetTopicLastWorkerCommitInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_last_worker_commit_info/{topic_id}",
+		"GET", "/emissions/v10/topic_last_worker_commit_info/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1263,7 +1295,7 @@ func (c *EmissionsRESTClient) GetTopicRewardNonce(ctx context.Context, req *emis
 
 	resp := &emissionstypes.GetTopicRewardNonceResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_reward_nonce/{topic_id}",
+		"GET", "/emissions/v10/topic_reward_nonce/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1279,7 +1311,7 @@ func (c *EmissionsRESTClient) GetTopicStake(ctx context.Context, req *emissionst
 
 	resp := &emissionstypes.GetTopicStakeResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/stake/{topic_id}",
+		"GET", "/emissions/v10/stake/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1295,7 +1327,7 @@ func (c *EmissionsRESTClient) GetTotalRewardToDistribute(ctx context.Context, re
 
 	resp := &emissionstypes.GetTotalRewardToDistributeResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/total_reward_to_distribute",
+		"GET", "/emissions/v10/total_reward_to_distribute",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1311,7 +1343,7 @@ func (c *EmissionsRESTClient) GetTotalStake(ctx context.Context, req *emissionst
 
 	resp := &emissionstypes.GetTotalStakeResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/total_stake",
+		"GET", "/emissions/v10/total_stake",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1327,7 +1359,7 @@ func (c *EmissionsRESTClient) GetTotalSumPreviousTopicWeights(ctx context.Contex
 
 	resp := &emissionstypes.GetTotalSumPreviousTopicWeightsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/sum_previous_total_topic_weight",
+		"GET", "/emissions/v10/sum_previous_total_topic_weight",
 		nil, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1343,7 +1375,7 @@ func (c *EmissionsRESTClient) GetUnfulfilledReputerNonces(ctx context.Context, r
 
 	resp := &emissionstypes.GetUnfulfilledReputerNoncesResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/unfulfilled_reputer_nonces/{topic_id}",
+		"GET", "/emissions/v10/unfulfilled_reputer_nonces/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1359,7 +1391,7 @@ func (c *EmissionsRESTClient) GetUnfulfilledWorkerNonces(ctx context.Context, re
 
 	resp := &emissionstypes.GetUnfulfilledWorkerNoncesResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/unfulfilled_worker_nonces/{topic_id}",
+		"GET", "/emissions/v10/unfulfilled_worker_nonces/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1375,7 +1407,7 @@ func (c *EmissionsRESTClient) GetWorkerForecastScoresAtBlock(ctx context.Context
 
 	resp := &emissionstypes.GetWorkerForecastScoresAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/worker_forecast_scores_at_block/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/worker_forecast_scores_at_block/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1391,7 +1423,7 @@ func (c *EmissionsRESTClient) GetWorkerInferenceScoresAtBlock(ctx context.Contex
 
 	resp := &emissionstypes.GetWorkerInferenceScoresAtBlockResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/worker_inference_scores_at_block/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/worker_inference_scores_at_block/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1401,18 +1433,18 @@ func (c *EmissionsRESTClient) GetWorkerInferenceScoresAtBlock(ctx context.Contex
 	return resp, nil
 }
 
-func (c *EmissionsRESTClient) GetWorkerLatestInferenceByTopicId(ctx context.Context, req *emissionstypes.GetWorkerLatestInferenceByTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.GetWorkerLatestInferenceByTopicIdResponse, error) {
+func (c *EmissionsRESTClient) GetWorkerLatestInputInferenceByTopicId(ctx context.Context, req *emissionstypes.GetWorkerLatestInputInferenceByTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.GetWorkerLatestInputInferenceByTopicIdResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp := &emissionstypes.GetWorkerLatestInferenceByTopicIdResponse{}
+	resp := &emissionstypes.GetWorkerLatestInputInferenceByTopicIdResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topics/{topic_id}/workers/{worker_address}/latest_inference",
+		"GET", "/emissions/v10/topics/{topic_id}/workers/{worker_address}/latest_input_inference",
 		[]string{"topic_id", "worker_address"}, nil,
 		req, resp, callOpts.Height,
 	)
 	if err != nil {
-		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.GetWorkerLatestInferenceByTopicId")
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.GetWorkerLatestInputInferenceByTopicId")
 	}
 	return resp, nil
 }
@@ -1423,7 +1455,7 @@ func (c *EmissionsRESTClient) GetWorkerNodeInfo(ctx context.Context, req *emissi
 
 	resp := &emissionstypes.GetWorkerNodeInfoResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/worker/{address}",
+		"GET", "/emissions/v10/worker/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1439,7 +1471,7 @@ func (c *EmissionsRESTClient) GetWorkerSubmissionWindowStatus(ctx context.Contex
 
 	resp := &emissionstypes.GetWorkerSubmissionWindowStatusResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/worker_submission_window_status/{topic_id}",
+		"GET", "/emissions/v10/worker_submission_window_status/{topic_id}",
 		[]string{"topic_id"}, []string{"address"},
 		req, resp, callOpts.Height,
 	)
@@ -1455,7 +1487,7 @@ func (c *EmissionsRESTClient) IsReputerNonceUnfulfilled(ctx context.Context, req
 
 	resp := &emissionstypes.IsReputerNonceUnfulfilledResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_reputer_nonce_unfulfilled/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/is_reputer_nonce_unfulfilled/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1471,7 +1503,7 @@ func (c *EmissionsRESTClient) IsReputerRegisteredInTopicId(ctx context.Context, 
 
 	resp := &emissionstypes.IsReputerRegisteredInTopicIdResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/reputer_registered/{topic_id}/{address}",
+		"GET", "/emissions/v10/reputer_registered/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1487,7 +1519,7 @@ func (c *EmissionsRESTClient) IsTopicActive(ctx context.Context, req *emissionst
 
 	resp := &emissionstypes.IsTopicActiveResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_topic_active/{topic_id}",
+		"GET", "/emissions/v10/is_topic_active/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1503,7 +1535,7 @@ func (c *EmissionsRESTClient) IsTopicReputerWhitelistEnabled(ctx context.Context
 
 	resp := &emissionstypes.IsTopicReputerWhitelistEnabledResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_topic_reputer_whitelist_enabled/{topic_id}",
+		"GET", "/emissions/v10/is_topic_reputer_whitelist_enabled/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1519,7 +1551,7 @@ func (c *EmissionsRESTClient) IsTopicWorkerWhitelistEnabled(ctx context.Context,
 
 	resp := &emissionstypes.IsTopicWorkerWhitelistEnabledResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_topic_worker_whitelist_enabled/{topic_id}",
+		"GET", "/emissions/v10/is_topic_worker_whitelist_enabled/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1535,7 +1567,7 @@ func (c *EmissionsRESTClient) IsWhitelistAdmin(ctx context.Context, req *emissio
 
 	resp := &emissionstypes.IsWhitelistAdminResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/whitelist_admin/{address}",
+		"GET", "/emissions/v10/whitelist_admin/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1551,7 +1583,7 @@ func (c *EmissionsRESTClient) IsWhitelistedGlobalActor(ctx context.Context, req 
 
 	resp := &emissionstypes.IsWhitelistedGlobalActorResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_global_actor/{address}",
+		"GET", "/emissions/v10/is_whitelisted_global_actor/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1567,7 +1599,7 @@ func (c *EmissionsRESTClient) IsWhitelistedGlobalAdmin(ctx context.Context, req 
 
 	resp := &emissionstypes.IsWhitelistedGlobalAdminResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_global_admin/{address}",
+		"GET", "/emissions/v10/is_whitelisted_global_admin/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1583,7 +1615,7 @@ func (c *EmissionsRESTClient) IsWhitelistedGlobalReputer(ctx context.Context, re
 
 	resp := &emissionstypes.IsWhitelistedGlobalReputerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_global_reputer/{address}",
+		"GET", "/emissions/v10/is_whitelisted_global_reputer/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1599,7 +1631,7 @@ func (c *EmissionsRESTClient) IsWhitelistedGlobalWorker(ctx context.Context, req
 
 	resp := &emissionstypes.IsWhitelistedGlobalWorkerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_global_worker/{address}",
+		"GET", "/emissions/v10/is_whitelisted_global_worker/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1615,7 +1647,7 @@ func (c *EmissionsRESTClient) IsWhitelistedTopicCreator(ctx context.Context, req
 
 	resp := &emissionstypes.IsWhitelistedTopicCreatorResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_topic_creator/{address}",
+		"GET", "/emissions/v10/is_whitelisted_topic_creator/{address}",
 		[]string{"address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1631,7 +1663,7 @@ func (c *EmissionsRESTClient) IsWhitelistedTopicReputer(ctx context.Context, req
 
 	resp := &emissionstypes.IsWhitelistedTopicReputerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_topic_reputer/{topic_id}/{address}",
+		"GET", "/emissions/v10/is_whitelisted_topic_reputer/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1647,7 +1679,7 @@ func (c *EmissionsRESTClient) IsWhitelistedTopicWorker(ctx context.Context, req 
 
 	resp := &emissionstypes.IsWhitelistedTopicWorkerResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_whitelisted_topic_worker/{topic_id}/{address}",
+		"GET", "/emissions/v10/is_whitelisted_topic_worker/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1663,7 +1695,7 @@ func (c *EmissionsRESTClient) IsWorkerNonceUnfulfilled(ctx context.Context, req 
 
 	resp := &emissionstypes.IsWorkerNonceUnfulfilledResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/is_worker_nonce_unfulfilled/{topic_id}/{block_height}",
+		"GET", "/emissions/v10/is_worker_nonce_unfulfilled/{topic_id}/{block_height}",
 		[]string{"topic_id", "block_height"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1679,7 +1711,7 @@ func (c *EmissionsRESTClient) IsWorkerRegisteredInTopicId(ctx context.Context, r
 
 	resp := &emissionstypes.IsWorkerRegisteredInTopicIdResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/worker_registered/{topic_id}/{address}",
+		"GET", "/emissions/v10/worker_registered/{topic_id}/{address}",
 		[]string{"topic_id", "address"}, nil,
 		req, resp, callOpts.Height,
 	)
@@ -1695,7 +1727,7 @@ func (c *EmissionsRESTClient) TopicExists(ctx context.Context, req *emissionstyp
 
 	resp := &emissionstypes.TopicExistsResponse{}
 	err := c.RESTClientCore.executeRequest(ctx,
-		"GET", "/emissions/v9/topic_exists/{topic_id}",
+		"GET", "/emissions/v10/topic_exists/{topic_id}",
 		[]string{"topic_id"}, nil,
 		req, resp, callOpts.Height,
 	)

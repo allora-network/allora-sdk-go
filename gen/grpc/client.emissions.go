@@ -557,6 +557,28 @@ func (c *EmissionsGRPCClient) GetOneOutInfererInfererNetworkRegret(ctx context.C
 	return resp, nil
 }
 
+func (c *EmissionsGRPCClient) GetOpenReputerSubmissionWindows(ctx context.Context, req *emissionstypes.GetOpenReputerSubmissionWindowsRequest, opts ...config.CallOpt) (*emissionstypes.GetOpenReputerSubmissionWindowsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetOpenReputerSubmissionWindows, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.GetOpenReputerSubmissionWindows")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsGRPCClient) GetOpenWorkerSubmissionWindows(ctx context.Context, req *emissionstypes.GetOpenWorkerSubmissionWindowsRequest, opts ...config.CallOpt) (*emissionstypes.GetOpenWorkerSubmissionWindowsResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetOpenWorkerSubmissionWindows, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.GetOpenWorkerSubmissionWindows")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsGRPCClient) GetParams(ctx context.Context, req *emissionstypes.GetParamsRequest, opts ...config.CallOpt) (*emissionstypes.GetParamsResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -975,13 +997,13 @@ func (c *EmissionsGRPCClient) GetWorkerInferenceScoresAtBlock(ctx context.Contex
 	return resp, nil
 }
 
-func (c *EmissionsGRPCClient) GetWorkerLatestInferenceByTopicId(ctx context.Context, req *emissionstypes.GetWorkerLatestInferenceByTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.GetWorkerLatestInferenceByTopicIdResponse, error) {
+func (c *EmissionsGRPCClient) GetWorkerLatestInputInferenceByTopicId(ctx context.Context, req *emissionstypes.GetWorkerLatestInputInferenceByTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.GetWorkerLatestInputInferenceByTopicIdResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
 
-	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetWorkerLatestInferenceByTopicId, req)
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.GetWorkerLatestInputInferenceByTopicId, req)
 	if err != nil {
-		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.GetWorkerLatestInferenceByTopicId")
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.GetWorkerLatestInputInferenceByTopicId")
 	}
 	return resp, nil
 }

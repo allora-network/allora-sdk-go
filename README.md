@@ -258,13 +258,13 @@ if validators.Pagination.NextKey != nil {
 ### Building
 
 ```bash
-make build
+go build ./...
 ```
 
 ### Running Tests
 
 ```bash
-make test
+go test ./...
 ```
 
 ### Linting
@@ -276,7 +276,13 @@ make lint
 ### Protocol Buffer Generation
 
 ```bash
-make proto-gen
+make codegen
+```
+
+To fetch proto dependencies and regenerate clients in one step:
+
+```bash
+make dev
 ```
 
 ## Roadmap
