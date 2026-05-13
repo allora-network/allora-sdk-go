@@ -3,9 +3,9 @@
 # --- Version Variables
 GOGOPROTO_VERSION := v1.7.0
 COSMOS_PROTO_VERSION := v1.0.0-beta.5
-COSMOS_SDK_VERSION := v0.50.13
+COSMOS_SDK_VERSION := v0.50.14
 GOOGLEAPIS_VERSION := master
-ALLORA_CHAIN_VERSION := v0.15.1
+ALLORA_CHAIN_VERSION := diego/engn-5152-3-epoch-label-registry-growth-limit
 
 # --- Paths
 PROTO_DEPS := ./proto-deps
@@ -39,7 +39,7 @@ CODEGEN_FILES := \
   $(COSMOS_SDK_DIR)/proto/cosmos/slashing/v1beta1/query.proto \
   $(COSMOS_SDK_DIR)/proto/cosmos/staking/v1beta1/query.proto \
   $(COSMOS_SDK_DIR)/proto/cosmos/tx/v1beta1/service.proto \
-  $(ALLORA_CHAIN_DIR)/x/emissions/proto/emissions/v9/query.proto \
+  $(ALLORA_CHAIN_DIR)/x/emissions/proto/emissions/v10/query.proto \
   $(ALLORA_CHAIN_DIR)/x/mint/proto/mint/v5/query.proto
 
 
