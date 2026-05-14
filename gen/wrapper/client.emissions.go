@@ -313,6 +313,18 @@ func (c *EmissionsClientWrapper) GetOneOutInfererInfererNetworkRegret(ctx contex
 	})
 }
 
+func (c *EmissionsClientWrapper) GetOpenReputerSubmissionWindows(ctx context.Context, req *emissionstypes.GetOpenReputerSubmissionWindowsRequest, opts ...config.CallOpt) (*emissionstypes.GetOpenReputerSubmissionWindowsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*emissionstypes.GetOpenReputerSubmissionWindowsResponse, error) {
+		return client.Emissions().GetOpenReputerSubmissionWindows(ctx, req, opts...)
+	})
+}
+
+func (c *EmissionsClientWrapper) GetOpenWorkerSubmissionWindows(ctx context.Context, req *emissionstypes.GetOpenWorkerSubmissionWindowsRequest, opts ...config.CallOpt) (*emissionstypes.GetOpenWorkerSubmissionWindowsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*emissionstypes.GetOpenWorkerSubmissionWindowsResponse, error) {
+		return client.Emissions().GetOpenWorkerSubmissionWindows(ctx, req, opts...)
+	})
+}
+
 func (c *EmissionsClientWrapper) GetParams(ctx context.Context, req *emissionstypes.GetParamsRequest, opts ...config.CallOpt) (*emissionstypes.GetParamsResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*emissionstypes.GetParamsResponse, error) {
 		return client.Emissions().GetParams(ctx, req, opts...)
@@ -541,9 +553,9 @@ func (c *EmissionsClientWrapper) GetWorkerInferenceScoresAtBlock(ctx context.Con
 	})
 }
 
-func (c *EmissionsClientWrapper) GetWorkerLatestInferenceByTopicId(ctx context.Context, req *emissionstypes.GetWorkerLatestInferenceByTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.GetWorkerLatestInferenceByTopicIdResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*emissionstypes.GetWorkerLatestInferenceByTopicIdResponse, error) {
-		return client.Emissions().GetWorkerLatestInferenceByTopicId(ctx, req, opts...)
+func (c *EmissionsClientWrapper) GetWorkerLatestInputInferenceByTopicId(ctx context.Context, req *emissionstypes.GetWorkerLatestInputInferenceByTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.GetWorkerLatestInputInferenceByTopicIdResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*emissionstypes.GetWorkerLatestInputInferenceByTopicIdResponse, error) {
+		return client.Emissions().GetWorkerLatestInputInferenceByTopicId(ctx, req, opts...)
 	})
 }
 

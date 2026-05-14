@@ -48,7 +48,8 @@ import (
 	emissionsv6 "github.com/allora-network/allora-chain/x/emissions/api/emissions/v6"
 	emissionsv7 "github.com/allora-network/allora-chain/x/emissions/api/emissions/v7"
 	emissionsv8 "github.com/allora-network/allora-chain/x/emissions/api/emissions/v8"
-	emissionsv9 "github.com/allora-network/allora-chain/x/emissions/types"
+	emissionsv9 "github.com/allora-network/allora-chain/x/emissions/api/emissions/v9"
+	emissionsv10 "github.com/allora-network/allora-chain/x/emissions/types"
 )
 
 var (
@@ -87,10 +88,12 @@ func init() {
 		emissionsv7.RegisterInterfaces,
 		emissionsv8.RegisterInterfaces,
 		emissionsv9.RegisterInterfaces,
+		emissionsv10.RegisterInterfaces,
 	}
 	for _, register := range registerFuncs {
 		register(registry)
 	}
+	registerV9TypedEvents()
 	cosmosCodec = cosmoscodec.NewProtoCodec(registry)
 	grpcCodec = cosmosCodec.GRPCCodec()
 }
@@ -180,4 +183,92 @@ func (c *Codec) ParseTxMessage(message *codectypes.Any) (proto.Message, error) {
 		return nil, errors.WithMessage(err, "failed to unpack any")
 	}
 	return msg, nil
+}
+
+var v9TypedEvents = []proto.Message{
+	&emissionsv9.EventScoresSet{},
+	&emissionsv9.EventRewardsSettled{},
+	&emissionsv9.EventNetworkLossSet{},
+	&emissionsv9.EventNetworkInferences{},
+	&emissionsv9.EventOutlierResistantNetworkInferences{},
+	&emissionsv9.EventValueBundle{},
+	&emissionsv9.EventInsertInfererPayload{},
+	&emissionsv9.EventInsertForecasterPayload{},
+	&emissionsv9.EventCreateNewTopic{},
+	&emissionsv9.EventTopicUpdated{},
+	&emissionsv9.EventAddStake{},
+	&emissionsv9.EventRemoveStake{},
+	&emissionsv9.EventRequestStakeRemoval{},
+	&emissionsv9.EventCancelStakeRemoval{},
+	&emissionsv9.EventReputerStakeUpdated{},
+	&emissionsv9.EventRewardDelegateStake{},
+	&emissionsv9.EventInsertReputerPayload{},
+	&emissionsv9.EventReputerRegistered{},
+	&emissionsv9.EventWorkerRegistered{},
+	&emissionsv9.EventNodeOwnerUpdated{},
+	&emissionsv9.EventReputerUnregistered{},
+	&emissionsv9.EventWorkerUnregistered{},
+	&emissionsv9.EventFundTopic{},
+	&emissionsv9.EventParamsSet{},
+	&emissionsv9.EventWhitelistAdminAdded{},
+	&emissionsv9.EventWhitelistAdminRemoved{},
+	&emissionsv9.EventGlobalWhitelistAdded{},
+	&emissionsv9.EventGlobalWhitelistRemoved{},
+	&emissionsv9.EventGlobalWorkerWhitelistAdded{},
+	&emissionsv9.EventGlobalWorkerWhitelistRemoved{},
+	&emissionsv9.EventGlobalReputerWhitelistAdded{},
+	&emissionsv9.EventGlobalReputerWhitelistRemoved{},
+	&emissionsv9.EventGlobalAdminWhitelistAdded{},
+	&emissionsv9.EventGlobalAdminWhitelistRemoved{},
+	&emissionsv9.EventTopicWorkerWhitelistEnabled{},
+	&emissionsv9.EventTopicWorkerWhitelistDisabled{},
+	&emissionsv9.EventTopicReputerWhitelistEnabled{},
+	&emissionsv9.EventTopicReputerWhitelistDisabled{},
+	&emissionsv9.EventTopicCreatorWhitelistAdded{},
+	&emissionsv9.EventTopicCreatorWhitelistRemoved{},
+	&emissionsv9.EventTopicWorkerWhitelistAdded{},
+	&emissionsv9.EventTopicWorkerWhitelistRemoved{},
+	&emissionsv9.EventTopicReputerWhitelistAdded{},
+	&emissionsv9.EventTopicReputerWhitelistRemoved{},
+	&emissionsv9.EventForecastTaskScoreSet{},
+	&emissionsv9.EventWorkerLastCommitSet{},
+	&emissionsv9.EventReputerLastCommitSet{},
+	&emissionsv9.EventTopicRewardsSet{},
+	&emissionsv9.EventEMAScoresSet{},
+	&emissionsv9.EventListeningCoefficientsSet{},
+	&emissionsv9.EventInfererNetworkRegretSet{},
+	&emissionsv9.EventForecasterNetworkRegretSet{},
+	&emissionsv9.EventNaiveInfererNetworkRegretSet{},
+	&emissionsv9.EventTopicInitialRegretSet{},
+	&emissionsv9.EventTopicInitialEmaScoreSet{},
+	&emissionsv9.EventRegretStdNormSet{},
+	&emissionsv9.EventInfererWeightsSet{},
+	&emissionsv9.EventForecasterWeightsSet{},
+	&emissionsv9.EventPreviousPercentageRewardToStakedReputersSet{},
+	&emissionsv9.EventPruneRecords{},
+	&emissionsv9.EventDelegateRewardShareUpdated{},
+	&emissionsv9.EventDelegateRewardDistributed{},
+	&emissionsv9.EventActiveReputersSet{},
+	&emissionsv9.EventActiveInferersSet{},
+	&emissionsv9.EventActiveForecastersSet{},
+	&emissionsv9.EventTopicStatusChanged{},
+	&emissionsv9.EventNetworkInferenceInfererWeightsSet{},
+	&emissionsv9.EventNetworkInferenceForecasterWeightsSet{},
+	&emissionsv9.EventNetworkInferenceInfererRegretsUsedSet{},
+	&emissionsv9.EventNetworkInferenceForecasterRegretsUsedSet{},
+	&emissionsv9.EventTopicWeightUpdated{},
+	&emissionsv9.EventTopicFeeRevenueDripped{},
+	&emissionsv9.EventWorkerSubmissionWindowOpened{},
+	&emissionsv9.EventWorkerSubmissionWindowClosed{},
+	&emissionsv9.EventReputerSubmissionWindowOpened{},
+	&emissionsv9.EventReputerSubmissionWindowClosed{},
+}
+
+// registerV9TypedEvents registers legacy emissions v9 typed events with the gogo proto registry.
+// The v9 pulsar-generated event code exposes descriptors but does not populate the
+// name-to-type registry used by sdk.ParseTypedEvent.
+func registerV9TypedEvents() {
+	for _, event := range v9TypedEvents {
+		proto.RegisterType(event, proto.MessageName(event))
+	}
 }

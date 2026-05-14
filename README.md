@@ -178,7 +178,16 @@ config.Endpoints = []allora.EndpointConfig{
 
 ### Allora Modules
 
-#### Emissions Module (v9)
+#### Emissions v10 Migration Notes
+
+The SDK now targets the emissions v10 query surface. This is a breaking API update for SDK consumers, including `allora-producer` until it bumps to a compatible SDK version.
+
+- REST emissions routes now use the `/emissions/v10` prefix.
+- `GetWorkerLatestInferenceByTopicId` was renamed to `GetWorkerLatestInputInferenceByTopicId`, matching the v10 proto API and REST path `/emissions/v10/topics/{topic_id}/workers/{worker_address}/latest_input_inference`.
+- `GetOpenReputerSubmissionWindows` and `GetOpenWorkerSubmissionWindows` were added for the new v10 submission-window queries.
+- `GetNaiveInfererNetworkRegret` uses `/emissions/v10/naive_inferer_network_regret`; the v9 route segment had the typo `native_inferer_network_regret`.
+
+#### Emissions Module (v10)
 100+ query methods including:
 - `EmissionsGetParams(ctx)` - Get emissions parameters
 - `EmissionsGetTopic(ctx, topicId)` - Get topic information
@@ -258,13 +267,13 @@ if validators.Pagination.NextKey != nil {
 ### Building
 
 ```bash
-make build
+go build ./...
 ```
 
 ### Running Tests
 
 ```bash
-make test
+go test ./...
 ```
 
 ### Linting
@@ -276,7 +285,13 @@ make lint
 ### Protocol Buffer Generation
 
 ```bash
-make proto-gen
+make codegen
+```
+
+To fetch proto dependencies and regenerate clients in one step:
+
+```bash
+make dev
 ```
 
 ## Roadmap
