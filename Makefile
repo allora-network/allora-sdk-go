@@ -5,7 +5,7 @@ GOGOPROTO_VERSION := v1.7.0
 COSMOS_PROTO_VERSION := v1.0.0-beta.5
 COSMOS_SDK_VERSION := v0.50.14
 GOOGLEAPIS_VERSION := master
-ALLORA_CHAIN_VERSION := diego/engn-5152-3-epoch-label-registry-growth-limit
+ALLORA_CHAIN_VERSION := a6b3896305a6aa40f73bf689d7aa2b237510f5a2
 
 # --- Paths
 PROTO_DEPS := ./proto-deps
@@ -66,8 +66,10 @@ $(GOOGLEAPIS_DIR)/.git:
 
 $(ALLORA_CHAIN_DIR)/.git:
 	rm -rf "$(ALLORA_CHAIN_DIR)"
-	git clone --depth 1 --single-branch --branch $(ALLORA_CHAIN_VERSION) \
-	  https://github.com/allora-network/allora-chain "$(ALLORA_CHAIN_DIR)"
+	git init "$(ALLORA_CHAIN_DIR)"
+	git -C "$(ALLORA_CHAIN_DIR)" remote add origin https://github.com/allora-network/allora-chain
+	git -C "$(ALLORA_CHAIN_DIR)" fetch --depth 1 origin $(ALLORA_CHAIN_VERSION)
+	git -C "$(ALLORA_CHAIN_DIR)" checkout --detach FETCH_HEAD
 
 .PHONY: proto-deps
 proto-deps: \
@@ -109,4 +111,3 @@ lint:
 lint-fix:
 	@echo "🤖 Running golangci-lint (fix)"
 	@golangci-lint run --fix --timeout=10m
-
