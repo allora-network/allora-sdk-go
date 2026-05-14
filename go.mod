@@ -2,7 +2,7 @@ module github.com/allora-network/allora-sdk-go
 
 go 1.24.0
 
-replace github.com/cosmos/cosmos-sdk => github.com/cosmos/cosmos-sdk v0.50.13
+replace github.com/cosmos/cosmos-sdk => github.com/cosmos/cosmos-sdk v0.50.14
 
 replace github.com/cometbft/cometbft => github.com/cometbft/cometbft v0.38.17
 
