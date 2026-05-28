@@ -1,0 +1,27 @@
+name: Go hardened install
+on:
+  pull_request:
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - 'go.env'
+      - '**/*.go'
+      - '.github/workflows/go-hardened.yml'
+  push:
+    branches: [master]
+permissions:
+  contents: read
+concurrency:
+  group: go-hardened-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  hardened-install:
+    # The reusable workflow lives in a private sibling repo. Fork PRs cannot
+    # read private workflows with the default GITHUB_TOKEN, so skip cleanly
+    # on external forks instead of failing with a "workflow not found" error.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    uses: allora-network/ci-workflows-private/.github/workflows/go-install-hardened.yml@f16605a4eb012d26f14fd23e8f9df7854f4d2e41
+    secrets: inherit
+    with:
+      go_version: '1.24.x'
+      cgo_enabled: '0'
