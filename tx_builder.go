@@ -6,7 +6,6 @@ import (
 
 	sdkclient "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
-	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	signingtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
@@ -56,6 +55,12 @@ func (b *txBuilder) buildUnsignedSendTx(
 	txBuilder.SetFeeAmount(params.FeeAmount)
 	txBuilder.SetMemo(params.Memo)
 
+	// Set the fee granter so a master/subsidy wallet pays the gas (feegrant). Empty
+	// means the signer pays its own fees.
+	if !params.FeeGranter.Empty() {
+		txBuilder.SetFeeGranter(params.FeeGranter)
+	}
+
 	if params.TimeoutHeight > 0 {
 		txBuilder.SetTimeoutHeight(params.TimeoutHeight)
 	}
@@ -69,10 +74,10 @@ func (b *txBuilder) buildUnsignedSendTx(
 	return txBytes, nil
 }
 
-// signTx signs a transaction with the provided private key
+// signTx signs a transaction with the provided signer (a local key or a remote signer)
 func (b *txBuilder) signTx(
 	txBytes []byte,
-	privKey cryptotypes.PrivKey,
+	signer Signer,
 	params *TxParams,
 ) ([]byte, error) {
 	// Decode the unsigned transaction
@@ -89,7 +94,7 @@ func (b *txBuilder) signTx(
 	}
 
 	// Get public key
-	pubKey := privKey.PubKey()
+	pubKey := signer.PubKey()
 
 	// Convert API sign mode to internal
 	apiSignMode := b.txConfig.SignModeHandler().DefaultMode()
@@ -137,7 +142,7 @@ func (b *txBuilder) signTx(
 	}
 
 	// Sign the bytes
-	signature, err := privKey.Sign(bytesToSign)
+	signature, err := signer.Sign(bytesToSign)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}

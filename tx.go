@@ -19,6 +19,10 @@ type TxParams struct {
 	GasLimit  uint64
 	FeeAmount sdk.Coins
 
+	// FeeGranter, when set, is the address that pays the transaction fee via an
+	// on-chain feegrant (e.g. a master subsidy wallet). Empty means the signer pays.
+	FeeGranter sdk.AccAddress
+
 	// Optional fields
 	Memo          string
 	TimeoutHeight uint64
@@ -132,20 +136,47 @@ func SignTransaction(
 	wallet *Wallet,
 	params *TxParams,
 ) ([]byte, error) {
-	if err := params.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
-	}
-
-	if len(unsignedTx) == 0 {
-		return nil, fmt.Errorf("unsigned transaction is empty")
-	}
-
 	if wallet == nil {
 		return nil, fmt.Errorf("wallet is required")
 	}
+	// wallet.PrivKey is a cryptotypes.PrivKey, which satisfies Signer.
+	return SignTransactionWith(unsignedTx, wallet.PrivKey, params)
+}
+
+// SignTransactionWith signs an unsigned transaction with any Signer. This is the
+// general form of SignTransaction: pass a local wallet's key for self-managed signing,
+// or a *RemoteSigner to delegate signing to the Forge backend (Privy-managed wallet).
+//
+// Parameters:
+//   - unsignedTx: The unsigned transaction bytes from CreateUnsignedSendTx
+//   - signer: The signer (local key or remote signer)
+//   - params: The same TxParams used to create the unsigned transaction
+//
+// Example:
+//
+//	signer, _ := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
+//	    BackendURL: "https://forge.allora.network",
+//	    APIKey:     apiKey,
+//	    WalletID:   walletID,
+//	})
+//	signedTx, err := allora.SignTransactionWith(unsignedTx, signer, params)
+func SignTransactionWith(
+	unsignedTx []byte,
+	signer Signer,
+	params *TxParams,
+) ([]byte, error) {
+	if err := params.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
+	}
+	if len(unsignedTx) == 0 {
+		return nil, fmt.Errorf("unsigned transaction is empty")
+	}
+	if signer == nil {
+		return nil, fmt.Errorf("signer is required")
+	}
 
 	builder := newTxBuilder()
-	return builder.signTx(unsignedTx, wallet.PrivKey, params)
+	return builder.signTx(unsignedTx, signer, params)
 }
 
 // CreateSignedSendTx is a convenience function that creates and signs a send transaction in one step
