@@ -100,6 +100,44 @@ func main() {
 }
 ```
 
+## Privy-Managed Signing (delegated)
+
+By default the SDK signs with a local key (`Wallet`). Alternatively, you can delegate
+signing to the Forge backend, which signs with a Privy-managed server wallet — the worker
+holds no private key. Both a local `Wallet` and the backend-backed `RemoteSigner` satisfy
+the `Signer` interface, so `SignTransactionWith` accepts either.
+
+```go
+ctx := context.Background()
+
+// The wallet ID and API key are minted in the Forge web app. The signer fetches its
+// address + public key from the backend on construction.
+signer, err := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+    WalletID:   os.Getenv("FORGE_SIGNING_WALLET_ID"),
+})
+if err != nil {
+    panic(err)
+}
+
+params := &allora.TxParams{
+    ChainID:       "allora-testnet-1",
+    AccountNumber: accountNumber,
+    Sequence:      sequence,
+    GasLimit:      200000,
+    FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+    // FeeGranter: masterAddr, // optional: subsidize gas from a master wallet via feegrant
+}
+
+unsignedTx, _ := allora.CreateUnsignedSendTx(signer.AccAddress(), toAddr, amount, params)
+signedTx, _ := allora.SignTransactionWith(unsignedTx, signer, params)
+// broadcast signedTx via client.Cosmos().Tx().BroadcastTx(...)
+```
+
+The self-managed path — `SignTransaction(unsignedTx, wallet, params)` with a local
+`Wallet` — is unchanged.
+
 ## Configuration
 
 ### Client Configuration
