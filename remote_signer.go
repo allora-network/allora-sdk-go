@@ -111,7 +111,7 @@ func newGuardedClient(c *http.Client) *http.Client {
 	// so a caller with a stricter posture (e.g. http.ErrUseLastResponse) keeps it.
 	prevCheck := guarded.CheckRedirect
 	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := stripCredentialOnCrossOrigin(req, via); err != nil {
+		if err := rejectCrossOriginRedirect(req, via); err != nil {
 			return err
 		}
 		if prevCheck != nil {
@@ -122,18 +122,20 @@ func newGuardedClient(c *http.Client) *http.Client {
 	return guarded
 }
 
-// stripCredentialOnCrossOrigin removes the Forge API key header before following any
-// redirect that changes origin (scheme or host) and bounds the redirect chain. Go's
-// default policy only strips its built-in sensitive headers (Authorization, Cookie) on
-// cross-host redirects, so a custom credential header would otherwise leak to a
-// plaintext or attacker-controlled target via an open redirect.
-func stripCredentialOnCrossOrigin(req *http.Request, via []*http.Request) error {
+// rejectCrossOriginRedirect refuses any redirect that changes origin (scheme or host)
+// and bounds the redirect chain. Go preserves the method and body on 307/308 redirects,
+// so following a cross-origin redirect would re-POST the SignDoc bytes to the redirect
+// target; refusing outright (rather than only stripping the API key and continuing)
+// prevents that body leak. This matches the reject-all stance of the sibling SDKs
+// (allora-sdk-py: allow_redirects=False; allora-sdk-ts: redirect: "error").
+func rejectCrossOriginRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
 	}
 	prev := via[len(via)-1]
 	if req.URL.Scheme != prev.URL.Scheme || req.URL.Host != prev.URL.Host {
-		req.Header.Del(apiKeyHeader)
+		return fmt.Errorf("refusing cross-origin redirect from %s://%s to %s://%s",
+			prev.URL.Scheme, prev.URL.Host, req.URL.Scheme, req.URL.Host)
 	}
 	return nil
 }
