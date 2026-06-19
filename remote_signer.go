@@ -30,7 +30,10 @@ type RemoteSignerConfig struct {
 	APIKey string
 	// WalletID is the signing wallet's UUID, as returned by the create endpoint.
 	WalletID string
-	// HTTPClient is optional; a 30s-timeout client is used when nil.
+	// HTTPClient is optional; a 30s-timeout client is used when nil. The SDK installs its
+	// own CheckRedirect to guard the Forge API key and SignDoc across redirects; any
+	// CheckRedirect set on a supplied client is composed after it (run once the SDK guard
+	// permits the redirect), not discarded.
 	HTTPClient *http.Client
 }
 
@@ -103,7 +106,19 @@ func newGuardedClient(c *http.Client) *http.Client {
 		cp := *c
 		guarded = &cp
 	}
-	guarded.CheckRedirect = stripCredentialOnCrossOrigin
+	// Compose with (rather than silently discard) any CheckRedirect the caller installed:
+	// run the SDK's credential/cross-origin guard first, then defer to the caller's policy,
+	// so a caller with a stricter posture (e.g. http.ErrUseLastResponse) keeps it.
+	prevCheck := guarded.CheckRedirect
+	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := stripCredentialOnCrossOrigin(req, via); err != nil {
+			return err
+		}
+		if prevCheck != nil {
+			return prevCheck(req, via)
+		}
+		return nil
+	}
 	return guarded
 }
 
