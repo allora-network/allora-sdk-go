@@ -99,6 +99,11 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding wallet pubkey: %w", err)
 	}
+	// secp256k1.PubKey.Address panics on a wrong-length key, so reject a malformed
+	// backend pubkey here and return a normal error instead of crashing the worker.
+	if len(pubBytes) != secp256k1.PubKeySize {
+		return fmt.Errorf("backend returned %d-byte pubkey, expected %d", len(pubBytes), secp256k1.PubKeySize)
+	}
 	rs.pubKey = &secp256k1.PubKey{Key: pubBytes}
 
 	// Derive the address from the pubkey and cross-check it against the backend's
