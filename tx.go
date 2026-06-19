@@ -40,6 +40,9 @@ func DefaultTxParams() *TxParams {
 
 // Validate checks that all required parameters are set
 func (p *TxParams) Validate() error {
+	if p == nil {
+		return fmt.Errorf("tx params are required")
+	}
 	if p.ChainID == "" {
 		return fmt.Errorf("chain ID is required")
 	}
