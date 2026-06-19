@@ -67,6 +67,12 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
 		return nil, fmt.Errorf("backend URL must be an absolute http(s) URL")
 	}
+	// Request paths are built by string concatenation (fmt.Sprintf), so a query string or
+	// fragment on the base URL would be glued onto the path and corrupt every request
+	// (e.g. "https://host/?token=x" -> "https://host/?token=x/api/v1/...").
+	if base.RawQuery != "" || base.Fragment != "" {
+		return nil, fmt.Errorf("backend URL must not contain a query string or fragment")
+	}
 	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
 		return nil, fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
 	}
