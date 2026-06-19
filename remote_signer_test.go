@@ -147,3 +147,157 @@ func TestNewRemoteSigner_RequiresConfig(t *testing.T) {
 	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{})
 	require.Error(t, err)
 }
+
+const negWalletID = "22222222-2222-2222-2222-222222222222"
+
+// walletInfoJSON returns a GET handler that responds with the given JSON object.
+func walletInfoJSON(m map[string]string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(m)
+	}
+}
+
+// serveBackend starts a fake backend with the given wallet-info and (optional) sign
+// handlers, registered under negWalletID, and closes it at test end.
+func serveBackend(t *testing.T, walletInfo, sign http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+negWalletID, walletInfo)
+	if sign != nil {
+		mux.HandleFunc("/api/v1/signing-wallets/"+negWalletID+"/sign", sign)
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func connectRemoteSigner(t *testing.T, baseURL string) (*RemoteSigner, error) {
+	t.Helper()
+	return NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: baseURL,
+		APIKey:     "forge_sk_test",
+		WalletID:   negWalletID,
+	})
+}
+
+func TestNewRemoteSigner_RejectsNonUUIDWalletID(t *testing.T) {
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network",
+		APIKey:     "forge_sk_test",
+		WalletID:   "not-a-uuid",
+	})
+	require.Error(t, err)
+}
+
+func TestNewRemoteSigner_RejectsPlaintextNonLocalhost(t *testing.T) {
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: "http://forge.allora.network",
+		APIKey:     "forge_sk_test",
+		WalletID:   negWalletID,
+	})
+	require.Error(t, err)
+}
+
+func TestNewRemoteSigner_RejectsEmptyAddress(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	srv := serveBackend(t, walletInfoJSON(map[string]string{
+		"id":      negWalletID,
+		"address": "",
+		"pubkey":  hex.EncodeToString(wallet.GetPublicKeyBytes()),
+	}), nil)
+	_, err = connectRemoteSigner(t, srv.URL)
+	require.Error(t, err)
+}
+
+func TestNewRemoteSigner_RejectsWrongWalletID(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	srv := serveBackend(t, walletInfoJSON(map[string]string{
+		"id":      "33333333-3333-3333-3333-333333333333",
+		"address": wallet.GetAddress(),
+		"pubkey":  hex.EncodeToString(wallet.GetPublicKeyBytes()),
+	}), nil)
+	_, err = connectRemoteSigner(t, srv.URL)
+	require.Error(t, err)
+}
+
+func TestNewRemoteSigner_RejectsMalformedPubKey(t *testing.T) {
+	srv := serveBackend(t, walletInfoJSON(map[string]string{
+		"id":      negWalletID,
+		"address": "allo1placeholder",
+		"pubkey":  "abcd", // valid hex, but only 2 bytes (not 33) — must not panic
+	}), nil)
+	_, err := connectRemoteSigner(t, srv.URL)
+	require.Error(t, err)
+}
+
+func TestNewRemoteSigner_RejectsNonJSONResponse(t *testing.T) {
+	srv := serveBackend(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte("<html>captive portal</html>"))
+	}, nil)
+	_, err := connectRemoteSigner(t, srv.URL)
+	require.Error(t, err)
+}
+
+func TestRemoteSigner_Sign_RejectsRotatedKey(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	other, err := GenerateWallet()
+	require.NoError(t, err)
+
+	srv := serveBackend(t,
+		walletInfoJSON(map[string]string{
+			"id":      negWalletID,
+			"address": wallet.GetAddress(),
+			"pubkey":  hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		}),
+		func(w http.ResponseWriter, r *http.Request) {
+			var body signRequest
+			raw, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(raw, &body))
+			payload, err := hex.DecodeString(body.Payload)
+			require.NoError(t, err)
+			sig, err := wallet.PrivKey.Sign(payload)
+			require.NoError(t, err)
+			// Sign with the real key but report a different pubkey (simulated rotation).
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"signature": hex.EncodeToString(sig),
+				"pubkey":    hex.EncodeToString(other.GetPublicKeyBytes()),
+			})
+		},
+	)
+	rs, err := connectRemoteSigner(t, srv.URL)
+	require.NoError(t, err)
+	_, err = rs.Sign([]byte("allora sign doc bytes"))
+	require.Error(t, err)
+}
+
+func TestRemoteSigner_Sign_RejectsUnverifiableSignature(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	srv := serveBackend(t,
+		walletInfoJSON(map[string]string{
+			"id":      negWalletID,
+			"address": wallet.GetAddress(),
+			"pubkey":  hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		}),
+		func(w http.ResponseWriter, _ *http.Request) {
+			// Valid length (64 bytes) but not a real signature over the payload.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"signature": hex.EncodeToString(make([]byte, 64)),
+				"pubkey":    hex.EncodeToString(wallet.GetPublicKeyBytes()),
+			})
+		},
+	)
+	rs, err := connectRemoteSigner(t, srv.URL)
+	require.NoError(t, err)
+	_, err = rs.Sign([]byte("allora sign doc bytes"))
+	require.Error(t, err)
+}
