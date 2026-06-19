@@ -2,6 +2,7 @@ package allora
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -51,6 +52,21 @@ func signWithContext(ctx context.Context, signer Signer, msg []byte) ([]byte, er
 		return cs.SignWithContext(ctx, msg)
 	}
 	return signer.Sign(msg)
+}
+
+// isNilSigner reports whether s is nil, including a typed-nil pointer stored in the
+// interface (e.g. a (*RemoteSigner)(nil)). A plain s == nil check misses the typed-nil
+// case, which would otherwise panic when the tx builder calls s.PubKey().
+func isNilSigner(s Signer) bool {
+	if s == nil {
+		return true
+	}
+	switch v := reflect.ValueOf(s); v.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // Compile-time assurance that the concrete secp256k1 private key — the type held inside

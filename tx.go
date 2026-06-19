@@ -182,7 +182,7 @@ func SignTransactionWith(
 	if len(unsignedTx) == 0 {
 		return nil, fmt.Errorf("unsigned transaction is empty")
 	}
-	if signer == nil {
+	if isNilSigner(signer) {
 		return nil, fmt.Errorf("signer is required")
 	}
 
