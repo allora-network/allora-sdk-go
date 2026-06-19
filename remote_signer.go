@@ -106,10 +106,14 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	}
 	rs.pubKey = &secp256k1.PubKey{Key: pubBytes}
 
-	// Derive the address from the pubkey and cross-check it against the backend's
-	// reported address so a misconfigured wallet fails here rather than on broadcast.
+	// Require the backend to report the wallet address and cross-check it against the
+	// pubkey-derived address so a misconfigured wallet fails here rather than on
+	// broadcast. An empty address would silently disable this integrity check.
+	if info.Address == "" {
+		return fmt.Errorf("backend returned empty wallet address for wallet %s", rs.cfg.WalletID)
+	}
 	derived := sdk.AccAddress(rs.pubKey.Address())
-	if info.Address != "" && derived.String() != info.Address {
+	if derived.String() != info.Address {
 		return fmt.Errorf("backend address %s does not match pubkey-derived address %s", info.Address, derived.String())
 	}
 	rs.address = derived
