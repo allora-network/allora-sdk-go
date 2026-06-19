@@ -228,9 +228,25 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 	if err := json.Unmarshal(body, &sr); err != nil {
 		return nil, fmt.Errorf("decoding sign response: %w", err)
 	}
+	// The cached pubkey is snapshotted at construction and encoded into the tx AuthInfo.
+	// If the backend rotated the Privy key (or returned another wallet's key), the cached
+	// key would no longer match the signing key and broadcast would fail with an opaque
+	// "signature verification failed". Detect that here with an actionable error.
+	if sr.PubKey != "" {
+		respPub, err := hex.DecodeString(sr.PubKey)
+		if err != nil {
+			return nil, fmt.Errorf("decoding response pubkey: %w", err)
+		}
+		if !bytes.Equal(respPub, rs.pubKey.Bytes()) {
+			return nil, fmt.Errorf("backend signing key rotated for wallet %s; reconstruct the RemoteSigner", rs.cfg.WalletID)
+		}
+	}
 	sig, err := hex.DecodeString(sr.Signature)
 	if err != nil {
 		return nil, fmt.Errorf("decoding signature: %w", err)
+	}
+	if len(sig) != 64 {
+		return nil, fmt.Errorf("backend returned %d-byte signature, expected 64", len(sig))
 	}
 	return sig, nil
 }
