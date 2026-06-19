@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
@@ -48,6 +49,9 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	if cfg.BackendURL == "" || cfg.APIKey == "" || cfg.WalletID == "" {
 		return nil, fmt.Errorf("backend URL, API key, and wallet ID are all required")
 	}
+	// Normalize the base URL so a configured trailing slash (or several) does not
+	// produce a malformed "...//api/v1/..." request path.
+	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
 	rs := &RemoteSigner{cfg: cfg, httpClient: cfg.HTTPClient}
 	if rs.httpClient == nil {
 		rs.httpClient = &http.Client{Timeout: 30 * time.Second}
