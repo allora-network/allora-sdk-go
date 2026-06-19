@@ -1,12 +1,15 @@
 package allora
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -146,6 +149,54 @@ func assertTxSignatureVerifies(t *testing.T, signedTx []byte, params *TxParams) 
 func TestNewRemoteSigner_RequiresConfig(t *testing.T) {
 	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{})
 	require.Error(t, err)
+}
+
+// TestRemoteSigner_ConcurrentSign pins the documented goroutine-safety guarantee: a
+// single RemoteSigner shared across goroutines must produce a valid signature on every
+// call. Run with -race to catch any future field that turns the struct into a data race.
+func TestRemoteSigner_ConcurrentSign(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	srv := newFakeForgeBackend(t, wallet, walletID)
+	defer srv.Close()
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL,
+		APIKey:     "forge_sk_test",
+		WalletID:   walletID,
+	})
+	require.NoError(t, err)
+
+	msg := []byte("allora sign doc bytes")
+	// The fake backend signs deterministically (RFC 6979) with the same key, so every
+	// concurrent result must equal this reference signature.
+	want, err := rs.Sign(msg)
+	require.NoError(t, err)
+
+	const n = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			got, err := rs.Sign(msg)
+			if err != nil {
+				errs <- err
+				return
+			}
+			if !bytes.Equal(got, want) {
+				errs <- fmt.Errorf("concurrent signature mismatch")
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
 }
 
 const negWalletID = "22222222-2222-2222-2222-222222222222"

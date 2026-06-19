@@ -40,6 +40,10 @@ type RemoteSignerConfig struct {
 // RemoteSigner signs transactions by delegating to the Forge backend's signing-wallet
 // API. The private key never leaves Privy/the backend. It implements Signer, so it can
 // be passed to SignTransactionWith exactly like a local wallet.
+//
+// A RemoteSigner is safe for concurrent use by multiple goroutines: every field is set
+// once in NewRemoteSigner and only read thereafter, so a single signer can be shared
+// across a worker's transactions for its lifetime.
 type RemoteSigner struct {
 	cfg        RemoteSignerConfig
 	httpClient *http.Client
