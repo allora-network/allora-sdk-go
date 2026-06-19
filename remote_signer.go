@@ -254,6 +254,12 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 		if err != nil {
 			return nil, fmt.Errorf("decoding response pubkey: %w", err)
 		}
+		// Length-check before comparing: an alternate but valid encoding of the *same* key
+		// (uncompressed 65-byte SEC1, amino-prefixed, ...) would fail bytes.Equal and be
+		// misreported as a key rotation, sending users down a wrong debugging path.
+		if len(respPub) != secp256k1.PubKeySize {
+			return nil, fmt.Errorf("backend returned %d-byte pubkey, expected %d-byte compressed secp256k1", len(respPub), secp256k1.PubKeySize)
+		}
 		if !bytes.Equal(respPub, rs.pubKey.Bytes()) {
 			return nil, fmt.Errorf("backend signing key rotated for wallet %s; reconstruct the RemoteSigner", rs.cfg.WalletID)
 		}
