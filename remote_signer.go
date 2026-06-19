@@ -248,6 +248,13 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 	if len(sig) != 64 {
 		return nil, fmt.Errorf("backend returned %d-byte signature, expected 64", len(sig))
 	}
+	// Verify locally against the cached pubkey. cosmos secp256k1.VerifySignature rejects
+	// non-canonical (high-S) signatures and confirms the signature is valid over
+	// SHA-256(msg), so a backend low-S normalization regression fails here with a clear
+	// error rather than producing a tx the chain rejects opaquely.
+	if !rs.pubKey.VerifySignature(msg, sig) {
+		return nil, fmt.Errorf("backend signature failed local verification (non-canonical/high-S or wrong key)")
+	}
 	return sig, nil
 }
 
