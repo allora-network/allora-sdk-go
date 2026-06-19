@@ -138,6 +138,17 @@ signedTx, _ := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
 The self-managed path — `SignTransaction(unsignedTx, wallet, params)` with a local
 `Wallet` — is unchanged.
 
+### Fee granter (optional gas subsidy)
+
+Set `TxParams.FeeGranter` to have the transaction fee paid by another account via an
+on-chain feegrant, so a Privy-managed worker can hold no ALLO of its own. The granter is
+the Forge **master wallet address**: forge-v2 auto-creates a feegrant from it to each new
+signing wallet. That address is **not currently returned by any signing-wallet API
+endpoint**, so it must be supplied out-of-band today (forge-v2 configures the master
+granter via `PRIVY_MASTER_WALLET_ADDRESS`). Exposing it from the backend — so a
+master-wallet rotation does not force every SDK consumer to reconfigure — is tracked
+separately in forge-v2.
+
 ## Configuration
 
 ### Client Configuration
