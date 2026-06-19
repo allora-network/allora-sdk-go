@@ -1,6 +1,7 @@
 package allora
 
 import (
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 )
 
@@ -23,7 +24,9 @@ type Signer interface {
 	Sign(msg []byte) ([]byte, error)
 }
 
-// Compile-time assurance that a local private key satisfies Signer. Any
-// cryptotypes.PrivKey (e.g. wallet.PrivKey) is a Signer, so the self-managed path needs
-// no adapter.
-var _ Signer = cryptotypes.PrivKey(nil)
+// Compile-time assurance that the concrete secp256k1 private key — the type held inside
+// *Wallet via wallet.PrivKey — satisfies Signer, so the self-managed path needs no
+// adapter. Asserting the concrete type (rather than the cryptotypes.PrivKey interface)
+// exercises the exact code path callers hit and would catch a future secp256k1 method
+// signature change that an interface-vs-interface check silently allows.
+var _ Signer = (*secp256k1.PrivKey)(nil)
