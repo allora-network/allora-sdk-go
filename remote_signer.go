@@ -90,6 +90,11 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	if err := json.Unmarshal(body, &info); err != nil {
 		return fmt.Errorf("decoding wallet-info response: %w", err)
 	}
+	// Reject a response describing a different wallet than the one requested, so a
+	// misrouted or buggy backend cannot silently bind this signer to the wrong key.
+	if info.ID != "" && info.ID != rs.cfg.WalletID {
+		return fmt.Errorf("backend returned wallet id %q, expected %q", info.ID, rs.cfg.WalletID)
+	}
 	pubBytes, err := hex.DecodeString(info.PubKey)
 	if err != nil {
 		return fmt.Errorf("decoding wallet pubkey: %w", err)
