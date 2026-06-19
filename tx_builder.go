@@ -98,6 +98,16 @@ func (b *txBuilder) signTx(
 
 	// Get public key
 	pubKey := signer.PubKey()
+	signerAddr := sdk.AccAddress(pubKey.Address()).String()
+
+	// Guard against signing a transaction whose message sender is not the signer; such a
+	// tx is rejected on-chain ("signature verification failed") far from the cause. The
+	// SDK builds bank MsgSend transactions, so verify those senders explicitly.
+	for _, msg := range decodedTx.GetMsgs() {
+		if send, ok := msg.(*banktypes.MsgSend); ok && send.FromAddress != signerAddr {
+			return nil, fmt.Errorf("signer address %s does not match transaction sender %s", signerAddr, send.FromAddress)
+		}
+	}
 
 	// Convert API sign mode to internal
 	apiSignMode := b.txConfig.SignModeHandler().DefaultMode()
@@ -128,7 +138,7 @@ func (b *txBuilder) signTx(
 		ChainID:       params.ChainID,
 		AccountNumber: params.AccountNumber,
 		Sequence:      params.Sequence,
-		Address:       sdk.AccAddress(pubKey.Address()).String(),
+		Address:       signerAddr,
 		PubKey:        pubKey,
 	}
 
