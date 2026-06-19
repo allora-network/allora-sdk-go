@@ -104,8 +104,10 @@ func main() {
 
 By default the SDK signs with a local key (`Wallet`). Alternatively, you can delegate
 signing to the Forge backend, which signs with a Privy-managed server wallet — the worker
-holds no private key. Both a local `Wallet` and the backend-backed `RemoteSigner` satisfy
-the `Signer` interface, so `SignTransactionWith` accepts either.
+holds no private key. A local wallet's key (`wallet.PrivKey`) and the backend-backed
+`RemoteSigner` both satisfy the `Signer` interface, so `SignTransactionWith` accepts
+either. (For a local wallet you can also use the `SignTransaction(unsignedTx, wallet,
+params)` convenience wrapper.)
 
 ```go
 ctx := context.Background()
@@ -130,7 +132,10 @@ params := &allora.TxParams{
     // FeeGranter: masterAddr, // optional: subsidize gas from a master wallet via feegrant
 }
 
-unsignedTx, _ := allora.CreateUnsignedSendTx(signer.AccAddress(), toAddr, amount, params)
+// signer.PubKey().Address() works for any Signer (local key or RemoteSigner); a
+// *RemoteSigner additionally offers the signer.AccAddress() convenience helper.
+fromAddr := sdk.AccAddress(signer.PubKey().Address())
+unsignedTx, _ := allora.CreateUnsignedSendTx(fromAddr, toAddr, amount, params)
 signedTx, _ := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
 // broadcast signedTx via client.Cosmos().Tx().BroadcastTx(...)
 ```
