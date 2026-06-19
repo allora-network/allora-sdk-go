@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	signingtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
+	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,9 +92,55 @@ func TestRemoteSigner_MatchesLocalSigning(t *testing.T) {
 	remoteSigned, err := SignTransactionWith(context.Background(), unsigned, rs, params)
 	require.NoError(t, err)
 
-	// secp256k1 signing is deterministic (RFC 6979), so signing the same SignDoc with the
-	// same key via the remote path must yield byte-identical signed tx bytes.
+	// The fake backend signs with the same local key and secp256k1 is deterministic
+	// (RFC 6979), so byte-equality holds here. The real Privy backend may choose a
+	// different (still-valid) nonce, so the contract check that survives a
+	// non-deterministic backend is that the remote-signed tx carries a signature that
+	// verifies against the signer's pubkey.
 	require.Equal(t, localSigned, remoteSigned)
+	assertTxSignatureVerifies(t, remoteSigned, params)
+}
+
+// assertTxSignatureVerifies decodes a signed tx, recomputes the SignDoc bytes from the
+// embedded signer info, and verifies the signature against the signer's pubkey. Unlike a
+// byte-equality check against local signing, this passes for any valid ECDSA signature
+// regardless of the nonce the backend chose.
+func assertTxSignatureVerifies(t *testing.T, signedTx []byte, params *TxParams) {
+	t.Helper()
+	b := newTxBuilder()
+	decoded, err := b.txConfig.TxDecoder()(signedTx)
+	require.NoError(t, err)
+
+	sigTx, ok := decoded.(authsigning.Tx)
+	require.True(t, ok, "decoded tx must expose signatures")
+	sigs, err := sigTx.GetSignaturesV2()
+	require.NoError(t, err)
+	require.Len(t, sigs, 1)
+
+	pubKey := sigs[0].PubKey
+	require.NotNil(t, pubKey)
+	single, ok := sigs[0].Data.(*signingtypes.SingleSignatureData)
+	require.True(t, ok)
+
+	signMode, err := authsigning.APISignModeToInternal(b.txConfig.SignModeHandler().DefaultMode())
+	require.NoError(t, err)
+	signerData := authsigning.SignerData{
+		ChainID:       params.ChainID,
+		AccountNumber: params.AccountNumber,
+		Sequence:      params.Sequence,
+		Address:       sdk.AccAddress(pubKey.Address()).String(),
+		PubKey:        pubKey,
+	}
+	signBytes, err := authsigning.GetSignBytesAdapter(
+		context.Background(),
+		b.txConfig.SignModeHandler(),
+		signMode,
+		signerData,
+		decoded,
+	)
+	require.NoError(t, err)
+	require.True(t, pubKey.VerifySignature(signBytes, single.Signature),
+		"remote-signed tx signature must verify against the signer pubkey")
 }
 
 func TestNewRemoteSigner_RequiresConfig(t *testing.T) {
