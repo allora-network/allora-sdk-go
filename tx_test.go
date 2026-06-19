@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateUnsignedSendTx(t *testing.T) {
@@ -378,4 +379,31 @@ func TestTxRoundTrip(t *testing.T) {
 	}
 
 	t.Logf("Parsed transaction with %d message(s)", len(msgs))
+}
+
+func TestTxParams_FeeGranterIsEncoded(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	granter, err := sdk.AccAddressFromBech32(wallet.GetAddress())
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	base := &TxParams{
+		ChainID:   "allora-testnet-1",
+		GasLimit:  200000,
+		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	withGranter := *base
+	withGranter.FeeGranter = granter
+
+	unsignedNoGranter, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, base)
+	require.NoError(t, err)
+	unsignedWithGranter, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, &withGranter)
+	require.NoError(t, err)
+
+	// Setting the fee granter must change the encoded AuthInfo (the granter address is
+	// written into the tx). An empty granter leaves the tx untouched.
+	require.NotEqual(t, unsignedNoGranter, unsignedWithGranter)
+	require.Greater(t, len(unsignedWithGranter), len(unsignedNoGranter))
 }
