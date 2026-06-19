@@ -164,11 +164,14 @@ func SignTransaction(
 //
 // Example:
 //
-//	signer, _ := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
+//	signer, err := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
 //	    BackendURL: "https://forge.allora.network",
 //	    APIKey:     apiKey,
 //	    WalletID:   walletID,
 //	})
+//	if err != nil {
+//	    return err
+//	}
 //	signedTx, err := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
 func SignTransactionWith(
 	ctx context.Context,
