@@ -34,10 +34,10 @@ type RemoteSignerConfig struct {
 // API. The private key never leaves Privy/the backend. It implements Signer, so it can
 // be passed to SignTransactionWith exactly like a local wallet.
 type RemoteSigner struct {
-	cfg     RemoteSignerConfig
-	http    *http.Client
-	pubKey  cryptotypes.PubKey
-	address sdk.AccAddress
+	cfg        RemoteSignerConfig
+	httpClient *http.Client
+	pubKey     cryptotypes.PubKey
+	address    sdk.AccAddress
 }
 
 var _ Signer = (*RemoteSigner)(nil)
@@ -48,9 +48,9 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	if cfg.BackendURL == "" || cfg.APIKey == "" || cfg.WalletID == "" {
 		return nil, fmt.Errorf("backend URL, API key, and wallet ID are all required")
 	}
-	rs := &RemoteSigner{cfg: cfg, http: cfg.HTTPClient}
-	if rs.http == nil {
-		rs.http = &http.Client{Timeout: 30 * time.Second}
+	rs := &RemoteSigner{cfg: cfg, httpClient: cfg.HTTPClient}
+	if rs.httpClient == nil {
+		rs.httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	if err := rs.fetchWallet(ctx); err != nil {
 		return nil, err
@@ -150,7 +150,7 @@ func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
 
 // do executes an HTTP request and returns the body, mapping non-2xx to an error.
 func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
-	resp, err := rs.http.Do(req)
+	resp, err := rs.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("calling forge backend: %w", err)
 	}
