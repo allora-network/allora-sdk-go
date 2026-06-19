@@ -73,6 +73,12 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	if base.RawQuery != "" || base.Fragment != "" {
 		return nil, fmt.Errorf("backend URL must not contain a query string or fragment")
 	}
+	// Reject embedded userinfo (e.g. "https://user:pass@host"): net/http would emit Basic
+	// Auth on every request alongside the X-Forge-API-Key, and the credentials would leak
+	// into *url.Error strings (and thus logs) on any network failure.
+	if base.User != nil {
+		return nil, fmt.Errorf("backend URL must not contain userinfo")
+	}
 	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
 		return nil, fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
 	}
