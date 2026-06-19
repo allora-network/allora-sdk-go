@@ -224,6 +224,11 @@ func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
 	return sig, nil
 }
 
+// maxResponseBytes caps how much of a backend response the signer buffers, so a broken
+// or malicious endpoint cannot drive unbounded memory use during construction or
+// signing. Wallet-info and signature responses are tiny; 1 MiB is generous headroom.
+const maxResponseBytes = 1 << 20
+
 // do executes an HTTP request and returns the body, mapping non-2xx to an error.
 func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	resp, err := rs.httpClient.Do(req)
@@ -231,12 +236,22 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 		return nil, fmt.Errorf("calling forge backend: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("reading forge response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
 	}
 	return body, nil
+}
+
+// truncateForError bounds an error-message body excerpt so a large response body does
+// not bloat logs or error chains.
+func truncateForError(body []byte) string {
+	const max = 512
+	if len(body) > max {
+		return string(body[:max]) + "..."
+	}
+	return string(body)
 }
