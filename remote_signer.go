@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/google/uuid"
 )
 
 // apiKeyHeader is the header carrying a Forge API key on requests to the backend.
@@ -52,6 +54,11 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	// Normalize the base URL so a configured trailing slash (or several) does not
 	// produce a malformed "...//api/v1/..." request path.
 	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
+	// The wallet ID is interpolated into request paths; require it to be a UUID so a
+	// malformed value cannot inject path segments or query strings.
+	if _, err := uuid.Parse(cfg.WalletID); err != nil {
+		return nil, fmt.Errorf("wallet ID must be a UUID: %w", err)
+	}
 	rs := &RemoteSigner{cfg: cfg, httpClient: cfg.HTTPClient}
 	if rs.httpClient == nil {
 		rs.httpClient = &http.Client{Timeout: 30 * time.Second}
@@ -78,7 +85,7 @@ type signingWalletInfoResponse struct {
 }
 
 func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
-	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s", rs.cfg.BackendURL, rs.cfg.WalletID)
+	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s", rs.cfg.BackendURL, url.PathEscape(rs.cfg.WalletID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("creating wallet-info request: %w", err)
@@ -143,7 +150,7 @@ func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling sign request: %w", err)
 	}
-	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s/sign", rs.cfg.BackendURL, rs.cfg.WalletID)
+	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s/sign", rs.cfg.BackendURL, url.PathEscape(rs.cfg.WalletID))
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("creating sign request: %w", err)
