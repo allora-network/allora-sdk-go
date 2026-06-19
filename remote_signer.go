@@ -78,8 +78,8 @@ type signingWalletInfoResponse struct {
 }
 
 func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
-	url := fmt.Sprintf("%s/api/v1/signing-wallets/%s", rs.cfg.BackendURL, rs.cfg.WalletID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s", rs.cfg.BackendURL, rs.cfg.WalletID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("creating wallet-info request: %w", err)
 	}
@@ -143,8 +143,8 @@ func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshaling sign request: %w", err)
 	}
-	url := fmt.Sprintf("%s/api/v1/signing-wallets/%s/sign", rs.cfg.BackendURL, rs.cfg.WalletID)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, bytes.NewReader(reqBody))
+	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s/sign", rs.cfg.BackendURL, rs.cfg.WalletID)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("creating sign request: %w", err)
 	}
