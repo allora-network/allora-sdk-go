@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,19 +55,69 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	// Normalize the base URL so a configured trailing slash (or several) does not
 	// produce a malformed "...//api/v1/..." request path.
 	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
+	// Validate the base URL and require TLS for non-localhost hosts so the Forge API
+	// key is never sent over plaintext or to a non-absolute target.
+	base, err := url.Parse(cfg.BackendURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid backend URL: %w", err)
+	}
+	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
+		return nil, fmt.Errorf("backend URL must be an absolute http(s) URL")
+	}
+	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
+		return nil, fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
+	}
 	// The wallet ID is interpolated into request paths; require it to be a UUID so a
 	// malformed value cannot inject path segments or query strings.
 	if _, err := uuid.Parse(cfg.WalletID); err != nil {
 		return nil, fmt.Errorf("wallet ID must be a UUID: %w", err)
 	}
-	rs := &RemoteSigner{cfg: cfg, httpClient: cfg.HTTPClient}
-	if rs.httpClient == nil {
-		rs.httpClient = &http.Client{Timeout: 30 * time.Second}
-	}
+	rs := &RemoteSigner{cfg: cfg, httpClient: newGuardedClient(cfg.HTTPClient)}
 	if err := rs.fetchWallet(ctx); err != nil {
 		return nil, err
 	}
 	return rs, nil
+}
+
+// newGuardedClient returns the HTTP client used for backend calls. A nil client gets a
+// default 30s-timeout client; a caller-supplied client is shallow-copied so the redirect
+// policy can be installed without mutating the caller's instance.
+func newGuardedClient(c *http.Client) *http.Client {
+	guarded := &http.Client{Timeout: 30 * time.Second}
+	if c != nil {
+		cp := *c
+		guarded = &cp
+	}
+	guarded.CheckRedirect = stripCredentialOnCrossOrigin
+	return guarded
+}
+
+// stripCredentialOnCrossOrigin removes the Forge API key header before following any
+// redirect that changes origin (scheme or host) and bounds the redirect chain. Go's
+// default policy only strips its built-in sensitive headers (Authorization, Cookie) on
+// cross-host redirects, so a custom credential header would otherwise leak to a
+// plaintext or attacker-controlled target via an open redirect.
+func stripCredentialOnCrossOrigin(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	prev := via[len(via)-1]
+	if req.URL.Scheme != prev.URL.Scheme || req.URL.Host != prev.URL.Host {
+		req.Header.Del(apiKeyHeader)
+	}
+	return nil
+}
+
+// isLoopbackHost reports whether host is localhost or a loopback IP, the only hosts for
+// which a plaintext http backend URL is permitted.
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // PubKey returns the wallet's secp256k1 public key.
