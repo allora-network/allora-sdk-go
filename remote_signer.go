@@ -169,8 +169,13 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 		return fmt.Errorf("decoding wallet-info response: %w", err)
 	}
 	// Reject a response describing a different wallet than the one requested, so a
-	// misrouted or buggy backend cannot silently bind this signer to the wrong key.
-	if info.ID != "" && info.ID != rs.cfg.WalletID {
+	// misrouted or buggy backend cannot silently bind this signer to the wrong key. An
+	// empty id must fail rather than skip the check (a backend that omits it is broken by
+	// definition) — the same non-empty posture applied to the address field below.
+	if info.ID == "" {
+		return fmt.Errorf("backend returned empty wallet id for wallet %s", rs.cfg.WalletID)
+	}
+	if info.ID != rs.cfg.WalletID {
 		return fmt.Errorf("backend returned wallet id %q, expected %q", info.ID, rs.cfg.WalletID)
 	}
 	pubBytes, err := hex.DecodeString(info.PubKey)
