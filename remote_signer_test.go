@@ -37,7 +37,8 @@ func newFakeForgeBackend(t *testing.T, wallet *Wallet, walletID string) *httptes
 		require.NotEmpty(t, r.Header.Get(apiKeyHeader))
 
 		var body signRequest
-		raw, _ := io.ReadAll(r.Body)
+		raw, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
 		require.NoError(t, json.Unmarshal(raw, &body))
 		require.False(t, body.Prehashed, "tx signing must request hash-then-sign")
 
