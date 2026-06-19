@@ -297,6 +297,12 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading forge response: %w", err)
 	}
+	// A normal response is fully consumed above, so the keep-alive transport can reuse the
+	// connection. If the body exceeded the cap, drain a bounded amount past it so the
+	// connection stays reusable without letting a hostile oversized body stream forever;
+	// anything beyond that is left for Close to discard (a new connection is acceptable for
+	// an abnormal response).
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
 	}
