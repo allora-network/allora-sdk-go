@@ -18,8 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testMnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
-
 // newFakeForgeBackend mimics the Forge signing-wallet API, signing with the given local
 // wallet so tests can assert that remote signing equals local signing.
 func newFakeForgeBackend(t *testing.T, wallet *Wallet, walletID string) *httptest.Server {
