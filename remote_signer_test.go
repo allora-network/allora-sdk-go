@@ -24,6 +24,7 @@ func newFakeForgeBackend(t *testing.T, wallet *Wallet, walletID string) *httptes
 	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodGet, r.Method)
 		require.NotEmpty(t, r.Header.Get(apiKeyHeader))
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"id":      walletID,
 			"address": wallet.GetAddress(),
@@ -46,6 +47,7 @@ func newFakeForgeBackend(t *testing.T, wallet *Wallet, walletID string) *httptes
 		// the real backend does via Privy's raw sign over sha256(SignDoc).
 		sig, err := wallet.PrivKey.Sign(payload)
 		require.NoError(t, err)
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"signature": hex.EncodeToString(sig),
 			"pubkey":    hex.EncodeToString(wallet.GetPublicKeyBytes()),

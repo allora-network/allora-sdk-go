@@ -142,6 +142,7 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 		return fmt.Errorf("creating wallet-info request: %w", err)
 	}
 	req.Header.Set(apiKeyHeader, rs.cfg.APIKey)
+	req.Header.Set("Accept", "application/json")
 
 	body, err := rs.do(req)
 	if err != nil {
@@ -208,6 +209,7 @@ func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
 	}
 	req.Header.Set(apiKeyHeader, rs.cfg.APIKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
 	body, err := rs.do(req)
 	if err != nil {
@@ -242,6 +244,11 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	// A 2xx with a non-JSON body usually means a captive portal, auth proxy, or
+	// misconfigured CDN; surface that clearly instead of an opaque JSON-decode error.
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		return nil, fmt.Errorf("forge backend returned non-JSON response (content-type %q): %s", ct, truncateForError(body))
 	}
 	return body, nil
 }
