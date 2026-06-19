@@ -17,6 +17,12 @@ import (
 // Implementations MUST return a 64-byte, low-S secp256k1 signature computed over
 // SHA-256(msg), exactly matching cosmos secp256k1 semantics; otherwise on-chain
 // signature verification will fail.
+//
+// Signer is intentionally transaction-only: callers sign SignDoc bytes with
+// hash-then-sign (RemoteSigner sends prehashed=false). It deliberately omits the
+// prehashed/digest variant the Python SDK exposes via sign_digest; a Go worker that
+// needs to sign a raw 32-byte application digest should use a dedicated API rather than
+// widening this tx-signing contract.
 type Signer interface {
 	// PubKey returns the signer's public key.
 	PubKey() cryptotypes.PubKey
