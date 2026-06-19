@@ -1,6 +1,7 @@
 package allora
 
 import (
+	"context"
 	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -139,15 +140,21 @@ func SignTransaction(
 	if wallet == nil {
 		return nil, fmt.Errorf("wallet is required")
 	}
-	// wallet.PrivKey is a cryptotypes.PrivKey, which satisfies Signer.
-	return SignTransactionWith(unsignedTx, wallet.PrivKey, params)
+	// wallet.PrivKey is a cryptotypes.PrivKey, which satisfies Signer. Local signing is
+	// CPU-bound, so a background context is sufficient.
+	return SignTransactionWith(context.Background(), unsignedTx, wallet.PrivKey, params)
 }
 
 // SignTransactionWith signs an unsigned transaction with any Signer. This is the
 // general form of SignTransaction: pass a local wallet's key for self-managed signing,
 // or a *RemoteSigner to delegate signing to the Forge backend (Privy-managed wallet).
 //
+// ctx is propagated to signers that perform I/O: a *RemoteSigner issues an HTTP call to
+// the backend, so a deadline or cancellation on ctx bounds that call. Local-key signers
+// ignore it.
+//
 // Parameters:
+//   - ctx: Context for cancellation/deadlines, honored by I/O-backed signers
 //   - unsignedTx: The unsigned transaction bytes from CreateUnsignedSendTx
 //   - signer: The signer (local key or remote signer)
 //   - params: The same TxParams used to create the unsigned transaction
@@ -159,8 +166,9 @@ func SignTransaction(
 //	    APIKey:     apiKey,
 //	    WalletID:   walletID,
 //	})
-//	signedTx, err := allora.SignTransactionWith(unsignedTx, signer, params)
+//	signedTx, err := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
 func SignTransactionWith(
+	ctx context.Context,
 	unsignedTx []byte,
 	signer Signer,
 	params *TxParams,
@@ -176,7 +184,7 @@ func SignTransactionWith(
 	}
 
 	builder := newTxBuilder()
-	return builder.signTx(unsignedTx, signer, params)
+	return builder.signTx(ctx, unsignedTx, signer, params)
 }
 
 // CreateSignedSendTx is a convenience function that creates and signs a send transaction in one step

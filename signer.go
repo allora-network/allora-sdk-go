@@ -1,6 +1,8 @@
 package allora
 
 import (
+	"context"
+
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 )
@@ -28,6 +30,27 @@ type Signer interface {
 	PubKey() cryptotypes.PubKey
 	// Sign returns a signature over the given SignDoc bytes.
 	Sign(msg []byte) ([]byte, error)
+}
+
+// ContextSigner is an optional extension of Signer for implementations whose signing
+// performs I/O (e.g. RemoteSigner's HTTP call to the Forge backend). When a Signer also
+// implements ContextSigner, the tx builder calls SignWithContext so the caller's
+// cancellation and deadline propagate to the in-flight signing operation. Local-key
+// signers need not implement it; their Sign is purely CPU-bound.
+type ContextSigner interface {
+	Signer
+	// SignWithContext returns a signature over the SignDoc bytes, honoring ctx for
+	// cancellation and deadlines.
+	SignWithContext(ctx context.Context, msg []byte) ([]byte, error)
+}
+
+// signWithContext signs msg using the signer's context-aware path when it implements
+// ContextSigner, falling back to the context-free Sign for local-key signers.
+func signWithContext(ctx context.Context, signer Signer, msg []byte) ([]byte, error) {
+	if cs, ok := signer.(ContextSigner); ok {
+		return cs.SignWithContext(ctx, msg)
+	}
+	return signer.Sign(msg)
 }
 
 // Compile-time assurance that the concrete secp256k1 private key — the type held inside

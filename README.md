@@ -131,7 +131,7 @@ params := &allora.TxParams{
 }
 
 unsignedTx, _ := allora.CreateUnsignedSendTx(signer.AccAddress(), toAddr, amount, params)
-signedTx, _ := allora.SignTransactionWith(unsignedTx, signer, params)
+signedTx, _ := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
 // broadcast signedTx via client.Cosmos().Tx().BroadcastTx(...)
 ```
 

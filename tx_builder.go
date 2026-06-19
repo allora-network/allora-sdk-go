@@ -74,8 +74,11 @@ func (b *txBuilder) buildUnsignedSendTx(
 	return txBytes, nil
 }
 
-// signTx signs a transaction with the provided signer (a local key or a remote signer)
+// signTx signs a transaction with the provided signer (a local key or a remote signer).
+// ctx is honored by signers that perform I/O (e.g. RemoteSigner) and during sign-bytes
+// assembly.
 func (b *txBuilder) signTx(
+	ctx context.Context,
 	txBytes []byte,
 	signer Signer,
 	params *TxParams,
@@ -131,7 +134,7 @@ func (b *txBuilder) signTx(
 
 	// Get the bytes to sign
 	bytesToSign, err := authsigning.GetSignBytesAdapter(
-		context.Background(),
+		ctx,
 		b.txConfig.SignModeHandler(),
 		signMode,
 		signerData,
@@ -142,7 +145,7 @@ func (b *txBuilder) signTx(
 	}
 
 	// Sign the bytes
-	signature, err := signer.Sign(bytesToSign)
+	signature, err := signWithContext(ctx, signer, bytesToSign)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}

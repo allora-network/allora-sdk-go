@@ -86,7 +86,7 @@ func TestRemoteSigner_MatchesLocalSigning(t *testing.T) {
 
 	localSigned, err := SignTransaction(unsigned, wallet, params)
 	require.NoError(t, err)
-	remoteSigned, err := SignTransactionWith(unsigned, rs, params)
+	remoteSigned, err := SignTransactionWith(context.Background(), unsigned, rs, params)
 	require.NoError(t, err)
 
 	// secp256k1 signing is deterministic (RFC 6979), so signing the same SignDoc with the

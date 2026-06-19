@@ -44,7 +44,10 @@ type RemoteSigner struct {
 	address    sdk.AccAddress
 }
 
-var _ Signer = (*RemoteSigner)(nil)
+var (
+	_ Signer        = (*RemoteSigner)(nil)
+	_ ContextSigner = (*RemoteSigner)(nil)
+)
 
 // NewRemoteSigner builds a RemoteSigner and fetches the wallet's public key and address
 // from the backend (needed to assemble the SignDoc before the wallet has transacted).
@@ -193,17 +196,23 @@ type signResponse struct {
 	PubKey    string `json:"pubkey"`
 }
 
-// Sign delegates signing of the SignDoc bytes to the backend. The backend SHA-256
-// hashes the payload and signs it with the Privy wallet, returning the 64-byte
-// signature. Signer.Sign carries no context, so a background context bounded by the
-// HTTP client timeout is used.
+// Sign signs the SignDoc bytes using a background context bounded by the HTTP client
+// timeout. Callers with a deadline or cancellation should use SignWithContext; the tx
+// builder does this automatically via the ContextSigner interface.
 func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
+	return rs.SignWithContext(context.Background(), msg)
+}
+
+// SignWithContext delegates signing of the SignDoc bytes to the backend, honoring ctx
+// for cancellation and deadlines. The backend SHA-256 hashes the payload and signs it
+// with the Privy wallet, returning the 64-byte signature.
+func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte, error) {
 	reqBody, err := json.Marshal(signRequest{Payload: hex.EncodeToString(msg), Prehashed: false})
 	if err != nil {
 		return nil, fmt.Errorf("marshaling sign request: %w", err)
 	}
 	reqURL := fmt.Sprintf("%s/api/v1/signing-wallets/%s/sign", rs.cfg.BackendURL, url.PathEscape(rs.cfg.WalletID))
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, reqURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("creating sign request: %w", err)
 	}
