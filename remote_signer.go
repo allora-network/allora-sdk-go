@@ -396,15 +396,20 @@ func requireSecureBackend(backendURL string) error {
 	return nil
 }
 
+// provisionWalletRequest is the POST body for topic wallet provisioning. A typed struct
+// (matching signRequest/signResponse/signingWalletInfoResponse) keeps the wire contract
+// visible and gives the field names compile-time safety; the omitempty tag reproduces the
+// previous "include label only when non-empty" behavior.
+type provisionWalletRequest struct {
+	TopicID int64  `json:"topic_id"`
+	Label   string `json:"label,omitempty"`
+}
+
 // provisionWalletForTopic POSTs to /api/v1/signing-wallets with a topic_id (idempotent
 // get-or-create) and returns the wallet's UUID. A static /provision sub-route would collide
 // with /:id in the backend router, so provisioning rides on the create endpoint.
 func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (string, error) {
-	payload := map[string]any{"topic_id": topicID}
-	if label != "" {
-		payload["label"] = label
-	}
-	reqBody, err := json.Marshal(payload)
+	reqBody, err := json.Marshal(provisionWalletRequest{TopicID: topicID, Label: label})
 	if err != nil {
 		return "", fmt.Errorf("marshaling provision request: %w", err)
 	}
