@@ -181,6 +181,12 @@ func SignTransactionWith(
 	signer Signer,
 	params *TxParams,
 ) ([]byte, error) {
+	// A nil context would panic in http.NewRequestWithContext when the signer is a
+	// RemoteSigner. Default it to context.Background() (as SignTransaction already does) so a
+	// nil ctx degrades to "no deadline/cancellation" instead of crashing during signing.
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if params == nil {
 		return nil, fmt.Errorf("tx params are required")
 	}

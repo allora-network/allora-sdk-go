@@ -215,6 +215,41 @@ func TestNewRemoteSignerForTopic_BuildsFromProvisionResponse(t *testing.T) {
 	require.Equal(t, wallet.GetPublicKeyBytes(), rs.PubKey().Bytes())
 }
 
+// TestSignTransactionWith_NilContextDoesNotPanic pins that a nil ctx is defaulted to
+// context.Background() instead of panicking in http.NewRequestWithContext when the signer is
+// a RemoteSigner that performs I/O during signing.
+func TestSignTransactionWith_NilContextDoesNotPanic(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	srv := newFakeForgeBackend(t, wallet, walletID)
+	defer srv.Close()
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL,
+		APIKey:     "forge_sk_test",
+		WalletID:   walletID,
+	})
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	params := &TxParams{
+		ChainID:       "allora-testnet-1",
+		AccountNumber: 7,
+		Sequence:      3,
+		GasLimit:      200000,
+		FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	unsigned, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, params)
+	require.NoError(t, err)
+
+	var nilCtx context.Context // explicitly nil to exercise the guard
+	signed, err := SignTransactionWith(nilCtx, unsigned, rs, params)
+	require.NoError(t, err)
+	assertTxSignatureVerifies(t, signed, params)
+}
+
 // TestRemoteSigner_ConcurrentSign pins the documented goroutine-safety guarantee: a
 // single RemoteSigner shared across goroutines must produce a valid signature on every
 // call. Run with -race to catch any future field that turns the struct into a data race.
