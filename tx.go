@@ -38,11 +38,10 @@ func DefaultTxParams() *TxParams {
 	}
 }
 
-// Validate checks that all required parameters are set
+// Validate checks that all required parameters are set. The receiver must be non-nil; the
+// SDK's call sites guard for a nil *TxParams before invoking Validate, keeping the nil check
+// at the call site rather than masking it inside a method on a nil pointer.
 func (p *TxParams) Validate() error {
-	if p == nil {
-		return fmt.Errorf("tx params are required")
-	}
 	if p.ChainID == "" {
 		return fmt.Errorf("chain ID is required")
 	}
@@ -92,6 +91,9 @@ func CreateUnsignedSendTx(
 	amount sdk.Coins,
 	params *TxParams,
 ) ([]byte, error) {
+	if params == nil {
+		return nil, fmt.Errorf("tx params are required")
+	}
 	if err := params.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
 	}
@@ -179,6 +181,9 @@ func SignTransactionWith(
 	signer Signer,
 	params *TxParams,
 ) ([]byte, error) {
+	if params == nil {
+		return nil, fmt.Errorf("tx params are required")
+	}
 	if err := params.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
 	}
