@@ -429,6 +429,12 @@ func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
 	}
+	// Mirror do(): a 2xx with a non-JSON body usually means a captive portal, auth proxy, or
+	// misconfigured CDN. Provisioning is the call most likely to hit an unauthenticated gateway
+	// (worker first start), so surface that clearly instead of an opaque JSON-decode error.
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		return "", fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, truncateForError(body))
+	}
 	var info signingWalletInfoResponse
 	if err := json.Unmarshal(body, &info); err != nil {
 		return "", fmt.Errorf("decoding provision response: %w", err)
