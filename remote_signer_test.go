@@ -172,6 +172,49 @@ func TestNewRemoteSigner_CanonicalizesWalletID(t *testing.T) {
 	require.Equal(t, wallet.GetAddress(), rs.Address())
 }
 
+// TestNewRemoteSignerForTopic_BuildsFromProvisionResponse pins that the topic constructor
+// builds the signer from the POST provision response (which carries id, address, and pubkey)
+// without a second wallet-info GET — matching the allora-sdk-py / allora-sdk-ts provisioning
+// path. A GET to /signing-wallets/{id} would be the redundant round-trip this removes, so the
+// GET handler fails the test if it is ever hit.
+func TestNewRemoteSignerForTopic_BuildsFromProvisionResponse(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	const walletID = "44444444-4444-4444-4444-444444444444"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.NotEmpty(t, r.Header.Get(apiKeyHeader))
+		var body provisionWalletRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.Equal(t, int64(42), body.TopicID)
+		require.Equal(t, "worker-label", body.Label)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id":      walletID,
+			"address": wallet.GetAddress(),
+			"pubkey":  hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		})
+	})
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected redundant wallet-info round-trip: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	rs, err := NewRemoteSignerForTopic(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL,
+		APIKey:     "forge_sk_test",
+		// WalletID intentionally omitted: it is filled from the provision response.
+	}, 42, "worker-label")
+	require.NoError(t, err)
+	require.Equal(t, walletID, rs.cfg.WalletID)
+	require.Equal(t, wallet.GetAddress(), rs.Address())
+	require.Equal(t, wallet.GetPublicKeyBytes(), rs.PubKey().Bytes())
+}
+
 // TestRemoteSigner_ConcurrentSign pins the documented goroutine-safety guarantee: a
 // single RemoteSigner shared across goroutines must produce a valid signature on every
 // call. Run with -race to catch any future field that turns the struct into a data race.

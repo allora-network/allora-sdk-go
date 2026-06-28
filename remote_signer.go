@@ -181,6 +181,15 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	if err := json.Unmarshal(body, &info); err != nil {
 		return fmt.Errorf("decoding wallet-info response: %w", err)
 	}
+	return rs.applyWalletInfo(info)
+}
+
+// applyWalletInfo validates a wallet-info payload against rs.cfg and records the verified
+// pubkey and address on the signer. It is shared by NewRemoteSigner (after the GET
+// wallet-info call) and NewRemoteSignerForTopic (after the POST provision call), so a
+// topic-bound signer is built directly from the provision response without a redundant
+// wallet-info GET. rs.cfg.WalletID must already be canonical.
+func (rs *RemoteSigner) applyWalletInfo(info signingWalletInfoResponse) error {
 	// Reject a response describing a different wallet than the one requested, so a
 	// misrouted or buggy backend cannot silently bind this signer to the wrong key. An
 	// empty id must fail rather than skip the check (a backend that omits it is broken by
@@ -191,7 +200,7 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	// Compare canonicalized UUIDs, not raw text: the backend may return an equivalent but
 	// differently-formatted UUID (uppercase, braces, ...) that names the same wallet, and a
 	// raw-string compare would surface that as a false wallet-id mismatch. rs.cfg.WalletID is
-	// already canonical (canonicalized in NewRemoteSigner).
+	// already canonical (canonicalized by the caller).
 	returnedID, err := uuid.Parse(info.ID)
 	if err != nil {
 		return fmt.Errorf("backend returned malformed wallet id %q: %w", info.ID, err)
@@ -376,13 +385,27 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	if err := requireSecureBackend(cfg.BackendURL); err != nil {
 		return nil, err
 	}
-	walletID, err := provisionWalletForTopic(ctx, cfg, topicID, label)
+	// The provision POST already returns the wallet's id, address, and pubkey, so build the
+	// signer directly from that response instead of issuing a second wallet-info GET. This
+	// halves the round-trips on every topic-bound worker start and matches the provisioning
+	// path in the sibling SDKs (allora-sdk-py provision_remote_wallet, allora-sdk-ts
+	// provisionForTopic), both of which construct from the provision response.
+	info, err := provisionWalletForTopic(ctx, cfg, topicID, label)
 	if err != nil {
 		return nil, err
 	}
-	cfg.WalletID = walletID
-	// NewRemoteSigner re-validates the config and fetches/cross-checks the wallet pubkey+address.
-	return NewRemoteSigner(ctx, cfg)
+	// cfg.WalletID was ignored on entry; adopt the backend-assigned id (canonicalized) so the
+	// applyWalletInfo cross-check and later sign request paths use the canonical form.
+	parsedWalletID, err := uuid.Parse(info.ID)
+	if err != nil {
+		return nil, fmt.Errorf("forge backend returned malformed wallet id %q: %w", info.ID, err)
+	}
+	cfg.WalletID = parsedWalletID.String()
+	rs := &RemoteSigner{cfg: cfg, httpClient: newGuardedClient(cfg.HTTPClient)}
+	if err := rs.applyWalletInfo(info); err != nil {
+		return nil, err
+	}
+	return rs, nil
 }
 
 // requireSecureBackend validates that backendURL is a safe Forge API base URL: an absolute
@@ -427,17 +450,19 @@ type provisionWalletRequest struct {
 }
 
 // provisionWalletForTopic POSTs to /api/v1/signing-wallets with a topic_id (idempotent
-// get-or-create) and returns the wallet's UUID. A static /provision sub-route would collide
-// with /:id in the backend router, so provisioning rides on the create endpoint.
-func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (string, error) {
+// get-or-create) and returns the full wallet info (id, address, pubkey) the backend reports
+// on creation. A static /provision sub-route would collide with /:id in the backend router,
+// so provisioning rides on the create endpoint. Returning the full info lets the caller build
+// the signer without a second wallet-info GET.
+func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (signingWalletInfoResponse, error) {
 	reqBody, err := json.Marshal(provisionWalletRequest{TopicID: topicID, Label: label})
 	if err != nil {
-		return "", fmt.Errorf("marshaling provision request: %w", err)
+		return signingWalletInfoResponse{}, fmt.Errorf("marshaling provision request: %w", err)
 	}
 	reqURL := cfg.BackendURL + "/api/v1/signing-wallets"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", fmt.Errorf("creating provision request: %w", err)
+		return signingWalletInfoResponse{}, fmt.Errorf("creating provision request: %w", err)
 	}
 	req.Header.Set(apiKeyHeader, cfg.APIKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -445,31 +470,31 @@ func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 
 	resp, err := newGuardedClient(cfg.HTTPClient).Do(req)
 	if err != nil {
-		return "", fmt.Errorf("calling forge backend: %w", err)
+		return signingWalletInfoResponse{}, fmt.Errorf("calling forge backend: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return "", fmt.Errorf("reading provision response: %w", err)
+		return signingWalletInfoResponse{}, fmt.Errorf("reading provision response: %w", err)
 	}
 	// Mirror do(): drain a bounded amount past the read cap so a slightly-oversized 2xx body
 	// still leaves the keep-alive connection reusable instead of being torn down on Close.
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
 	}
 	// Mirror do(): a 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN. Provisioning is the call most likely to hit an unauthenticated gateway
 	// (worker first start), so surface that clearly instead of an opaque JSON-decode error.
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		return "", fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, truncateForError(body))
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, truncateForError(body))
 	}
 	var info signingWalletInfoResponse
 	if err := json.Unmarshal(body, &info); err != nil {
-		return "", fmt.Errorf("decoding provision response: %w", err)
+		return signingWalletInfoResponse{}, fmt.Errorf("decoding provision response: %w", err)
 	}
 	if info.ID == "" {
-		return "", fmt.Errorf("forge backend provision response missing wallet id")
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend provision response missing wallet id")
 	}
-	return info.ID, nil
+	return info, nil
 }
