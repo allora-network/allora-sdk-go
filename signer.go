@@ -66,7 +66,11 @@ func isNilSigner(s Signer) bool {
 		return true
 	}
 	switch v := reflect.ValueOf(s); v.Kind() {
-	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+	// Signer is only ever satisfied by pointer types (*RemoteSigner, *secp256k1.PrivKey), so a
+	// typed-nil here is a Pointer; Interface is kept to stay correct should a future Signer be
+	// satisfied by an interface value. Map/Slice/Func/Chan cannot satisfy Signer, so they are
+	// omitted rather than read as a general-purpose nil check.
+	case reflect.Pointer, reflect.Interface:
 		return v.IsNil()
 	default:
 		return false
