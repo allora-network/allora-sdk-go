@@ -431,6 +431,9 @@ func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	if err != nil {
 		return "", fmt.Errorf("reading provision response: %w", err)
 	}
+	// Mirror do(): drain a bounded amount past the read cap so a slightly-oversized 2xx body
+	// still leaves the keep-alive connection reusable instead of being torn down on Close.
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
 	}
