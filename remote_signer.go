@@ -59,6 +59,11 @@ var (
 // NewRemoteSigner builds a RemoteSigner and fetches the wallet's public key and address
 // from the backend (needed to assemble the SignDoc before the wallet has transacted).
 func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner, error) {
+	// http.NewRequestWithContext panics on a nil context; reject it with a normal error so an
+	// accidentally-nil ctx cannot crash a worker during signer construction.
+	if ctx == nil {
+		return nil, fmt.Errorf("ctx must not be nil")
+	}
 	if cfg.BackendURL == "" || cfg.APIKey == "" || cfg.WalletID == "" {
 		return nil, fmt.Errorf("backend URL, API key, and wallet ID are all required")
 	}
@@ -246,6 +251,11 @@ func (rs *RemoteSigner) Sign(msg []byte) ([]byte, error) {
 // for cancellation and deadlines. The backend SHA-256 hashes the payload and signs it
 // with the Privy wallet, returning the 64-byte signature.
 func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte, error) {
+	// http.NewRequestWithContext panics on a nil context; reject it with a normal error so an
+	// accidentally-nil ctx cannot crash a worker mid-signing. (Sign passes context.Background.)
+	if ctx == nil {
+		return nil, fmt.Errorf("ctx must not be nil")
+	}
 	reqBody, err := json.Marshal(signRequest{Payload: hex.EncodeToString(msg), Prehashed: false})
 	if err != nil {
 		return nil, fmt.Errorf("marshaling sign request: %w", err)
@@ -351,6 +361,11 @@ func truncateForError(body []byte) string {
 // on every worker start: the backend enforces one wallet per (user, topic). cfg.WalletID is
 // ignored; it is filled from the provision response.
 func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (*RemoteSigner, error) {
+	// http.NewRequestWithContext panics on a nil context; reject it with a normal error so an
+	// accidentally-nil ctx cannot crash a worker during provisioning.
+	if ctx == nil {
+		return nil, fmt.Errorf("ctx must not be nil")
+	}
 	if cfg.BackendURL == "" || cfg.APIKey == "" {
 		return nil, fmt.Errorf("backend URL and API key are required")
 	}
