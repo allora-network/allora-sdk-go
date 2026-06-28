@@ -30,13 +30,20 @@ type RemoteSignerConfig struct {
 	APIKey string
 	// WalletID is the signing wallet's UUID, as returned by the create endpoint.
 	WalletID string
-	// HTTPClient is optional; a 30s-timeout client is used when nil.
+	// HTTPClient is optional; a 30s-timeout client is used when nil. The SDK installs its
+	// own CheckRedirect to guard the Forge API key and SignDoc across redirects; any
+	// CheckRedirect set on a supplied client is composed after it (run once the SDK guard
+	// permits the redirect), not discarded.
 	HTTPClient *http.Client
 }
 
 // RemoteSigner signs transactions by delegating to the Forge backend's signing-wallet
 // API. The private key never leaves Privy/the backend. It implements Signer, so it can
 // be passed to SignTransactionWith exactly like a local wallet.
+//
+// A RemoteSigner is safe for concurrent use by multiple goroutines: every field is set
+// once in NewRemoteSigner and only read thereafter, so a single signer can be shared
+// across a worker's transactions for its lifetime.
 type RemoteSigner struct {
 	cfg        RemoteSignerConfig
 	httpClient *http.Client
@@ -67,6 +74,18 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
 		return nil, fmt.Errorf("backend URL must be an absolute http(s) URL")
 	}
+	// Request paths are built by string concatenation (fmt.Sprintf), so a query string or
+	// fragment on the base URL would be glued onto the path and corrupt every request
+	// (e.g. "https://host/?token=x" -> "https://host/?token=x/api/v1/...").
+	if base.RawQuery != "" || base.Fragment != "" {
+		return nil, fmt.Errorf("backend URL must not contain a query string or fragment")
+	}
+	// Reject embedded userinfo (e.g. "https://user:pass@host"): net/http would emit Basic
+	// Auth on every request alongside the X-Forge-API-Key, and the credentials would leak
+	// into *url.Error strings (and thus logs) on any network failure.
+	if base.User != nil {
+		return nil, fmt.Errorf("backend URL must not contain userinfo")
+	}
 	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
 		return nil, fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
 	}
@@ -91,22 +110,36 @@ func newGuardedClient(c *http.Client) *http.Client {
 		cp := *c
 		guarded = &cp
 	}
-	guarded.CheckRedirect = stripCredentialOnCrossOrigin
+	// Compose with (rather than silently discard) any CheckRedirect the caller installed:
+	// run the SDK's credential/cross-origin guard first, then defer to the caller's policy,
+	// so a caller with a stricter posture (e.g. http.ErrUseLastResponse) keeps it.
+	prevCheck := guarded.CheckRedirect
+	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := rejectCrossOriginRedirect(req, via); err != nil {
+			return err
+		}
+		if prevCheck != nil {
+			return prevCheck(req, via)
+		}
+		return nil
+	}
 	return guarded
 }
 
-// stripCredentialOnCrossOrigin removes the Forge API key header before following any
-// redirect that changes origin (scheme or host) and bounds the redirect chain. Go's
-// default policy only strips its built-in sensitive headers (Authorization, Cookie) on
-// cross-host redirects, so a custom credential header would otherwise leak to a
-// plaintext or attacker-controlled target via an open redirect.
-func stripCredentialOnCrossOrigin(req *http.Request, via []*http.Request) error {
+// rejectCrossOriginRedirect refuses any redirect that changes origin (scheme or host)
+// and bounds the redirect chain. Go preserves the method and body on 307/308 redirects,
+// so following a cross-origin redirect would re-POST the SignDoc bytes to the redirect
+// target; refusing outright (rather than only stripping the API key and continuing)
+// prevents that body leak. This matches the reject-all stance of the sibling SDKs
+// (allora-sdk-py: allow_redirects=False; allora-sdk-ts: redirect: "error").
+func rejectCrossOriginRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("stopped after 10 redirects")
 	}
 	prev := via[len(via)-1]
 	if req.URL.Scheme != prev.URL.Scheme || req.URL.Host != prev.URL.Host {
-		req.Header.Del(apiKeyHeader)
+		return fmt.Errorf("refusing cross-origin redirect from %s://%s to %s://%s",
+			prev.URL.Scheme, prev.URL.Host, req.URL.Scheme, req.URL.Host)
 	}
 	return nil
 }
@@ -157,8 +190,13 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 		return fmt.Errorf("decoding wallet-info response: %w", err)
 	}
 	// Reject a response describing a different wallet than the one requested, so a
-	// misrouted or buggy backend cannot silently bind this signer to the wrong key.
-	if info.ID != "" && info.ID != rs.cfg.WalletID {
+	// misrouted or buggy backend cannot silently bind this signer to the wrong key. An
+	// empty id must fail rather than skip the check (a backend that omits it is broken by
+	// definition) — the same non-empty posture applied to the address field below.
+	if info.ID == "" {
+		return fmt.Errorf("backend returned empty wallet id for wallet %s", rs.cfg.WalletID)
+	}
+	if info.ID != rs.cfg.WalletID {
 		return fmt.Errorf("backend returned wallet id %q, expected %q", info.ID, rs.cfg.WalletID)
 	}
 	pubBytes, err := hex.DecodeString(info.PubKey)
@@ -237,6 +275,12 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 		if err != nil {
 			return nil, fmt.Errorf("decoding response pubkey: %w", err)
 		}
+		// Length-check before comparing: an alternate but valid encoding of the *same* key
+		// (uncompressed 65-byte SEC1, amino-prefixed, ...) would fail bytes.Equal and be
+		// misreported as a key rotation, sending users down a wrong debugging path.
+		if len(respPub) != secp256k1.PubKeySize {
+			return nil, fmt.Errorf("backend returned %d-byte pubkey, expected %d-byte compressed secp256k1", len(respPub), secp256k1.PubKeySize)
+		}
 		if !bytes.Equal(respPub, rs.pubKey.Bytes()) {
 			return nil, fmt.Errorf("backend signing key rotated for wallet %s; reconstruct the RemoteSigner", rs.cfg.WalletID)
 		}
@@ -274,6 +318,12 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading forge response: %w", err)
 	}
+	// A normal response is fully consumed above, so the keep-alive transport can reuse the
+	// connection. If the body exceeded the cap, drain a bounded amount past it so the
+	// connection stays reusable without letting a hostile oversized body stream forever;
+	// anything beyond that is left for Close to discard (a new connection is acceptable for
+	// an abnormal response).
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
 	}

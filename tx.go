@@ -20,11 +20,11 @@ type TxParams struct {
 	GasLimit  uint64
 	FeeAmount sdk.Coins
 
+	// Optional fields
+
 	// FeeGranter, when set, is the address that pays the transaction fee via an
 	// on-chain feegrant (e.g. a master subsidy wallet). Empty means the signer pays.
-	FeeGranter sdk.AccAddress
-
-	// Optional fields
+	FeeGranter    sdk.AccAddress
 	Memo          string
 	TimeoutHeight uint64
 }

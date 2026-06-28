@@ -101,8 +101,14 @@ func (b *txBuilder) signTx(
 	signerAddr := sdk.AccAddress(pubKey.Address()).String()
 
 	// Guard against signing a transaction whose message sender is not the signer; such a
-	// tx is rejected on-chain ("signature verification failed") far from the cause. The
-	// SDK builds bank MsgSend transactions, so verify those senders explicitly.
+	// tx is rejected on-chain ("signature verification failed") far from the cause.
+	//
+	// NOTE: this only checks *banktypes.MsgSend, the single message type the SDK's only
+	// builder (CreateUnsignedSendTx) emits. It is defense-in-depth, not a security
+	// boundary: a caller who hand-assembles another message type (MsgDelegate, MsgExec, an
+	// IBC transfer, an emissions message, ...) and passes the bytes to SignTransactionWith
+	// bypasses this guard. When a second message-builder is added, generalize this to
+	// msg.GetSigners() (or codec GetMsgV1Signers) so the check becomes type-agnostic.
 	for _, msg := range decodedTx.GetMsgs() {
 		if send, ok := msg.(*banktypes.MsgSend); ok && send.FromAddress != signerAddr {
 			return nil, fmt.Errorf("signer address %s does not match transaction sender %s", signerAddr, send.FromAddress)
