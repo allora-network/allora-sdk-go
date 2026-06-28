@@ -344,3 +344,86 @@ func truncateForError(body []byte) string {
 	}
 	return string(body)
 }
+
+// NewRemoteSignerForTopic idempotently gets-or-creates the user's managed wallet bound to
+// topicID (ENGN-8572 "one worker = one topic") and returns a RemoteSigner for it. Safe to call
+// on every worker start: the backend enforces one wallet per (user, topic). cfg.WalletID is
+// ignored; it is filled from the provision response.
+func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (*RemoteSigner, error) {
+	if cfg.BackendURL == "" || cfg.APIKey == "" {
+		return nil, fmt.Errorf("backend URL and API key are required")
+	}
+	if topicID <= 0 {
+		return nil, fmt.Errorf("topic id must be a positive integer")
+	}
+	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
+	if err := requireSecureBackend(cfg.BackendURL); err != nil {
+		return nil, err
+	}
+	walletID, err := provisionWalletForTopic(ctx, cfg, topicID, label)
+	if err != nil {
+		return nil, err
+	}
+	cfg.WalletID = walletID
+	// NewRemoteSigner re-validates the config and fetches/cross-checks the wallet pubkey+address.
+	return NewRemoteSigner(ctx, cfg)
+}
+
+// requireSecureBackend validates that backendURL is an absolute http(s) URL and requires TLS
+// for non-loopback hosts, so the Forge API key is never sent in cleartext.
+func requireSecureBackend(backendURL string) error {
+	base, err := url.Parse(backendURL)
+	if err != nil {
+		return fmt.Errorf("invalid backend URL: %w", err)
+	}
+	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
+		return fmt.Errorf("backend URL must be an absolute http(s) URL")
+	}
+	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
+		return fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
+	}
+	return nil
+}
+
+// provisionWalletForTopic POSTs to /api/v1/signing-wallets with a topic_id (idempotent
+// get-or-create) and returns the wallet's UUID. A static /provision sub-route would collide
+// with /:id in the backend router, so provisioning rides on the create endpoint.
+func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (string, error) {
+	payload := map[string]any{"topic_id": topicID}
+	if label != "" {
+		payload["label"] = label
+	}
+	reqBody, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshaling provision request: %w", err)
+	}
+	reqURL := cfg.BackendURL + "/api/v1/signing-wallets"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("creating provision request: %w", err)
+	}
+	req.Header.Set(apiKeyHeader, cfg.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := newGuardedClient(cfg.HTTPClient).Do(req)
+	if err != nil {
+		return "", fmt.Errorf("calling forge backend: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return "", fmt.Errorf("reading provision response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	var info signingWalletInfoResponse
+	if err := json.Unmarshal(body, &info); err != nil {
+		return "", fmt.Errorf("decoding provision response: %w", err)
+	}
+	if info.ID == "" {
+		return "", fmt.Errorf("forge backend provision response missing wallet id")
+	}
+	return info.ID, nil
+}
