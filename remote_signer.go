@@ -72,10 +72,15 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 		return nil, err
 	}
 	// The wallet ID is interpolated into request paths; require it to be a UUID so a
-	// malformed value cannot inject path segments or query strings.
-	if _, err := uuid.Parse(cfg.WalletID); err != nil {
+	// malformed value cannot inject path segments or query strings. Canonicalize it
+	// (lowercase, hyphenated) so a valid but non-canonical input — uppercase, a "urn:uuid:"
+	// prefix, or braces — is used consistently in request paths and in the backend wallet-id
+	// cross-check, instead of surfacing as a false wallet-id mismatch in fetchWallet.
+	parsedWalletID, err := uuid.Parse(cfg.WalletID)
+	if err != nil {
 		return nil, fmt.Errorf("wallet ID must be a UUID: %w", err)
 	}
+	cfg.WalletID = parsedWalletID.String()
 	rs := &RemoteSigner{cfg: cfg, httpClient: newGuardedClient(cfg.HTTPClient)}
 	if err := rs.fetchWallet(ctx); err != nil {
 		return nil, err
@@ -178,7 +183,15 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	if info.ID == "" {
 		return fmt.Errorf("backend returned empty wallet id for wallet %s", rs.cfg.WalletID)
 	}
-	if info.ID != rs.cfg.WalletID {
+	// Compare canonicalized UUIDs, not raw text: the backend may return an equivalent but
+	// differently-formatted UUID (uppercase, braces, ...) that names the same wallet, and a
+	// raw-string compare would surface that as a false wallet-id mismatch. rs.cfg.WalletID is
+	// already canonical (canonicalized in NewRemoteSigner).
+	returnedID, err := uuid.Parse(info.ID)
+	if err != nil {
+		return fmt.Errorf("backend returned malformed wallet id %q: %w", info.ID, err)
+	}
+	if returnedID.String() != rs.cfg.WalletID {
 		return fmt.Errorf("backend returned wallet id %q, expected %q", info.ID, rs.cfg.WalletID)
 	}
 	pubBytes, err := hex.DecodeString(info.PubKey)

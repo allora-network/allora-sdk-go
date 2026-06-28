@@ -149,6 +149,29 @@ func TestNewRemoteSigner_RequiresConfig(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestNewRemoteSigner_CanonicalizesWalletID pins that a valid but non-canonical UUID
+// (here upper-case) is canonicalized at construction, so the request path and the backend
+// wallet-id cross-check both use the canonical lower-case form rather than producing a
+// false "wallet id mismatch".
+func TestNewRemoteSigner_CanonicalizesWalletID(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	// The backend is keyed by (and reports) the canonical lower-case UUID...
+	const canonicalID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	srv := newFakeForgeBackend(t, wallet, canonicalID)
+	defer srv.Close()
+
+	// ...but the caller supplies the upper-case equivalent.
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL,
+		APIKey:     "forge_sk_test",
+		WalletID:   "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+	})
+	require.NoError(t, err)
+	require.Equal(t, wallet.GetAddress(), rs.Address())
+}
+
 // TestRemoteSigner_ConcurrentSign pins the documented goroutine-safety guarantee: a
 // single RemoteSigner shared across goroutines must produce a valid signature on every
 // call. Run with -race to catch any future field that turns the struct into a data race.
