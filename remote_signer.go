@@ -65,29 +65,11 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 	// Normalize the base URL so a configured trailing slash (or several) does not
 	// produce a malformed "...//api/v1/..." request path.
 	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
-	// Validate the base URL and require TLS for non-localhost hosts so the Forge API
-	// key is never sent over plaintext or to a non-absolute target.
-	base, err := url.Parse(cfg.BackendURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid backend URL: %w", err)
-	}
-	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
-		return nil, fmt.Errorf("backend URL must be an absolute http(s) URL")
-	}
-	// Request paths are built by string concatenation (fmt.Sprintf), so a query string or
-	// fragment on the base URL would be glued onto the path and corrupt every request
-	// (e.g. "https://host/?token=x" -> "https://host/?token=x/api/v1/...").
-	if base.RawQuery != "" || base.Fragment != "" {
-		return nil, fmt.Errorf("backend URL must not contain a query string or fragment")
-	}
-	// Reject embedded userinfo (e.g. "https://user:pass@host"): net/http would emit Basic
-	// Auth on every request alongside the X-Forge-API-Key, and the credentials would leak
-	// into *url.Error strings (and thus logs) on any network failure.
-	if base.User != nil {
-		return nil, fmt.Errorf("backend URL must not contain userinfo")
-	}
-	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
-		return nil, fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
+	// Validate the base URL with the same guard NewRemoteSignerForTopic applies before its
+	// provisioning POST, so both entrypoints reject unsafe/malformed URLs identically (no
+	// plaintext key leak, no userinfo Basic-Auth leak, no query/fragment path corruption).
+	if err := requireSecureBackend(cfg.BackendURL); err != nil {
+		return nil, err
 	}
 	// The wallet ID is interpolated into request paths; require it to be a UUID so a
 	// malformed value cannot inject path segments or query strings.
@@ -369,8 +351,12 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	return NewRemoteSigner(ctx, cfg)
 }
 
-// requireSecureBackend validates that backendURL is an absolute http(s) URL and requires TLS
-// for non-loopback hosts, so the Forge API key is never sent in cleartext.
+// requireSecureBackend validates that backendURL is a safe Forge API base URL: an absolute
+// http(s) URL with no query string, fragment, or embedded userinfo, requiring TLS for
+// non-loopback hosts. It is the single validator shared by NewRemoteSigner and
+// NewRemoteSignerForTopic so the first provisioning POST is held to exactly the same
+// standard as signer construction (the Forge API key is never sent in cleartext, emitted
+// as Basic Auth, or glued onto a request path).
 func requireSecureBackend(backendURL string) error {
 	base, err := url.Parse(backendURL)
 	if err != nil {
@@ -378,6 +364,18 @@ func requireSecureBackend(backendURL string) error {
 	}
 	if base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
 		return fmt.Errorf("backend URL must be an absolute http(s) URL")
+	}
+	// Request paths are built by string concatenation (fmt.Sprintf), so a query string or
+	// fragment on the base URL would be glued onto the path and corrupt every request
+	// (e.g. "https://host/?token=x" -> "https://host/?token=x/api/v1/...").
+	if base.RawQuery != "" || base.Fragment != "" {
+		return fmt.Errorf("backend URL must not contain a query string or fragment")
+	}
+	// Reject embedded userinfo (e.g. "https://user:pass@host"): net/http would emit Basic
+	// Auth on every request alongside the X-Forge-API-Key, and the credentials would leak
+	// into *url.Error strings (and thus logs) on any network failure.
+	if base.User != nil {
+		return fmt.Errorf("backend URL must not contain userinfo")
 	}
 	if base.Scheme != "https" && !isLoopbackHost(base.Hostname()) {
 		return fmt.Errorf("backend URL must use https for non-localhost host %q", base.Hostname())
