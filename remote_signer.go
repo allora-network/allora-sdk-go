@@ -194,6 +194,12 @@ func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
 	if returnedID.String() != rs.cfg.WalletID {
 		return fmt.Errorf("backend returned wallet id %q, expected %q", info.ID, rs.cfg.WalletID)
 	}
+	// hex.DecodeString("") returns (nil, nil), so an omitted/empty pubkey would otherwise
+	// surface as the misleading "0-byte pubkey, expected 33". Reject it explicitly, matching
+	// the empty-id guard above and the empty-address guard below.
+	if info.PubKey == "" {
+		return fmt.Errorf("backend returned empty wallet pubkey for wallet %s", rs.cfg.WalletID)
+	}
 	pubBytes, err := hex.DecodeString(info.PubKey)
 	if err != nil {
 		return fmt.Errorf("decoding wallet pubkey: %w", err)
