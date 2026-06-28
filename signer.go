@@ -23,9 +23,13 @@ import (
 //
 // Signer is intentionally transaction-only: callers sign SignDoc bytes with
 // hash-then-sign (RemoteSigner sends prehashed=false). It deliberately omits the
-// prehashed/digest variant the Python SDK exposes via sign_digest; a Go worker that
-// needs to sign a raw 32-byte application digest should use a dedicated API rather than
-// widening this tx-signing contract.
+// prehashed/digest variant the sibling SDKs expose — allora-sdk-py via
+// RemoteSigner.sign_digest and allora-sdk-ts via ForgeRemoteSigner.signDigest — which the
+// Python worker uses for application-level (emissions bundle) signatures. This is a known,
+// accepted parity gap: a Go worker that needs to sign a raw 32-byte application digest
+// should use a dedicated API rather than widening this tx-signing contract. If a Go worker
+// framework is later built on this SDK and needs bundle signing, add a separate
+// DigestSigner interface for that path instead of overloading Signer.
 type Signer interface {
 	// PubKey returns the signer's public key.
 	PubKey() cryptotypes.PubKey
