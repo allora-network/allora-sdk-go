@@ -565,7 +565,8 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	}
 	// A 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN; surface that clearly instead of an opaque JSON-decode error.
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+	// RFC 7231 §3.1.1.1 declares media types case-insensitive, so lower-case before matching.
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/json") {
 		return nil, fmt.Errorf("forge backend returned non-JSON response (content-type %q): %s", ct, redactSecret(truncateForError(body), rs.cfg.APIKey))
 	}
 	return body, nil
@@ -737,7 +738,8 @@ func provisionWalletForTopic(ctx context.Context, client *http.Client, cfg Remot
 	// Mirror do(): a 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN. Provisioning is the call most likely to hit an unauthenticated gateway
 	// (worker first start), so surface that clearly instead of an opaque JSON-decode error.
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+	// RFC 7231 §3.1.1.1 declares media types case-insensitive, so lower-case before matching.
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/json") {
 		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, redactSecret(truncateForError(body), cfg.APIKey))
 	}
 	var info signingWalletInfoResponse

@@ -802,6 +802,31 @@ func TestRemoteSigner_RedactsAPIKeyInError(t *testing.T) {
 	require.Contains(t, err.Error(), "[REDACTED]")
 }
 
+// TestRemoteSigner_AcceptsMixedCaseContentType pins that a spec-valid mixed-case Content-Type is
+// accepted as JSON (synth-014): RFC 7231 §3.1.1.1 makes media types case-insensitive, so a backend
+// returning "Application/JSON" must not be rejected as non-JSON.
+func TestRemoteSigner_AcceptsMixedCaseContentType(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	const walletID = "11111111-1111-1111-1111-111111111111"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "Application/JSON")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id": walletID, "address": wallet.GetAddress(),
+			"pubkey": hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err = NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+}
+
 // masterGranterBackend serves a wallet-info GET for walletID that reports the given
 // master_granter, so the discovery + resolution tests can vary the advertised granter.
 func masterGranterBackend(t *testing.T, wallet *Wallet, walletID, masterGranter string) *httptest.Server {
