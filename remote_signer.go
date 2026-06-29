@@ -157,6 +157,42 @@ func (rs *RemoteSigner) AccAddress() sdk.AccAddress { return rs.address }
 // Address returns the wallet's allo1... account address as a string.
 func (rs *RemoteSigner) Address() string { return rs.address.String() }
 
+// ClearAssociation releases this wallet's topic binding on the Forge backend (Forge-side
+// bookkeeping only — it does NOT unregister the worker on-chain). Call it before
+// re-provisioning the wallet against a new topic or before decommissioning it. This mirrors
+// the sibling SDKs (allora-sdk-py ForgeBackendClient.clear_association, allora-sdk-ts
+// clearAssociation): POST /api/v1/signing-wallets/{id}/clear-association with no body. A
+// non-2xx response (e.g. 404 for an unknown/foreign/already-cleared wallet) is returned as
+// an error so the caller decides whether an unbind failure is fatal or best-effort.
+func (rs *RemoteSigner) ClearAssociation(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("ctx must not be nil")
+	}
+	endpoint := fmt.Sprintf("%s/api/v1/signing-wallets/%s/clear-association", rs.cfg.BackendURL, url.PathEscape(rs.cfg.WalletID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("creating clear-association request: %w", err)
+	}
+	req.Header.Set(apiKeyHeader, rs.cfg.APIKey)
+
+	// clear-association returns 204 No Content, so this cannot use do() (which requires a
+	// JSON body); accept any 2xx with an empty/non-JSON body as success.
+	resp, err := rs.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("calling forge backend: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return fmt.Errorf("reading forge response: %w", err)
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	return nil
+}
+
 type signingWalletInfoResponse struct {
 	ID      string `json:"id"`
 	Address string `json:"address"`

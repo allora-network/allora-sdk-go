@@ -451,3 +451,64 @@ func TestRemoteSigner_Sign_RejectsUnverifiableSignature(t *testing.T) {
 	_, err = rs.Sign([]byte("allora sign doc bytes"))
 	require.Error(t, err)
 }
+
+func TestRemoteSigner_ClearAssociation(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	const walletID = "11111111-1111-1111-1111-111111111111"
+
+	var cleared bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id": walletID, "address": wallet.GetAddress(),
+			"pubkey": hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		})
+	})
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID+"/clear-association", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.NotEmpty(t, r.Header.Get(apiKeyHeader))
+		cleared = true
+		w.WriteHeader(http.StatusNoContent) // 204, empty body — must be accepted as success
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, rs.ClearAssociation(context.Background()))
+	require.True(t, cleared, "backend clear-association endpoint must be called")
+}
+
+func TestRemoteSigner_ClearAssociation_NonOKIsError(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	const walletID = "11111111-1111-1111-1111-111111111111"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id": walletID, "address": wallet.GetAddress(),
+			"pubkey": hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		})
+	})
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID+"/clear-association", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+
+	err = rs.ClearAssociation(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "404")
+}
