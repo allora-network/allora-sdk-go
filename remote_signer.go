@@ -422,7 +422,12 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	// halves the round-trips on every topic-bound worker start and matches the provisioning
 	// path in the sibling SDKs (allora-sdk-py provision_remote_wallet, allora-sdk-ts
 	// provisionForTopic), both of which construct from the provision response.
-	info, err := provisionWalletForTopic(ctx, cfg, topicID, label)
+	// Build the guarded HTTP client once and thread it through both the provision POST and the
+	// returned signer, so the provision call's keep-alive connection is available for reuse by
+	// later sign requests instead of being allocated, used once, and discarded (mirrors the
+	// single requests.Session the Python sibling reuses across wallet operations).
+	client := newGuardedClient(cfg.HTTPClient)
+	info, err := provisionWalletForTopic(ctx, client, cfg, topicID, label)
 	if err != nil {
 		// Prefix with the provisioning context so a provision-step failure is distinguishable in
 		// logs from a later sign/fetch failure: provisionWalletForTopic and do() otherwise share
@@ -435,7 +440,7 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	// canonicalized by provisionWalletForTopic, so the applyWalletInfo cross-check and later
 	// sign request paths use the canonical form.
 	cfg.WalletID = info.ID
-	rs := &RemoteSigner{cfg: cfg, httpClient: newGuardedClient(cfg.HTTPClient)}
+	rs := &RemoteSigner{cfg: cfg, httpClient: client}
 	if err := rs.applyWalletInfo(info); err != nil {
 		return nil, err
 	}
@@ -487,8 +492,9 @@ type provisionWalletRequest struct {
 // get-or-create) and returns the full wallet info (id, address, pubkey) the backend reports
 // on creation. A static /provision sub-route would collide with /:id in the backend router,
 // so provisioning rides on the create endpoint. Returning the full info lets the caller build
-// the signer without a second wallet-info GET.
-func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (signingWalletInfoResponse, error) {
+// the signer without a second wallet-info GET. It issues the POST with the supplied guarded
+// client so the caller can reuse that client (and its keep-alive connection) for the signer.
+func provisionWalletForTopic(ctx context.Context, client *http.Client, cfg RemoteSignerConfig, topicID int64, label string) (signingWalletInfoResponse, error) {
 	reqBody, err := json.Marshal(provisionWalletRequest{TopicID: topicID, Label: label})
 	if err != nil {
 		return signingWalletInfoResponse{}, fmt.Errorf("marshaling provision request: %w", err)
@@ -502,7 +508,7 @@ func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := newGuardedClient(cfg.HTTPClient).Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return signingWalletInfoResponse{}, fmt.Errorf("calling forge backend: %w", err)
 	}
