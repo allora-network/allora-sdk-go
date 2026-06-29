@@ -472,20 +472,25 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 	// If the backend rotated the Privy key (or returned another wallet's key), the cached
 	// key would no longer match the signing key and broadcast would fail with an opaque
 	// "signature verification failed". Detect that here with an actionable error.
-	if sr.PubKey != "" {
-		respPub, err := hex.DecodeString(sr.PubKey)
-		if err != nil {
-			return nil, fmt.Errorf("decoding response pubkey: %w", err)
-		}
-		// Length-check before comparing: an alternate but valid encoding of the *same* key
-		// (uncompressed 65-byte SEC1, amino-prefixed, ...) would fail bytes.Equal and be
-		// misreported as a key rotation, sending users down a wrong debugging path.
-		if len(respPub) != secp256k1.PubKeySize {
-			return nil, fmt.Errorf("backend returned %d-byte pubkey, expected %d-byte compressed secp256k1", len(respPub), secp256k1.PubKeySize)
-		}
-		if !bytes.Equal(respPub, rs.pubKey.Bytes()) {
-			return nil, fmt.Errorf("backend signing key rotated for wallet %s; reconstruct the RemoteSigner", rs.cfg.WalletID)
-		}
+	// Fail closed when the echo is absent: a `sr.PubKey != ""` guard would let a backend
+	// that simply drops the field skip this rotation/mis-route check entirely. This is a
+	// load-bearing security check, kept at parity with allora-sdk-ts (commit 5cfded6);
+	// forge-v2 always returns the echo today.
+	if sr.PubKey == "" {
+		return nil, fmt.Errorf("backend sign response for wallet %s omitted the pubkey echo; cannot verify the signing key", rs.cfg.WalletID)
+	}
+	respPub, err := hex.DecodeString(sr.PubKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding response pubkey: %w", err)
+	}
+	// Length-check before comparing: an alternate but valid encoding of the *same* key
+	// (uncompressed 65-byte SEC1, amino-prefixed, ...) would fail bytes.Equal and be
+	// misreported as a key rotation, sending users down a wrong debugging path.
+	if len(respPub) != secp256k1.PubKeySize {
+		return nil, fmt.Errorf("backend returned %d-byte pubkey, expected %d-byte compressed secp256k1", len(respPub), secp256k1.PubKeySize)
+	}
+	if !bytes.Equal(respPub, rs.pubKey.Bytes()) {
+		return nil, fmt.Errorf("backend signing key rotated for wallet %s; reconstruct the RemoteSigner", rs.cfg.WalletID)
 	}
 	sig, err := hex.DecodeString(sr.Signature)
 	if err != nil {

@@ -547,6 +547,41 @@ func TestRemoteSigner_Sign_RejectsRotatedKey(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRemoteSigner_Sign_RejectsMissingPubKeyEcho(t *testing.T) {
+	// Fail closed: a sign response that omits the pubkey echo must be rejected, matching
+	// allora-sdk-ts. Otherwise a backend could simply drop the field to dodge the
+	// rotation/mis-route check.
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	srv := serveBackend(t,
+		walletInfoJSON(map[string]string{
+			"id":      negWalletID,
+			"address": wallet.GetAddress(),
+			"pubkey":  hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		}),
+		func(w http.ResponseWriter, r *http.Request) {
+			var body signRequest
+			raw, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(raw, &body))
+			payload, err := hex.DecodeString(body.Payload)
+			require.NoError(t, err)
+			sig, err := wallet.PrivKey.Sign(payload)
+			require.NoError(t, err)
+			// Valid signature over the payload, but no pubkey echo field at all.
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"signature": hex.EncodeToString(sig),
+			})
+		},
+	)
+	rs, err := connectRemoteSigner(t, srv.URL)
+	require.NoError(t, err)
+	_, err = rs.Sign([]byte("allora sign doc bytes"))
+	require.ErrorContains(t, err, "omitted the pubkey echo")
+}
+
 func TestRemoteSigner_Sign_RejectsUnverifiableSignature(t *testing.T) {
 	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
 	require.NoError(t, err)
