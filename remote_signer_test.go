@@ -779,6 +779,28 @@ func TestClearWalletAssociation_RejectsNonUUID(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestRemoteSigner_RedactsAPIKeyInError pins that the Forge API key is stripped from a backend
+// error excerpt (synth-009): if a TLS-terminating intermediary echoes the X-Forge-API-Key request
+// header into its error body, the key must not leak into the returned error string (and thus logs).
+func TestRemoteSigner_RedactsAPIKeyInError(t *testing.T) {
+	const apiKey = "forge_sk_supersecret"
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, r *http.Request) {
+		// Simulate an intermediary that mirrors the request's API-key header into its error body.
+		http.Error(w, "gateway error; saw header X-Forge-API-Key: "+r.Header.Get(apiKeyHeader), http.StatusBadGateway)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: apiKey, WalletID: walletID,
+	})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), apiKey, "API key must not appear in the error string")
+	require.Contains(t, err.Error(), "[REDACTED]")
+}
+
 // masterGranterBackend serves a wallet-info GET for walletID that reports the given
 // master_granter, so the discovery + resolution tests can vary the advertised granter.
 func masterGranterBackend(t *testing.T, wallet *Wallet, walletID, masterGranter string) *httptest.Server {

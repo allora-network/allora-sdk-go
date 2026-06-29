@@ -545,7 +545,7 @@ func sendForgeRequest(httpClient *http.Client, req *http.Request, readErrLabel s
 	// an abnormal response).
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+		return nil, nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, redactSecret(truncateForError(body), req.Header.Get(apiKeyHeader)))
 	}
 	return resp, body, nil
 }
@@ -560,7 +560,7 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	// A 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN; surface that clearly instead of an opaque JSON-decode error.
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		return nil, fmt.Errorf("forge backend returned non-JSON response (content-type %q): %s", ct, truncateForError(body))
+		return nil, fmt.Errorf("forge backend returned non-JSON response (content-type %q): %s", ct, redactSecret(truncateForError(body), rs.cfg.APIKey))
 	}
 	return body, nil
 }
@@ -573,6 +573,17 @@ func truncateForError(body []byte) string {
 		return string(body[:max]) + "..."
 	}
 	return string(body)
+}
+
+// redactSecret removes every occurrence of secret from s, so a backend or intermediary error body
+// echoed into an error string cannot leak the Forge API key. The backend never echoes request
+// headers, but a TLS-terminating reverse proxy or captive portal can mirror them into its error
+// page; this is defense-in-depth for that operator-deployed case. A blank secret is a no-op.
+func redactSecret(s, secret string) string {
+	if secret == "" {
+		return s
+	}
+	return strings.ReplaceAll(s, secret, "[REDACTED]")
 }
 
 // NewRemoteSignerForTopic idempotently gets-or-creates the user's managed wallet bound to
@@ -714,7 +725,7 @@ func provisionWalletForTopic(ctx context.Context, client *http.Client, cfg Remot
 	// misconfigured CDN. Provisioning is the call most likely to hit an unauthenticated gateway
 	// (worker first start), so surface that clearly instead of an opaque JSON-decode error.
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, truncateForError(body))
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, redactSecret(truncateForError(body), cfg.APIKey))
 	}
 	var info signingWalletInfoResponse
 	if err := json.Unmarshal(body, &info); err != nil {
