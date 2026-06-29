@@ -37,10 +37,10 @@ type RemoteSignerConfig struct {
 	APIKey string
 	// WalletID is the signing wallet's UUID, as returned by the create endpoint.
 	WalletID string
-	// HTTPClient is optional; a 30s-timeout client is used when nil. The SDK installs its
-	// own CheckRedirect to guard the Forge API key and SignDoc across redirects; any
-	// CheckRedirect set on a supplied client is composed after it (run once the SDK guard
-	// permits the redirect), not discarded.
+	// HTTPClient is optional; a 30s-timeout client is used when nil. The SDK installs its own
+	// CheckRedirect to guard the Forge API key and SignDoc across redirects: it refuses every
+	// redirect, so any CheckRedirect set on a supplied client is replaced — a redirect is never
+	// followed and the supplied policy is not consulted.
 	HTTPClient *http.Client
 }
 
@@ -124,20 +124,11 @@ func newGuardedClient(c *http.Client) *http.Client {
 		t.MaxIdleConnsPerHost = 64
 		guarded.Transport = t
 	}
-	// Compose with (rather than silently discard) any CheckRedirect the caller installed:
-	// run the SDK's redirect guard first, then defer to the caller's policy. The guard rejects
-	// every redirect (rejectRedirect), so the caller's policy is consulted only if that guard is
-	// ever relaxed — a caller can tighten the posture but can never loosen the SDK's.
-	prevCheck := guarded.CheckRedirect
-	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := rejectRedirect(req, via); err != nil {
-			return err
-		}
-		if prevCheck != nil {
-			return prevCheck(req, via)
-		}
-		return nil
-	}
+	// Refuse every redirect (rejectRedirect returns http.ErrUseLastResponse) so the Forge API key
+	// and SignDoc are never re-sent to a redirect target. This replaces any CheckRedirect on a
+	// caller-supplied client: a redirect is never followed (it surfaces as a non-2xx error via
+	// sendForgeRequest), so there is no path on which a caller's policy would run.
+	guarded.CheckRedirect = rejectRedirect
 	return guarded
 }
 
