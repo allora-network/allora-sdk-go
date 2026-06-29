@@ -104,6 +104,17 @@ func newGuardedClient(c *http.Client) *http.Client {
 	if c != nil {
 		cp := *c
 		guarded = &cp
+	} else if dt, ok := http.DefaultTransport.(*http.Transport); ok {
+		// http.DefaultTransport's MaxIdleConnsPerHost is 2, which throttles a worker that fans out
+		// many concurrent sign calls to one backend host: each excess in-flight request dials a
+		// fresh TCP+TLS connection and closes (rather than pools) it on completion, paying a TLS
+		// handshake per call. Clone the default transport — preserving its proxy/TLS/HTTP2 and
+		// IdleConnTimeout settings — and raise the per-host idle cap so concurrent sign calls reuse
+		// pooled connections. A caller-supplied client keeps its own transport, so operators who
+		// care can tune it themselves.
+		t := dt.Clone()
+		t.MaxIdleConnsPerHost = 64
+		guarded.Transport = t
 	}
 	// Compose with (rather than silently discard) any CheckRedirect the caller installed:
 	// run the SDK's redirect guard first, then defer to the caller's policy. The guard rejects
