@@ -798,28 +798,33 @@ func TestRemoteSigner_MasterGranterAbsent(t *testing.T) {
 	require.Nil(t, got)
 }
 
-// TestRemoteSigner_TrimsMasterGranter pins that a backend master_granter with surrounding
-// whitespace is trimmed at storage (synth-015), matching FeeGranterFromEnv, so MasterGranter()
-// returns the clean bech32 and ResolveFeeGranter() parses it instead of erroring on the padding.
-func TestRemoteSigner_TrimsMasterGranter(t *testing.T) {
+// TestRemoteSigner_MasterGranterVerbatim pins that a backend master_granter is stored verbatim,
+// without trimming (synth-001): MasterGranter() returns exactly what the backend sent — as the
+// README advertises ("raw string, verbatim") — keeping Go at parity with allora-sdk-py /
+// allora-sdk-ts, which assign the field unmodified. A padded value therefore surfaces as a bech32
+// parse error in ResolveFeeGranter, identically across the three SDKs, rather than being silently
+// rescued by a Go-only trim.
+func TestRemoteSigner_MasterGranterVerbatim(t *testing.T) {
 	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
 	require.NoError(t, err)
 	granter, err := GenerateWallet()
 	require.NoError(t, err)
 
 	const walletID = "11111111-1111-1111-1111-111111111111"
-	srv := masterGranterBackend(t, wallet, walletID, "  "+granter.GetAddress()+"\n")
+	padded := "  " + granter.GetAddress() + "\n"
+	srv := masterGranterBackend(t, wallet, walletID, padded)
 
 	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
 		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
 	})
 	require.NoError(t, err)
-	require.Equal(t, granter.GetAddress(), rs.MasterGranter())
+	require.Equal(t, padded, rs.MasterGranter(), "master_granter must be returned verbatim, untrimmed")
 
+	// A padded value is not silently rescued: it fails bech32 parsing in ResolveFeeGranter, the
+	// same way it would on the Python/TypeScript siblings.
 	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
-	got, err := rs.ResolveFeeGranter()
-	require.NoError(t, err)
-	require.Equal(t, granter.GetAddress(), got.String())
+	_, err = rs.ResolveFeeGranter()
+	require.Error(t, err)
 }
 
 // TestRevokeWallet_Standalone pins the by-id decommission path (synth-015): it deletes the wallet
