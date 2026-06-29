@@ -206,26 +206,44 @@ func TestTxParamsValidation(t *testing.T) {
 // cosmos account address: a wrong-length value is rejected at Validate() rather than serializing
 // into a tx that fails on-chain with a feegrant-not-found error after a wasted broadcast.
 func TestTxParamsValidation_FeeGranterLength(t *testing.T) {
-	base := func() *TxParams {
-		return &TxParams{
-			ChainID:   "allora-testnet-1",
-			GasLimit:  200000,
-			FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
-		}
+	tests := []struct {
+		name        string
+		feeGranter  sdk.AccAddress
+		expectError bool
+	}{
+		{
+			name:        "no granter", // the signing wallet pays its own fees
+			feeGranter:  nil,
+			expectError: false,
+		},
+		{
+			name:        "20-byte granter",
+			feeGranter:  make(sdk.AccAddress, 20),
+			expectError: false,
+		},
+		{
+			name:        "10-byte granter",
+			feeGranter:  make(sdk.AccAddress, 10),
+			expectError: true,
+		},
 	}
 
-	// No granter is valid (the signing wallet pays its own fees).
-	require.NoError(t, base().Validate())
-
-	// A 20-byte granter is valid.
-	valid := base()
-	valid.FeeGranter = make(sdk.AccAddress, 20)
-	require.NoError(t, valid.Validate())
-
-	// A wrong-length granter is rejected up front.
-	short := base()
-	short.FeeGranter = make(sdk.AccAddress, 10)
-	require.ErrorContains(t, short.Validate(), "fee granter address must be 20 bytes")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := &TxParams{
+				ChainID:    "allora-testnet-1",
+				GasLimit:   200000,
+				FeeAmount:  sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+				FeeGranter: tt.feeGranter,
+			}
+			err := params.Validate()
+			if tt.expectError {
+				require.ErrorContains(t, err, "fee granter address must be 20 bytes")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 // TestSignTransactionWith_AcceptsMinimalSignTimeParams pins that sign-time validation requires
