@@ -37,10 +37,14 @@ type RemoteSignerConfig struct {
 	APIKey string
 	// WalletID is the signing wallet's UUID, as returned by the create endpoint.
 	WalletID string
-	// HTTPClient is optional; a 30s-timeout client is used when nil. The SDK installs its own
-	// CheckRedirect to guard the Forge API key and SignDoc across redirects: it refuses every
-	// redirect, so any CheckRedirect set on a supplied client is replaced — a redirect is never
-	// followed and the supplied policy is not consulted.
+	// HTTPClient is optional; a 30s-timeout client is used when nil. That default 30s timeout is
+	// an absolute per-call upper bound (dial+TLS+headers+body): because http.Client.Timeout is
+	// independent of the request context, it caps any longer ctx deadline a caller sets, so a
+	// caller that needs a budget longer than 30s must supply a custom HTTPClient with Timeout: 0
+	// (relying on ctx alone). The SDK installs its own CheckRedirect to guard the Forge API key
+	// and SignDoc across redirects: it refuses every redirect, so any CheckRedirect set on a
+	// supplied client is replaced — a redirect is never followed and the supplied policy is not
+	// consulted.
 	HTTPClient *http.Client
 }
 
