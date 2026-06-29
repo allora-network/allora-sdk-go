@@ -561,6 +561,10 @@ func TestFeeGranterFromEnv(t *testing.T) {
 	require.NoError(t, err)
 	valid := wallet.GetAddress()
 
+	// Clear the deprecated fallback so the canonical-var assertions are deterministic regardless
+	// of the ambient environment.
+	t.Setenv("FEE_GRANTER", "")
+
 	// Unset/blank → nil granter (the signing wallet pays its own fees).
 	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
 	got, err := FeeGranterFromEnv()
@@ -583,4 +587,34 @@ func TestFeeGranterFromEnv(t *testing.T) {
 	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "not-a-bech32-address")
 	_, err = FeeGranterFromEnv()
 	require.Error(t, err)
+}
+
+// TestFeeGranterFromEnv_AcceptsDeprecatedFEEGRANTER pins that the pre-rename FEE_GRANTER env var is
+// still honored as a fallback (synth-007), matching allora-sdk-py, so a Python->Go migration that
+// still sets FEE_GRANTER does not silently fall through to no-granter.
+func TestFeeGranterFromEnv_AcceptsDeprecatedFEEGRANTER(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	valid := wallet.GetAddress()
+
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	t.Setenv("FEE_GRANTER", valid)
+	got, err := FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, valid, got.String())
+}
+
+// TestFeeGranterFromEnv_CanonicalTakesPrecedence pins that FORGE_MASTER_GRANTER_ADDRESS wins over
+// the deprecated FEE_GRANTER when both are set.
+func TestFeeGranterFromEnv_CanonicalTakesPrecedence(t *testing.T) {
+	canonical, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	legacy, err := GenerateWallet()
+	require.NoError(t, err)
+
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", canonical.GetAddress())
+	t.Setenv("FEE_GRANTER", legacy.GetAddress())
+	got, err := FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, canonical.GetAddress(), got.String())
 }

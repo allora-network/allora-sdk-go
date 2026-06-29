@@ -161,7 +161,9 @@ to reconfigure.
 For 12-factor deployments you can **override** discovery with the canonical
 `FORGE_MASTER_GRANTER_ADDRESS` environment variable (the same name used by allora-sdk-py
 and allora-sdk-ts), read and parsed by `allora.FeeGranterFromEnv()` (returns `(nil, nil)`
-when unset).
+when unset). The former name `FEE_GRANTER` is still accepted as a fallback for one release
+(with a one-time deprecation warning), for parity with allora-sdk-py; rename it to
+`FORGE_MASTER_GRANTER_ADDRESS`.
 
 `signer.ResolveFeeGranter()` applies the precedence for you and returns a parsed
 `sdk.AccAddress` — env override first, then the discovered granter, then `nil` (the signing

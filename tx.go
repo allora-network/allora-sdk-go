@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/rs/zerolog/log"
 )
 
 // TxParams contains all parameters needed to build and sign a transaction
@@ -40,20 +42,51 @@ func DefaultTxParams() *TxParams {
 	}
 }
 
-// FeeGranterFromEnv reads the canonical FORGE_MASTER_GRANTER_ADDRESS environment
-// variable and parses it into an AccAddress suitable for TxParams.FeeGranter. This
-// is the fee-granter (master subsidy wallet) env var shared across the Allora SDKs
-// (allora-sdk-py / allora-sdk-ts), giving Go callers a single discovery path for the
-// same value. It returns (nil, nil) when the variable is unset or blank, in which
-// case the signing wallet pays its own fees.
+const (
+	// feeGranterEnvVar is the canonical fee-granter (master subsidy wallet) env var, shared
+	// across the Allora SDKs (allora-sdk-py / allora-sdk-ts).
+	feeGranterEnvVar = "FORGE_MASTER_GRANTER_ADDRESS"
+	// legacyFeeGranterEnvVar is the pre-rename name. allora-sdk-py still accepts it for one
+	// release with a deprecation warning, so FeeGranterFromEnv honors it too (with a warning)
+	// to avoid silently dropping the granter on a Python->Go migration.
+	// @@TODO: remove the FEE_GRANTER fallback in the next minor release.
+	legacyFeeGranterEnvVar = "FEE_GRANTER"
+)
+
+// feeGranterDeprecationOnce limits the FEE_GRANTER deprecation notice to one emission per
+// process, mirroring Python's once-per-location DeprecationWarning (FeeGranterFromEnv may be
+// called once per transaction).
+var feeGranterDeprecationOnce sync.Once
+
+// FeeGranterFromEnv reads the canonical FORGE_MASTER_GRANTER_ADDRESS environment variable and
+// parses it into an AccAddress suitable for TxParams.FeeGranter. This is the fee-granter (master
+// subsidy wallet) env var shared across the Allora SDKs (allora-sdk-py / allora-sdk-ts), giving Go
+// callers a single discovery path for the same value. It returns (nil, nil) when neither variable
+// is set or blank, in which case the signing wallet pays its own fees.
+//
+// For parity with allora-sdk-py, the pre-rename FEE_GRANTER is still accepted as a fallback for one
+// release (with a one-time deprecation warning): a deployment migrating from Python that still sets
+// FEE_GRANTER keeps working instead of silently falling through to no-granter. Rename it to
+// FORGE_MASTER_GRANTER_ADDRESS. @@TODO: drop the FEE_GRANTER fallback in the next minor release.
 func FeeGranterFromEnv() (sdk.AccAddress, error) {
-	addr := strings.TrimSpace(os.Getenv("FORGE_MASTER_GRANTER_ADDRESS"))
+	envVar := feeGranterEnvVar
+	addr := strings.TrimSpace(os.Getenv(envVar))
+	if addr == "" {
+		// Fall back to the deprecated name so a Python->Go migration does not silently lose the
+		// granter (allora-sdk-py accepts FEE_GRANTER for one release with a deprecation warning).
+		if legacy := strings.TrimSpace(os.Getenv(legacyFeeGranterEnvVar)); legacy != "" {
+			envVar, addr = legacyFeeGranterEnvVar, legacy
+			feeGranterDeprecationOnce.Do(func() {
+				log.Warn().Msgf("%s is deprecated; rename it to %s", legacyFeeGranterEnvVar, feeGranterEnvVar)
+			})
+		}
+	}
 	if addr == "" {
 		return nil, nil
 	}
 	granter, err := sdk.AccAddressFromBech32(addr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid FORGE_MASTER_GRANTER_ADDRESS %q: %w", addr, err)
+		return nil, fmt.Errorf("invalid %s %q: %w", envVar, addr, err)
 	}
 	return granter, nil
 }
