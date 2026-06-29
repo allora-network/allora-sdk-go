@@ -71,6 +71,13 @@ func (p *TxParams) Validate() error {
 	if p.FeeAmount.Empty() {
 		return fmt.Errorf("fee amount is required")
 	}
+	// FeeGranter, when set, is encoded verbatim into the tx AuthInfo; a wrong-length []byte
+	// serializes without error and only fails on-chain (feegrant not found) far from here,
+	// after wasting a broadcast round-trip. Cosmos account addresses are 20 bytes, so reject
+	// any other non-empty length up front.
+	if len(p.FeeGranter) != 0 && len(p.FeeGranter) != 20 {
+		return fmt.Errorf("fee granter address must be 20 bytes when set, got %d", len(p.FeeGranter))
+	}
 	return nil
 }
 

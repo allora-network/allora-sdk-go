@@ -200,6 +200,32 @@ func TestTxParamsValidation(t *testing.T) {
 	}
 }
 
+// TestTxParamsValidation_FeeGranterLength pins that a non-empty FeeGranter must be a 20-byte
+// cosmos account address: a wrong-length value is rejected at Validate() rather than serializing
+// into a tx that fails on-chain with a feegrant-not-found error after a wasted broadcast.
+func TestTxParamsValidation_FeeGranterLength(t *testing.T) {
+	base := func() *TxParams {
+		return &TxParams{
+			ChainID:   "allora-testnet-1",
+			GasLimit:  200000,
+			FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+		}
+	}
+
+	// No granter is valid (the signing wallet pays its own fees).
+	require.NoError(t, base().Validate())
+
+	// A 20-byte granter is valid.
+	valid := base()
+	valid.FeeGranter = make(sdk.AccAddress, 20)
+	require.NoError(t, valid.Validate())
+
+	// A wrong-length granter is rejected up front.
+	short := base()
+	short.FeeGranter = make(sdk.AccAddress, 10)
+	require.ErrorContains(t, short.Validate(), "fee granter address must be 20 bytes")
+}
+
 func TestDefaultTxParams(t *testing.T) {
 	params := DefaultTxParams()
 
