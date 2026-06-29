@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
@@ -463,14 +464,24 @@ func TestSignTransactionWith_RejectsSenderMismatch(t *testing.T) {
 	require.ErrorContains(t, err, "does not match transaction sender")
 }
 
-// nilPubKeySigner is a Signer whose PubKey() returns nil. Signer is a public extension point,
-// so a buggy custom implementation must fail with an error rather than panic the worker at
-// pubKey.Address() inside signTx.
+// nilPubKeySigner is a Signer whose PubKey() returns a literal-nil interface value. Signer is a
+// public extension point, so a buggy custom implementation must fail with an error rather than
+// panic the worker at pubKey.Address() inside signTx.
 type nilPubKeySigner struct{}
 
 func (nilPubKeySigner) PubKey() cryptotypes.PubKey    { return nil }
 func (nilPubKeySigner) Sign(_ []byte) ([]byte, error) { return nil, nil }
 
+// typedNilPubKeySigner is a Signer whose PubKey() returns a typed-nil pointer: non-nil at the
+// interface level but nil at the concrete level — the case a plain pubKey == nil check misses.
+type typedNilPubKeySigner struct{}
+
+func (typedNilPubKeySigner) PubKey() cryptotypes.PubKey    { return (*secp256k1.PubKey)(nil) }
+func (typedNilPubKeySigner) Sign(_ []byte) ([]byte, error) { return nil, nil }
+
+// TestSignTransactionWith_RejectsNilPubKey pins that a custom Signer whose PubKey() returns nil
+// fails with a clear error rather than panicking at pubKey.Address() inside signTx — for both a
+// literal-nil interface value and a typed-nil pointer (synth-006).
 func TestSignTransactionWith_RejectsNilPubKey(t *testing.T) {
 	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
 	require.NoError(t, err)
@@ -484,9 +495,20 @@ func TestSignTransactionWith_RejectsNilPubKey(t *testing.T) {
 	unsigned, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, params)
 	require.NoError(t, err)
 
-	// Must return an error, not panic.
-	_, err = SignTransactionWith(context.Background(), unsigned, nilPubKeySigner{}, params)
-	require.ErrorContains(t, err, "nil public key")
+	cases := []struct {
+		name   string
+		signer Signer
+	}{
+		{"literal nil", nilPubKeySigner{}},
+		{"typed nil", typedNilPubKeySigner{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Must return an error, not panic.
+			_, err := SignTransactionWith(context.Background(), unsigned, tc.signer, params)
+			require.ErrorContains(t, err, "nil public key")
+		})
+	}
 }
 
 func TestTxParams_FeeGranterIsEncoded(t *testing.T) {

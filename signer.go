@@ -77,6 +77,18 @@ func isNilSigner(s Signer) bool {
 	}
 }
 
+// isNilPubKey reports whether k is nil, including a typed-nil pointer stored in the interface
+// (e.g. a (*secp256k1.PubKey)(nil) returned by a custom Signer that lazily initializes its key).
+// A plain k == nil check misses the typed-nil case, which would otherwise panic when signTx calls
+// k.Address(). It mirrors isNilSigner, applied one layer down to the Signer's PubKey() return.
+func isNilPubKey(k cryptotypes.PubKey) bool {
+	if k == nil {
+		return true
+	}
+	v := reflect.ValueOf(k)
+	return v.Kind() == reflect.Pointer && v.IsNil()
+}
+
 // Compile-time assurance that the concrete secp256k1 private key — the type held inside
 // *Wallet via wallet.PrivKey — satisfies Signer, so the self-managed path needs no
 // adapter. Asserting the concrete type (rather than the cryptotypes.PrivKey interface)

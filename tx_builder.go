@@ -99,10 +99,12 @@ func (b *txBuilder) signTx(
 	// Get public key
 	pubKey := signer.PubKey()
 	// Signer is a public extension point (any type satisfying the interface can be passed to
-	// SignTransactionWith), so a buggy custom signer whose PubKey() returns nil would panic at
-	// pubKey.Address() and crash the worker. Fail with a clear error instead. isNilSigner guards
-	// a nil Signer value but not a non-nil Signer whose PubKey() returns nil.
-	if pubKey == nil {
+	// SignTransactionWith), so a buggy custom signer whose PubKey() returns nil — including a
+	// typed-nil like (*secp256k1.PubKey)(nil), non-nil at the interface level but nil at the
+	// concrete level — would panic at pubKey.Address() and crash the worker. isNilPubKey catches
+	// both the literal-nil and typed-nil cases (mirroring isNilSigner one layer up); fail with a
+	// clear error instead.
+	if isNilPubKey(pubKey) {
 		return nil, fmt.Errorf("signer returned nil public key")
 	}
 	signerAddr := sdk.AccAddress(pubKey.Address()).String()
