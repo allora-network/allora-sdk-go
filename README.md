@@ -148,21 +148,45 @@ The self-managed path — `SignTransaction(unsignedTx, wallet, params)` with a l
 Set `TxParams.FeeGranter` to have the transaction fee paid by another account via an
 on-chain feegrant, so a Privy-managed worker can hold no ALLO of its own. The granter is
 the Forge **master wallet address**: forge-v2 auto-creates a feegrant from it to each new
-signing wallet. That address is **not currently returned by any signing-wallet API
-endpoint**, so it must be supplied out-of-band today (forge-v2 configures the master
-granter via `PRIVY_MASTER_WALLET_ADDRESS`). Exposing it from the backend — so a
-master-wallet rotation does not force every SDK consumer to reconfigure — is tracked
-separately in forge-v2.
+signing wallet.
 
-For 12-factor deployments, `allora.FeeGranterFromEnv()` reads the granter from the
-canonical `FORGE_MASTER_GRANTER_ADDRESS` environment variable (the same name used by
-allora-sdk-py and allora-sdk-ts) and parses it for `TxParams.FeeGranter`, returning
-`(nil, nil)` when unset:
+A `RemoteSigner` **discovers that address at runtime**: the signing-wallet GET and the
+provision response now carry a `master_granter` field, which the signer parses and exposes
+via `signer.MasterGranter()` (empty when the backend has no master wallet configured).
+Runtime discovery means a master-wallet rotation no longer forces every SDK consumer to
+reconfigure.
+
+For 12-factor deployments you can **override** discovery with the canonical
+`FORGE_MASTER_GRANTER_ADDRESS` environment variable (the same name used by allora-sdk-py
+and allora-sdk-ts), read and parsed by `allora.FeeGranterFromEnv()` (returns `(nil, nil)`
+when unset).
+
+`signer.ResolveFeeGranter()` applies the precedence for you — env override first, then the
+discovered granter, then `nil` (the signing wallet pays its own fees) — so it drops straight
+into `TxParams.FeeGranter`:
 
 ```go
-granter, err := allora.FeeGranterFromEnv()
+granter, err := signer.ResolveFeeGranter()
 if err != nil {
     return err
+}
+params.FeeGranter = granter // nil ⇒ the signing wallet pays its own fees
+```
+
+To wire the precedence yourself instead — preferring an explicit env value and falling back
+to the discovered granter:
+
+```go
+granter, err := allora.FeeGranterFromEnv() // FORGE_MASTER_GRANTER_ADDRESS, nil when unset
+if err != nil {
+    return err
+}
+if granter == nil {
+    if discovered := signer.MasterGranter(); discovered != "" {
+        if granter, err = sdk.AccAddressFromBech32(discovered); err != nil {
+            return err
+        }
+    }
 }
 params.FeeGranter = granter // nil ⇒ the signing wallet pays its own fees
 ```

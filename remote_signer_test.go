@@ -635,3 +635,93 @@ func TestClearWalletAssociation_RejectsNonUUID(t *testing.T) {
 	}, "not-a-uuid")
 	require.Error(t, err)
 }
+
+// masterGranterBackend serves a wallet-info GET for walletID that reports the given
+// master_granter, so the discovery + resolution tests can vary the advertised granter.
+func masterGranterBackend(t *testing.T, wallet *Wallet, walletID, masterGranter string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id": walletID, "address": wallet.GetAddress(),
+			"pubkey":         hex.EncodeToString(wallet.GetPublicKeyBytes()),
+			"master_granter": masterGranter,
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestRemoteSigner_DiscoversMasterGranter pins runtime discovery (synth-003): the backend's
+// master_granter field is captured at construction and surfaced via MasterGranter(), so a worker
+// learns the gas granter from the API instead of configuring it out-of-band.
+func TestRemoteSigner_DiscoversMasterGranter(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	granter, err := GenerateWallet() // a real allo1... bech32 address to advertise as the granter
+	require.NoError(t, err)
+
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	srv := masterGranterBackend(t, wallet, walletID, granter.GetAddress())
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, granter.GetAddress(), rs.MasterGranter())
+}
+
+// TestRemoteSigner_MasterGranterAbsent pins graceful degradation: a backend that omits
+// master_granter leaves MasterGranter() empty and ResolveFeeGranter() nil (the wallet pays its
+// own fees) rather than failing signer construction.
+func TestRemoteSigner_MasterGranterAbsent(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	srv := masterGranterBackend(t, wallet, walletID, "")
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+	require.Empty(t, rs.MasterGranter())
+
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	got, err := rs.ResolveFeeGranter()
+	require.NoError(t, err)
+	require.Nil(t, got)
+}
+
+// TestRemoteSigner_ResolveFeeGranter pins the discovery-with-override precedence: with no env
+// override the discovered master granter is used, and FORGE_MASTER_GRANTER_ADDRESS overrides it.
+func TestRemoteSigner_ResolveFeeGranter(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	discovered, err := GenerateWallet()
+	require.NoError(t, err)
+	override, err := GenerateWallet()
+	require.NoError(t, err)
+
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	srv := masterGranterBackend(t, wallet, walletID, discovered.GetAddress())
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+
+	// No env override: fall back to the discovered master granter.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	got, err := rs.ResolveFeeGranter()
+	require.NoError(t, err)
+	require.Equal(t, discovered.GetAddress(), got.String())
+
+	// Env override wins over the discovered value.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", override.GetAddress())
+	got, err = rs.ResolveFeeGranter()
+	require.NoError(t, err)
+	require.Equal(t, override.GetAddress(), got.String())
+}

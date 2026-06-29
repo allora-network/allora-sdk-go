@@ -48,6 +48,10 @@ type RemoteSigner struct {
 	httpClient *http.Client
 	pubKey     cryptotypes.PubKey
 	address    sdk.AccAddress
+	// masterGranter is the master feegrant granter (allo1...) the backend reported for this
+	// wallet, discovered from the wallet-info/provision response. Empty when the backend does
+	// not advertise one; resolved into a TxParams.FeeGranter via ResolveFeeGranter.
+	masterGranter string
 }
 
 var (
@@ -153,6 +157,43 @@ func (rs *RemoteSigner) AccAddress() sdk.AccAddress { return rs.address }
 // Address returns the wallet's allo1... account address as a string.
 func (rs *RemoteSigner) Address() string { return rs.address.String() }
 
+// MasterGranter returns the master feegrant granter (allo1...) the backend reported for this
+// wallet, or "" when the backend does not advertise one. forge-v2 auto-creates a feegrant from
+// this granter to each new signing wallet, so a worker can subsidize its gas without holding
+// any ALLO. It is discovered at runtime from the wallet-info/provision response (the
+// master_granter field), so a master-wallet rotation does not force consumers to reconfigure.
+// Use ResolveFeeGranter to apply the env-override precedence and obtain a TxParams.FeeGranter.
+func (rs *RemoteSigner) MasterGranter() string { return rs.masterGranter }
+
+// ResolveFeeGranter resolves the fee granter to use for this wallet's transactions, applying
+// discovery-with-override precedence:
+//
+//  1. FORGE_MASTER_GRANTER_ADDRESS (read and parsed via FeeGranterFromEnv) — an explicit
+//     operator override, shared with allora-sdk-py / allora-sdk-ts;
+//  2. the master granter the backend discovered for this wallet (MasterGranter());
+//  3. nil — neither is set, so the signing wallet pays its own fees.
+//
+// Assign the result straight to TxParams.FeeGranter. It returns an error only when an override
+// is set but malformed, or when the backend advertised a master_granter that is not a valid
+// bech32 address.
+func (rs *RemoteSigner) ResolveFeeGranter() (sdk.AccAddress, error) {
+	envGranter, err := FeeGranterFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	if envGranter != nil {
+		return envGranter, nil
+	}
+	if rs.masterGranter == "" {
+		return nil, nil
+	}
+	granter, err := sdk.AccAddressFromBech32(rs.masterGranter)
+	if err != nil {
+		return nil, fmt.Errorf("backend returned invalid master_granter %q: %w", rs.masterGranter, err)
+	}
+	return granter, nil
+}
+
 // ClearAssociation releases this wallet's topic binding on the Forge backend (Forge-side
 // bookkeeping only — it does NOT unregister the worker on-chain). Call it before
 // re-provisioning the wallet against a new topic or before decommissioning it. This mirrors
@@ -231,6 +272,10 @@ type signingWalletInfoResponse struct {
 	ID      string `json:"id"`
 	Address string `json:"address"`
 	PubKey  string `json:"pubkey"`
+	// MasterGranter is the master feegrant granter (allo1...) that subsidizes this wallet's
+	// gas. forge-v2 omits it when no master wallet is configured; encoding/json leaves the
+	// field empty in that case (and silently ignores it on backends that never send it).
+	MasterGranter string `json:"master_granter"`
 }
 
 func (rs *RemoteSigner) fetchWallet(ctx context.Context) error {
@@ -306,6 +351,10 @@ func (rs *RemoteSigner) applyWalletInfo(info signingWalletInfoResponse) error {
 		return fmt.Errorf("backend address %s does not match pubkey-derived address %s", info.Address, derived.String())
 	}
 	rs.address = derived
+	// The master granter is an optional discovery hint, not part of the wallet's identity, so
+	// it is stored verbatim (and validated only when ResolveFeeGranter parses it). An absent
+	// value degrades gracefully to "no granter" rather than failing signer construction.
+	rs.masterGranter = info.MasterGranter
 	return nil
 }
 
