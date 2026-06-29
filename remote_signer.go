@@ -398,10 +398,12 @@ func (rs *RemoteSigner) applyWalletInfo(info signingWalletInfoResponse) error {
 		return fmt.Errorf("backend address %s does not match pubkey-derived address %s", info.Address, derived.String())
 	}
 	rs.address = derived
-	// The master granter is an optional discovery hint, not part of the wallet's identity, so
-	// it is stored verbatim (and validated only when ResolveFeeGranter parses it). An absent
-	// value degrades gracefully to "no granter" rather than failing signer construction.
-	rs.masterGranter = info.MasterGranter
+	// The master granter is an optional discovery hint, not part of the wallet's identity, so it
+	// is validated only when ResolveFeeGranter parses it. Trim surrounding whitespace (matching
+	// FeeGranterFromEnv) so a padded backend value (" allo1...", "allo1...\n") still resolves
+	// instead of failing sdk.AccAddressFromBech32; an absent value degrades gracefully to "no
+	// granter" rather than failing signer construction.
+	rs.masterGranter = strings.TrimSpace(info.MasterGranter)
 	return nil
 }
 

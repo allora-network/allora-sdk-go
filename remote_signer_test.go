@@ -711,6 +711,30 @@ func TestRemoteSigner_MasterGranterAbsent(t *testing.T) {
 	require.Nil(t, got)
 }
 
+// TestRemoteSigner_TrimsMasterGranter pins that a backend master_granter with surrounding
+// whitespace is trimmed at storage (synth-015), matching FeeGranterFromEnv, so MasterGranter()
+// returns the clean bech32 and ResolveFeeGranter() parses it instead of erroring on the padding.
+func TestRemoteSigner_TrimsMasterGranter(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	granter, err := GenerateWallet()
+	require.NoError(t, err)
+
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	srv := masterGranterBackend(t, wallet, walletID, "  "+granter.GetAddress()+"\n")
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, granter.GetAddress(), rs.MasterGranter())
+
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	got, err := rs.ResolveFeeGranter()
+	require.NoError(t, err)
+	require.Equal(t, granter.GetAddress(), got.String())
+}
+
 // TestRevokeWallet_Standalone pins the by-id decommission path (synth-015): it deletes the wallet
 // using only the wallet id, without constructing a RemoteSigner or issuing a wallet-info GET (no
 // GET handler is registered, so any fetch would fail the test). Mirrors the server's
