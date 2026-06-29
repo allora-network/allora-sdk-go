@@ -215,6 +215,20 @@ func TestNewRemoteSignerForTopic_BuildsFromProvisionResponse(t *testing.T) {
 	require.Equal(t, wallet.GetPublicKeyBytes(), rs.PubKey().Bytes())
 }
 
+// TestNewRemoteSignerForTopic_RejectsNonEmptyWalletID pins that the topic constructor rejects a
+// caller-supplied cfg.WalletID (synth-005): the field is filled from the provision response, so a
+// stale value copy-pasted from a NewRemoteSigner config must fail loudly rather than be silently
+// overwritten and bind the signer to an unexpected wallet.
+func TestNewRemoteSignerForTopic_RejectsNonEmptyWalletID(t *testing.T) {
+	_, err := NewRemoteSignerForTopic(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network",
+		APIKey:     "forge_sk_test",
+		WalletID:   "44444444-4444-4444-4444-444444444444",
+	}, 42, "")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cfg.WalletID must be empty")
+}
+
 // TestNewRemoteSignerForTopic_RejectsNonUUIDProvisionID pins that a backend returning a
 // non-UUID wallet id from the provision POST is rejected at the provision step with a clear
 // provision-response error, rather than surfacing later as a confusing wallet-ID validation

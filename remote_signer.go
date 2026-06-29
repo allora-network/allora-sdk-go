@@ -233,6 +233,9 @@ func (rs *RemoteSigner) ClearAssociation(ctx context.Context) error {
 // /api/v1/signing-wallets/{walletID}/clear-association with no body. A non-2xx response (e.g.
 // 404 for an unknown/foreign/already-cleared wallet) is returned as an error so the caller
 // decides whether an unbind failure is fatal or best-effort.
+//
+// Only cfg.BackendURL, cfg.APIKey, and cfg.HTTPClient are read; cfg.WalletID is ignored — the
+// walletID parameter is the authoritative identifier for the wallet to unbind.
 func ClearWalletAssociation(ctx context.Context, cfg RemoteSignerConfig, walletID string) error {
 	client, backendURL, canonicalID, err := prepareWalletByIDCall(cfg, walletID)
 	if err != nil {
@@ -249,6 +252,9 @@ func ClearWalletAssociation(ctx context.Context, cfg RemoteSignerConfig, walletI
 // constructing a RemoteSigner (no wallet-info fetch). It mirrors the server's RevokeSigningWallet
 // handler. A non-2xx response (e.g. 404 for an unknown/foreign/already-revoked wallet) is
 // returned as an error so the caller decides whether the failure is fatal or best-effort.
+//
+// Only cfg.BackendURL, cfg.APIKey, and cfg.HTTPClient are read; cfg.WalletID is ignored — the
+// walletID parameter is the authoritative identifier for the wallet to revoke.
 func RevokeWallet(ctx context.Context, cfg RemoteSignerConfig, walletID string) error {
 	client, backendURL, canonicalID, err := prepareWalletByIDCall(cfg, walletID)
 	if err != nil {
@@ -553,8 +559,9 @@ func truncateForError(body []byte) string {
 
 // NewRemoteSignerForTopic idempotently gets-or-creates the user's managed wallet bound to
 // topicID (ENGN-8572 "one worker = one topic") and returns a RemoteSigner for it. Safe to call
-// on every worker start: the backend enforces one wallet per (user, topic). cfg.WalletID is
-// ignored; it is filled from the provision response.
+// on every worker start: the backend enforces one wallet per (user, topic). cfg.WalletID must be
+// empty; it is filled from the provision response (a non-empty value is rejected rather than
+// silently overwritten).
 //
 // Each topic binding counts against a per-user wallet cap enforced by the backend. A worker
 // that is retired or rotated to a different topic leaves its binding in place, so in
@@ -569,6 +576,13 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	}
 	if cfg.BackendURL == "" || cfg.APIKey == "" {
 		return nil, fmt.Errorf("backend URL and API key are required")
+	}
+	// WalletID is filled from the provision response, not supplied by the caller. Reject a
+	// non-empty value instead of silently overwriting it, so a config copy-pasted from a
+	// NewRemoteSigner call (which requires WalletID) cannot leave the caller believing the signer
+	// binds to that stale id when it actually binds to the backend-assigned one.
+	if cfg.WalletID != "" {
+		return nil, fmt.Errorf("cfg.WalletID must be empty for topic-bound provisioning; it is filled from the provision response")
 	}
 	if topicID <= 0 {
 		return nil, fmt.Errorf("topic id must be a positive integer")
