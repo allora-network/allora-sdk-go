@@ -151,19 +151,21 @@ the Forge **master wallet address**: forge-v2 auto-creates a feegrant from it to
 signing wallet.
 
 A `RemoteSigner` **discovers that address at runtime**: the signing-wallet GET and the
-provision response now carry a `master_granter` field, which the signer parses and exposes
-via `signer.MasterGranter()` (empty when the backend has no master wallet configured).
-Runtime discovery means a master-wallet rotation no longer forces every SDK consumer to
-reconfigure.
+provision response now carry a `master_granter` field, which the signer reads from the
+backend response and exposes — as the raw string, verbatim — via `signer.MasterGranter()`
+(empty when the backend has no master wallet configured). `MasterGranter()` does not parse
+or validate the value; parsing into an `sdk.AccAddress` happens in `signer.ResolveFeeGranter()`
+(below). Runtime discovery means a master-wallet rotation no longer forces every SDK consumer
+to reconfigure.
 
 For 12-factor deployments you can **override** discovery with the canonical
 `FORGE_MASTER_GRANTER_ADDRESS` environment variable (the same name used by allora-sdk-py
 and allora-sdk-ts), read and parsed by `allora.FeeGranterFromEnv()` (returns `(nil, nil)`
 when unset).
 
-`signer.ResolveFeeGranter()` applies the precedence for you — env override first, then the
-discovered granter, then `nil` (the signing wallet pays its own fees) — so it drops straight
-into `TxParams.FeeGranter`:
+`signer.ResolveFeeGranter()` applies the precedence for you and returns a parsed
+`sdk.AccAddress` — env override first, then the discovered granter, then `nil` (the signing
+wallet pays its own fees) — so it drops straight into `TxParams.FeeGranter`:
 
 ```go
 granter, err := signer.ResolveFeeGranter()
