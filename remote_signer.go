@@ -280,8 +280,9 @@ func revokeWallet(ctx context.Context, httpClient *http.Client, backendURL, wall
 // error. It is the shared transport behind the clear-association (POST) and revoke/decommission
 // (DELETE) calls, which have the same shape: a method + URL carrying only the X-Forge-API-Key
 // header, with success defined as any 2xx regardless of body (the endpoints answer 204 No Content
-// or 200 + JSON). It deliberately does not use do(), which requires a JSON body. op labels the
-// operation in the request-construction error; ctx must be non-nil (http.NewRequestWithContext
+// or 200 + JSON). It shares the bounded body read, drain, and non-2xx handling with do() and the
+// provision path via sendForgeRequest, but unlike do() it does not require a JSON body. op labels
+// the operation in the request-construction error; ctx must be non-nil (http.NewRequestWithContext
 // panics on a nil context).
 func doWalletRequest(ctx context.Context, httpClient *http.Client, method, endpoint, apiKey, op string) error {
 	if ctx == nil {
@@ -293,20 +294,8 @@ func doWalletRequest(ctx context.Context, httpClient *http.Client, method, endpo
 	}
 	req.Header.Set(apiKeyHeader, apiKey)
 
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("calling forge backend: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return fmt.Errorf("reading forge response: %w", err)
-	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
-	}
-	return nil
+	_, _, err = sendForgeRequest(httpClient, req, "reading forge response")
+	return err
 }
 
 type signingWalletInfoResponse struct {
@@ -487,16 +476,24 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 // signing. Wallet-info and signature responses are tiny; 1 MiB is generous headroom.
 const maxResponseBytes = 1 << 20
 
-// do executes an HTTP request and returns the body, mapping non-2xx to an error.
-func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
-	resp, err := rs.httpClient.Do(req)
+// sendForgeRequest executes req with httpClient and returns the response together with the
+// bounded response body, applying the transport hardening shared by every Forge backend call:
+// it caps the buffered body at maxResponseBytes (so a broken or malicious endpoint cannot drive
+// unbounded memory use), drains a bounded amount past the cap so the keep-alive connection stays
+// reusable, and maps a non-2xx status to an error carrying a truncated body excerpt. On success
+// the returned response has already had its Body fully consumed and closed — inspect only its
+// status and headers (e.g. Content-Type); the body bytes are returned separately. readErrLabel
+// names the body-read error so each call site keeps its specific wording. Callers layer their own
+// concerns (Content-Type/JSON checks, body decoding) on top.
+func sendForgeRequest(httpClient *http.Client, req *http.Request, readErrLabel string) (*http.Response, []byte, error) {
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("calling forge backend: %w", err)
+		return nil, nil, fmt.Errorf("calling forge backend: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
-		return nil, fmt.Errorf("reading forge response: %w", err)
+		return nil, nil, fmt.Errorf("%s: %w", readErrLabel, err)
 	}
 	// A normal response is fully consumed above, so the keep-alive transport can reuse the
 	// connection. If the body exceeded the cap, drain a bounded amount past it so the
@@ -505,7 +502,17 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	// an abnormal response).
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+		return nil, nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	return resp, body, nil
+}
+
+// do executes an HTTP request and returns the body, mapping non-2xx to an error. It layers the
+// JSON content-type guard on top of the shared sendForgeRequest transport.
+func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
+	resp, body, err := sendForgeRequest(rs.httpClient, req, "reading forge response")
+	if err != nil {
+		return nil, err
 	}
 	// A 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN; surface that clearly instead of an opaque JSON-decode error.
@@ -642,20 +649,9 @@ func provisionWalletForTopic(ctx context.Context, client *http.Client, cfg Remot
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := client.Do(req)
+	resp, body, err := sendForgeRequest(client, req, "reading provision response")
 	if err != nil {
-		return signingWalletInfoResponse{}, fmt.Errorf("calling forge backend: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return signingWalletInfoResponse{}, fmt.Errorf("reading provision response: %w", err)
-	}
-	// Mirror do(): drain a bounded amount past the read cap so a slightly-oversized 2xx body
-	// still leaves the keep-alive connection reusable instead of being torn down on Close.
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+		return signingWalletInfoResponse{}, err
 	}
 	// Mirror do(): a 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN. Provisioning is the call most likely to hit an unauthenticated gateway
