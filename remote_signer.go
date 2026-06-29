@@ -424,7 +424,12 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	// provisionForTopic), both of which construct from the provision response.
 	info, err := provisionWalletForTopic(ctx, cfg, topicID, label)
 	if err != nil {
-		return nil, err
+		// Prefix with the provisioning context so a provision-step failure is distinguishable in
+		// logs from a later sign/fetch failure: provisionWalletForTopic and do() otherwise share
+		// generic "calling forge backend" / "forge backend returned status" messages, and an
+		// operator triaging a failed worker start needs to know whether a backend wallet was
+		// created (provision succeeded, something later failed) or not.
+		return nil, fmt.Errorf("provisioning wallet for topic %d: %w", topicID, err)
 	}
 	// cfg.WalletID was ignored on entry; adopt the backend-assigned id, already validated and
 	// canonicalized by provisionWalletForTopic, so the applyWalletInfo cross-check and later

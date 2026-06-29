@@ -240,6 +240,25 @@ func TestNewRemoteSignerForTopic_RejectsNonUUIDProvisionID(t *testing.T) {
 	require.Contains(t, err.Error(), "non-UUID wallet id")
 }
 
+// TestNewRemoteSignerForTopic_ProvisionErrorIdentifiesStep pins that a provision-step failure
+// is wrapped with the topic-provisioning context, so it is distinguishable in logs from a later
+// sign/fetch failure that shares the generic "forge backend returned status" message.
+func TestNewRemoteSignerForTopic_ProvisionErrorIdentifiesStep(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets", func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := NewRemoteSignerForTopic(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL,
+		APIKey:     "forge_sk_test",
+	}, 42, "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "provisioning wallet for topic 42")
+}
+
 // TestSignTransactionWith_NilContextDoesNotPanic pins that a nil ctx is defaulted to
 // context.Background() instead of panicking in http.NewRequestWithContext when the signer is
 // a RemoteSigner that performs I/O during signing.
