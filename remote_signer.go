@@ -183,6 +183,11 @@ func (rs *RemoteSigner) Address() string { return rs.address.String() }
 // any ALLO. It is discovered at runtime from the wallet-info/provision response (the
 // master_granter field), so a master-wallet rotation does not force consumers to reconfigure.
 // Use ResolveFeeGranter to apply the env-override precedence and obtain a TxParams.FeeGranter.
+//
+// The value is snapshotted once at construction (NewRemoteSigner / NewRemoteSignerForTopic) and is
+// not refreshed during the signer's lifetime, so a master-wallet rotation mid-life is picked up
+// only by reconstructing the signer. For a long-lived signer that must follow a rotation without a
+// restart, set FORGE_MASTER_GRANTER_ADDRESS (honored first by ResolveFeeGranter) as the live override.
 func (rs *RemoteSigner) MasterGranter() string { return rs.masterGranter }
 
 // ResolveFeeGranter resolves the fee granter to use for this wallet's transactions, applying
