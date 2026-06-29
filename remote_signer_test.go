@@ -215,6 +215,31 @@ func TestNewRemoteSignerForTopic_BuildsFromProvisionResponse(t *testing.T) {
 	require.Equal(t, wallet.GetPublicKeyBytes(), rs.PubKey().Bytes())
 }
 
+// TestNewRemoteSignerForTopic_RejectsNonUUIDProvisionID pins that a backend returning a
+// non-UUID wallet id from the provision POST is rejected at the provision step with a clear
+// provision-response error, rather than surfacing later as a confusing wallet-ID validation
+// failure attributed to the caller's config.
+func TestNewRemoteSignerForTopic_RejectsNonUUIDProvisionID(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id":      "12345", // not a UUID
+			"address": "allo1placeholder",
+			"pubkey":  "abcd",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err := NewRemoteSignerForTopic(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL,
+		APIKey:     "forge_sk_test",
+	}, 42, "")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "non-UUID wallet id")
+}
+
 // TestSignTransactionWith_NilContextDoesNotPanic pins that a nil ctx is defaulted to
 // context.Background() instead of panicking in http.NewRequestWithContext when the signer is
 // a RemoteSigner that performs I/O during signing.

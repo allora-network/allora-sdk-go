@@ -426,13 +426,10 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	if err != nil {
 		return nil, err
 	}
-	// cfg.WalletID was ignored on entry; adopt the backend-assigned id (canonicalized) so the
-	// applyWalletInfo cross-check and later sign request paths use the canonical form.
-	parsedWalletID, err := uuid.Parse(info.ID)
-	if err != nil {
-		return nil, fmt.Errorf("forge backend returned malformed wallet id %q: %w", info.ID, err)
-	}
-	cfg.WalletID = parsedWalletID.String()
+	// cfg.WalletID was ignored on entry; adopt the backend-assigned id, already validated and
+	// canonicalized by provisionWalletForTopic, so the applyWalletInfo cross-check and later
+	// sign request paths use the canonical form.
+	cfg.WalletID = info.ID
 	rs := &RemoteSigner{cfg: cfg, httpClient: newGuardedClient(cfg.HTTPClient)}
 	if err := rs.applyWalletInfo(info); err != nil {
 		return nil, err
@@ -528,5 +525,14 @@ func provisionWalletForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	if info.ID == "" {
 		return signingWalletInfoResponse{}, fmt.Errorf("forge backend provision response missing wallet id")
 	}
+	// Validate (and canonicalize) the backend-assigned id at its source. A buggy backend that
+	// returns a non-UUID id (numeric, slug, stale beta-format) is reported as a provision-
+	// response fault here, instead of surfacing later as a confusing wallet-ID validation error
+	// that blames the caller's config.
+	parsed, err := uuid.Parse(info.ID)
+	if err != nil {
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend provision response returned non-UUID wallet id %q: %w", info.ID, err)
+	}
+	info.ID = parsed.String()
 	return info, nil
 }
