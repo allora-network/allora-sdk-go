@@ -433,3 +433,32 @@ func TestTxParams_FeeGranterIsEncoded(t *testing.T) {
 	require.NotEqual(t, unsignedNoGranter, unsignedWithGranter)
 	require.Greater(t, len(unsignedWithGranter), len(unsignedNoGranter))
 }
+
+func TestFeeGranterFromEnv(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	valid := wallet.GetAddress()
+
+	// Unset/blank → nil granter (the signing wallet pays its own fees).
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	got, err := FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	// A valid allo address is parsed into the matching AccAddress.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", valid)
+	got, err = FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, valid, got.String())
+
+	// Whitespace is trimmed.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "  "+valid+"  ")
+	got, err = FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, valid, got.String())
+
+	// A malformed value is rejected at config time rather than reaching broadcast.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "not-a-bech32-address")
+	_, err = FeeGranterFromEnv()
+	require.Error(t, err)
+}

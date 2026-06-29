@@ -3,6 +3,8 @@ package allora
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -36,6 +38,24 @@ func DefaultTxParams() *TxParams {
 		GasLimit:  200000, // Standard gas limit for simple transfers
 		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)), // Default fee
 	}
+}
+
+// FeeGranterFromEnv reads the canonical FORGE_MASTER_GRANTER_ADDRESS environment
+// variable and parses it into an AccAddress suitable for TxParams.FeeGranter. This
+// is the fee-granter (master subsidy wallet) env var shared across the Allora SDKs
+// (allora-sdk-py / allora-sdk-ts), giving Go callers a single discovery path for the
+// same value. It returns (nil, nil) when the variable is unset or blank, in which
+// case the signing wallet pays its own fees.
+func FeeGranterFromEnv() (sdk.AccAddress, error) {
+	addr := strings.TrimSpace(os.Getenv("FORGE_MASTER_GRANTER_ADDRESS"))
+	if addr == "" {
+		return nil, nil
+	}
+	granter, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid FORGE_MASTER_GRANTER_ADDRESS %q: %w", addr, err)
+	}
+	return granter, nil
 }
 
 // Validate checks that all required parameters are set. The receiver must be non-nil; the

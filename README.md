@@ -154,6 +154,19 @@ granter via `PRIVY_MASTER_WALLET_ADDRESS`). Exposing it from the backend — so 
 master-wallet rotation does not force every SDK consumer to reconfigure — is tracked
 separately in forge-v2.
 
+For 12-factor deployments, `allora.FeeGranterFromEnv()` reads the granter from the
+canonical `FORGE_MASTER_GRANTER_ADDRESS` environment variable (the same name used by
+allora-sdk-py and allora-sdk-ts) and parses it for `TxParams.FeeGranter`, returning
+`(nil, nil)` when unset:
+
+```go
+granter, err := allora.FeeGranterFromEnv()
+if err != nil {
+    return err
+}
+params.FeeGranter = granter // nil ⇒ the signing wallet pays its own fees
+```
+
 ## Configuration
 
 ### Client Configuration
