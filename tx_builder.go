@@ -1,16 +1,17 @@
 package allora
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
 	sdkclient "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	signingtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
-	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	alloracodec "github.com/allora-network/allora-sdk-go/codec"
 )
@@ -32,21 +33,23 @@ func newTxBuilder() *txBuilder {
 	}
 }
 
-// buildUnsignedSendTx creates an unsigned send transaction
-func (b *txBuilder) buildUnsignedSendTx(
-	fromAddr sdk.AccAddress,
-	toAddr sdk.AccAddress,
-	amount sdk.Coins,
+// buildUnsignedTx builds an unsigned transaction from arbitrary sdk.Msg values,
+// encoding it with the Allora codec. Callers are responsible for the messages'
+// internal validity; this method validates only that at least one message is
+// present.
+func (b *txBuilder) buildUnsignedTx(
+	msgs []sdk.Msg,
 	params *TxParams,
 ) ([]byte, error) {
-	// Create the MsgSend
-	msg := banktypes.NewMsgSend(fromAddr, toAddr, amount)
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("at least one message is required")
+	}
 
 	// Create transaction builder
 	txBuilder := b.txConfig.NewTxBuilder()
 
-	// Set the message
-	if err := txBuilder.SetMsgs(msg); err != nil {
+	// Set the messages
+	if err := txBuilder.SetMsgs(msgs...); err != nil {
 		return nil, fmt.Errorf("failed to set messages: %w", err)
 	}
 
@@ -72,6 +75,41 @@ func (b *txBuilder) buildUnsignedSendTx(
 	}
 
 	return txBytes, nil
+}
+
+// verifySignerForTx checks that pubKey's account address is among the required
+// signers of every message in tx. It resolves signers via the codec's
+// GetMsgV1Signers, which returns each signer as raw address bytes, and compares
+// them to pubKey.Address() without bech32 round-tripping. It returns an error if
+// any message has no signers or does not include this signer, mirroring the
+// on-chain "signature verification failed" failure but surfacing it before
+// broadcast.
+func (b *txBuilder) verifySignerForTx(tx sdk.Tx, pubKey cryptotypes.PubKey) error {
+	signerBytes := pubKey.Address().Bytes()
+
+	for i, msg := range tx.GetMsgs() {
+		msgSigners, _, err := b.codec.GetMsgV1Signers(msg)
+		if err != nil {
+			return fmt.Errorf("failed to resolve signers for message %d: %w", i, err)
+		}
+		if len(msgSigners) == 0 {
+			return fmt.Errorf("message %d has no signers", i)
+		}
+
+		found := false
+		for _, s := range msgSigners {
+			if bytes.Equal(s, signerBytes) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			signerAddr := sdk.AccAddress(signerBytes).String()
+			return fmt.Errorf("signer address %s is not a required signer of message %d", signerAddr, i)
+		}
+	}
+
+	return nil
 }
 
 // signTx signs a transaction with the provided signer (a local key or a remote signer).
@@ -109,19 +147,13 @@ func (b *txBuilder) signTx(
 	}
 	signerAddr := sdk.AccAddress(pubKey.Address()).String()
 
-	// Guard against signing a transaction whose message sender is not the signer; such a
-	// tx is rejected on-chain ("signature verification failed") far from the cause.
-	//
-	// NOTE: this only checks *banktypes.MsgSend, the single message type the SDK's only
-	// builder (CreateUnsignedSendTx) emits. It is defense-in-depth, not a security
-	// boundary: a caller who hand-assembles another message type (MsgDelegate, MsgExec, an
-	// IBC transfer, an emissions message, ...) and passes the bytes to SignTransactionWith
-	// bypasses this guard. When a second message-builder is added, generalize this to
-	// msg.GetSigners() (or codec GetMsgV1Signers) so the check becomes type-agnostic.
-	for _, msg := range decodedTx.GetMsgs() {
-		if send, ok := msg.(*banktypes.MsgSend); ok && send.FromAddress != signerAddr {
-			return nil, fmt.Errorf("signer address %s does not match transaction sender %s", signerAddr, send.FromAddress)
-		}
+	// Guard against signing a transaction whose message signer is not this signer; such a
+	// tx is rejected on-chain ("signature verification failed") far from the cause. The
+	// check is message-type-agnostic: it resolves each message's required signers via the
+	// codec (GetMsgV1Signers) and asserts this signer is among them for every message, so
+	// it covers bank, emissions, feegrant, and any other registered message type.
+	if err := b.verifySignerForTx(decodedTx, pubKey); err != nil {
+		return nil, err
 	}
 
 	// Convert API sign mode to internal
