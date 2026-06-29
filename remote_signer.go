@@ -134,8 +134,11 @@ func rejectRedirect(_ *http.Request, _ []*http.Request) error {
 
 // loopbackHosts is the exact set of hosts for which a plaintext http backend URL is
 // permitted. It is intentionally narrower than net.IP.IsLoopback (which accepts the whole
-// 127.0.0.0/8 block, e.g. 127.0.0.2) to match the sibling SDKs' allowlist
-// (allora-sdk-py _LOOPBACK_HOSTS), keeping the cross-SDK plaintext-http policy identical.
+// 127.0.0.0/8 block, e.g. 127.0.0.2) and matches the Python sibling's allowlist
+// (allora-sdk-py _LOOPBACK_HOSTS). NOTE: allora-sdk-ts currently accepts a broader set — it also
+// treats 0.0.0.0 and the entire 127.0.0.0/8 block as loopback — so the three SDKs are not yet
+// byte-for-byte identical here. Narrowing TS down to this canonical set is tracked as a cross-repo
+// follow-up; the divergence is local-dev only, since production always uses https.
 var loopbackHosts = map[string]bool{
 	"localhost": true,
 	"127.0.0.1": true,
