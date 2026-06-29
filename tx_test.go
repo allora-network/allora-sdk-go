@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/stretchr/testify/require"
 )
@@ -431,6 +432,32 @@ func TestSignTransactionWith_RejectsSenderMismatch(t *testing.T) {
 
 	_, err = SignTransactionWith(context.Background(), unsigned, walletB.PrivKey, params)
 	require.ErrorContains(t, err, "does not match transaction sender")
+}
+
+// nilPubKeySigner is a Signer whose PubKey() returns nil. Signer is a public extension point,
+// so a buggy custom implementation must fail with an error rather than panic the worker at
+// pubKey.Address() inside signTx.
+type nilPubKeySigner struct{}
+
+func (nilPubKeySigner) PubKey() cryptotypes.PubKey    { return nil }
+func (nilPubKeySigner) Sign(_ []byte) ([]byte, error) { return nil, nil }
+
+func TestSignTransactionWith_RejectsNilPubKey(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	params := &TxParams{
+		ChainID:   "allora-testnet-1",
+		GasLimit:  200000,
+		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	unsigned, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, params)
+	require.NoError(t, err)
+
+	// Must return an error, not panic.
+	_, err = SignTransactionWith(context.Background(), unsigned, nilPubKeySigner{}, params)
+	require.ErrorContains(t, err, "nil public key")
 }
 
 func TestTxParams_FeeGranterIsEncoded(t *testing.T) {
