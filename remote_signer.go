@@ -239,6 +239,34 @@ func ClearWalletAssociation(ctx context.Context, cfg RemoteSignerConfig, walletI
 	return clearAssociation(ctx, newGuardedClient(cfg.HTTPClient), cfg.BackendURL, parsed.String(), cfg.APIKey)
 }
 
+// RevokeWallet decommissions walletID on the Forge backend (DELETE
+// /api/v1/signing-wallets/{walletID}), permanently retiring the managed signing wallet. This is
+// the destructive counterpart to ClearWalletAssociation: clearing only unbinds the wallet from
+// its topic (and is reversible by re-provisioning), whereas revoking tears the wallet down for
+// good. Use it when you only hold the wallet id — e.g. decommissioning a worker — without
+// constructing a RemoteSigner (no wallet-info fetch). It mirrors the server's RevokeSigningWallet
+// handler. A non-2xx response (e.g. 404 for an unknown/foreign/already-revoked wallet) is
+// returned as an error so the caller decides whether the failure is fatal or best-effort.
+func RevokeWallet(ctx context.Context, cfg RemoteSignerConfig, walletID string) error {
+	if ctx == nil {
+		return fmt.Errorf("ctx must not be nil")
+	}
+	if cfg.BackendURL == "" || cfg.APIKey == "" {
+		return fmt.Errorf("backend URL and API key are required")
+	}
+	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
+	if err := requireSecureBackend(cfg.BackendURL); err != nil {
+		return err
+	}
+	// The wallet ID is interpolated into the request path; require it to be a UUID (and
+	// canonicalize it) so a malformed value cannot inject path segments or query strings.
+	parsed, err := uuid.Parse(walletID)
+	if err != nil {
+		return fmt.Errorf("wallet ID must be a UUID: %w", err)
+	}
+	return revokeWallet(ctx, newGuardedClient(cfg.HTTPClient), cfg.BackendURL, parsed.String(), cfg.APIKey)
+}
+
 // clearAssociation issues the POST /clear-association call for walletID with the given guarded
 // client. walletID must already be canonical. It is the shared implementation behind the
 // standalone ClearWalletAssociation function and the (*RemoteSigner).ClearAssociation method.
@@ -252,6 +280,35 @@ func clearAssociation(ctx context.Context, httpClient *http.Client, backendURL, 
 
 	// clear-association returns 204 No Content, so this cannot use do() (which requires a
 	// JSON body); accept any 2xx with an empty/non-JSON body as success.
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("calling forge backend: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return fmt.Errorf("reading forge response: %w", err)
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(body))
+	}
+	return nil
+}
+
+// revokeWallet issues the DELETE /signing-wallets/{walletID} call with the given guarded client.
+// walletID must already be canonical. It is the shared implementation behind the standalone
+// RevokeWallet function. Like clearAssociation it does not use do(): the endpoint may answer with
+// 200+JSON ({"message":"wallet revoked"}) or an empty 2xx, so success is any 2xx regardless of
+// body, and a non-2xx is mapped to an error.
+func revokeWallet(ctx context.Context, httpClient *http.Client, backendURL, walletID, apiKey string) error {
+	endpoint := fmt.Sprintf("%s/api/v1/signing-wallets/%s", backendURL, url.PathEscape(walletID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("creating revoke-wallet request: %w", err)
+	}
+	req.Header.Set(apiKeyHeader, apiKey)
+
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("calling forge backend: %w", err)

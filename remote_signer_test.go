@@ -695,6 +695,58 @@ func TestRemoteSigner_MasterGranterAbsent(t *testing.T) {
 	require.Nil(t, got)
 }
 
+// TestRevokeWallet_Standalone pins the by-id decommission path (synth-015): it deletes the wallet
+// using only the wallet id, without constructing a RemoteSigner or issuing a wallet-info GET (no
+// GET handler is registered, so any fetch would fail the test). Mirrors the server's
+// RevokeSigningWallet (DELETE /api/v1/signing-wallets/{id}), which answers 200 + JSON.
+func TestRevokeWallet_Standalone(t *testing.T) {
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	var revoked bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodDelete, r.Method)
+		require.NotEmpty(t, r.Header.Get(apiKeyHeader))
+		revoked = true
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "wallet revoked"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := RevokeWallet(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test",
+	}, walletID)
+	require.NoError(t, err)
+	require.True(t, revoked, "backend revoke endpoint must be called")
+}
+
+// TestRevokeWallet_RejectsNonUUID pins that a non-UUID wallet id is rejected before any request
+// is issued, so it cannot inject path segments into the request URL.
+func TestRevokeWallet_RejectsNonUUID(t *testing.T) {
+	err := RevokeWallet(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network", APIKey: "forge_sk_test",
+	}, "not-a-uuid")
+	require.Error(t, err)
+}
+
+// TestRevokeWallet_NonOKIsError pins that a non-2xx response surfaces as an error so the caller
+// can decide whether a failed decommission is fatal or best-effort.
+func TestRevokeWallet_NonOKIsError(t *testing.T) {
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := RevokeWallet(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test",
+	}, walletID)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "404")
+}
+
 // TestRemoteSigner_ResolveFeeGranter pins the discovery-with-override precedence: with no env
 // override the discovered master granter is used, and FORGE_MASTER_GRANTER_ADDRESS overrides it.
 func TestRemoteSigner_ResolveFeeGranter(t *testing.T) {
