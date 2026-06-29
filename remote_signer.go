@@ -18,8 +18,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// apiKeyHeader is the header carrying a Forge API key on requests to the backend.
-const apiKeyHeader = "X-Forge-API-Key"
+const (
+	// apiKeyHeader is the header carrying a Forge API key on requests to the backend.
+	apiKeyHeader = "X-Forge-API-Key"
+
+	// maxResponseBytes caps how much of a backend response the signer buffers, so a broken or
+	// malicious endpoint cannot drive unbounded memory use during construction or signing.
+	// Wallet-info and signature responses are tiny; 1 MiB is generous headroom. Referenced by
+	// sendForgeRequest (and thus do/doWalletRequest) and provisionWalletForTopic.
+	maxResponseBytes = 1 << 20
+)
 
 // RemoteSignerConfig configures a RemoteSigner.
 type RemoteSignerConfig struct {
@@ -495,11 +503,6 @@ func (rs *RemoteSigner) SignWithContext(ctx context.Context, msg []byte) ([]byte
 	}
 	return sig, nil
 }
-
-// maxResponseBytes caps how much of a backend response the signer buffers, so a broken
-// or malicious endpoint cannot drive unbounded memory use during construction or
-// signing. Wallet-info and signature responses are tiny; 1 MiB is generous headroom.
-const maxResponseBytes = 1 << 20
 
 // sendForgeRequest executes req with httpClient and returns the response together with the
 // bounded response body, applying the transport hardening shared by every Forge backend call:
