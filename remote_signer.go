@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -136,16 +135,20 @@ func rejectCrossOriginRedirect(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-// isLoopbackHost reports whether host is localhost or a loopback IP, the only hosts for
-// which a plaintext http backend URL is permitted.
+// loopbackHosts is the exact set of hosts for which a plaintext http backend URL is
+// permitted. It is intentionally narrower than net.IP.IsLoopback (which accepts the whole
+// 127.0.0.0/8 block, e.g. 127.0.0.2) to match the sibling SDKs' allowlist
+// (allora-sdk-py _LOOPBACK_HOSTS), keeping the cross-SDK plaintext-http policy identical.
+var loopbackHosts = map[string]bool{
+	"localhost": true,
+	"127.0.0.1": true,
+	"::1":       true,
+}
+
+// isLoopbackHost reports whether host is one of the canonical loopback hosts for which a
+// plaintext http backend URL is permitted.
 func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLoopback()
-	}
-	return false
+	return loopbackHosts[host]
 }
 
 // PubKey returns the wallet's secp256k1 public key.

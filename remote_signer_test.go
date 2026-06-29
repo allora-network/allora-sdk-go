@@ -349,6 +349,20 @@ func TestNewRemoteSigner_RejectsPlaintextNonLocalhost(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestIsLoopbackHost_NarrowedToCanonicalSet pins that the plaintext-http allowlist is the
+// canonical {localhost, 127.0.0.1, ::1} set shared with allora-sdk-py, not the whole
+// 127.0.0.0/8 block that net.IP.IsLoopback accepts. This keeps the cross-SDK policy aligned.
+func TestIsLoopbackHost_NarrowedToCanonicalSet(t *testing.T) {
+	for _, h := range []string{"localhost", "127.0.0.1", "::1"} {
+		require.True(t, isLoopbackHost(h), "%q must be allowed as loopback", h)
+	}
+	// 127.0.0.2 is loopback per net.IP.IsLoopback but is rejected by the Python sibling, so it
+	// must be rejected here too for parity.
+	for _, h := range []string{"127.0.0.2", "127.1.2.3", "0.0.0.0", "example.com", ""} {
+		require.False(t, isLoopbackHost(h), "%q must not be treated as loopback", h)
+	}
+}
+
 func TestNewRemoteSigner_RejectsEmptyAddress(t *testing.T) {
 	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
 	require.NoError(t, err)
