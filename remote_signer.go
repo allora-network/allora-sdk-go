@@ -102,11 +102,12 @@ func newGuardedClient(c *http.Client) *http.Client {
 		guarded = &cp
 	}
 	// Compose with (rather than silently discard) any CheckRedirect the caller installed:
-	// run the SDK's credential/cross-origin guard first, then defer to the caller's policy,
-	// so a caller with a stricter posture (e.g. http.ErrUseLastResponse) keeps it.
+	// run the SDK's redirect guard first, then defer to the caller's policy. The guard rejects
+	// every redirect (rejectRedirect), so the caller's policy is consulted only if that guard is
+	// ever relaxed — a caller can tighten the posture but can never loosen the SDK's.
 	prevCheck := guarded.CheckRedirect
 	guarded.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if err := rejectCrossOriginRedirect(req, via); err != nil {
+		if err := rejectRedirect(req, via); err != nil {
 			return err
 		}
 		if prevCheck != nil {
@@ -117,22 +118,14 @@ func newGuardedClient(c *http.Client) *http.Client {
 	return guarded
 }
 
-// rejectCrossOriginRedirect refuses any redirect that changes origin (scheme or host)
-// and bounds the redirect chain. Go preserves the method and body on 307/308 redirects,
-// so following a cross-origin redirect would re-POST the SignDoc bytes to the redirect
-// target; refusing outright (rather than only stripping the API key and continuing)
-// prevents that body leak. This matches the reject-all stance of the sibling SDKs
-// (allora-sdk-py: allow_redirects=False; allora-sdk-ts: redirect: "error").
-func rejectCrossOriginRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) >= 10 {
-		return fmt.Errorf("stopped after 10 redirects")
-	}
-	prev := via[len(via)-1]
-	if req.URL.Scheme != prev.URL.Scheme || req.URL.Host != prev.URL.Host {
-		return fmt.Errorf("refusing cross-origin redirect from %s://%s to %s://%s",
-			prev.URL.Scheme, prev.URL.Host, req.URL.Scheme, req.URL.Host)
-	}
-	return nil
+// rejectRedirect refuses every redirect, not just cross-origin ones. Go re-sends the request
+// method and body on 307/308 redirects, so following any redirect — including a same-origin
+// one — would re-POST the SignDoc bytes (and the X-Forge-API-Key header) to the redirect
+// target. Returning http.ErrUseLastResponse stops the client at the 3xx response (do() then
+// maps it to a non-2xx error) instead of following it. This matches the reject-all stance of
+// the sibling SDKs (allora-sdk-py: allow_redirects=False; allora-sdk-ts: redirect: "error").
+func rejectRedirect(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 // loopbackHosts is the exact set of hosts for which a plaintext http backend URL is

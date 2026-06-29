@@ -406,6 +406,38 @@ func TestNewRemoteSigner_RejectsNonJSONResponse(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestRemoteSigner_RejectsSameOriginRedirect pins reject-all parity with the sibling SDKs
+// (allora-sdk-py allow_redirects=False; allora-sdk-ts redirect: "error"): even a same-origin
+// 307 redirect must NOT be followed, because Go re-sends the method, body, and headers on
+// 307/308 and would re-POST the SignDoc bytes and the X-Forge-API-Key. The redirect surfaces
+// as a non-2xx error and the redirect target handler is never reached.
+func TestRemoteSigner_RejectsSameOriginRedirect(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	var followed bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+negWalletID, func(w http.ResponseWriter, _ *http.Request) {
+		// Same-origin 307; the SDK must refuse to follow it.
+		w.Header().Set("Location", "/api/v1/signing-wallets/"+negWalletID+"/moved")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("/api/v1/signing-wallets/"+negWalletID+"/moved", func(w http.ResponseWriter, _ *http.Request) {
+		followed = true
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"id": negWalletID, "address": wallet.GetAddress(),
+			"pubkey": hex.EncodeToString(wallet.GetPublicKeyBytes()),
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	_, err = connectRemoteSigner(t, srv.URL)
+	require.Error(t, err)
+	require.False(t, followed, "same-origin redirect must not be followed")
+}
+
 func TestRemoteSigner_Sign_RejectsRotatedKey(t *testing.T) {
 	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
 	require.NoError(t, err)
