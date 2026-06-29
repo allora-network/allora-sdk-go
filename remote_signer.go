@@ -233,6 +233,20 @@ func (rs *RemoteSigner) ClearAssociation(ctx context.Context) error {
 	return clearAssociation(ctx, rs.httpClient, rs.cfg.BackendURL, rs.cfg.WalletID, rs.cfg.APIKey)
 }
 
+// Revoke permanently decommissions this signer's wallet on the Forge backend (DELETE
+// /api/v1/signing-wallets/{id}). This is the destructive counterpart to ClearAssociation:
+// clearing only unbinds the wallet from its topic (reversible by re-provisioning), whereas
+// revoking tears the wallet down for good. It mirrors allora-sdk-ts ForgeRemoteSigner.revoke()
+// and the server's RevokeSigningWallet handler. A non-2xx response (e.g. 404 for an
+// unknown/foreign/already-revoked wallet) is returned as an error so the caller decides whether
+// the failure is fatal or best-effort.
+//
+// Use the standalone RevokeWallet when you only hold the wallet id and do not want to construct
+// a RemoteSigner (no wallet-info fetch) first.
+func (rs *RemoteSigner) Revoke(ctx context.Context) error {
+	return revokeWallet(ctx, rs.httpClient, rs.cfg.BackendURL, rs.cfg.WalletID, rs.cfg.APIKey)
+}
+
 // ClearWalletAssociation releases walletID's topic binding on the Forge backend without first
 // constructing a RemoteSigner (no wallet-info fetch). Use it to unbind a wallet you only hold
 // the id for — e.g. retiring or rotating a worker — so its topic slot stops counting against

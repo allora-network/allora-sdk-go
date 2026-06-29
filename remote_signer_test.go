@@ -706,6 +706,46 @@ func TestRemoteSigner_ClearAssociation_NonOKIsError(t *testing.T) {
 	require.Contains(t, err.Error(), "404")
 }
 
+// TestRemoteSigner_Revoke pins the signer-level decommission method (synth-002): a caller holding
+// a *RemoteSigner can revoke its own wallet via DELETE /api/v1/signing-wallets/{id} without
+// rebuilding config, mirroring allora-sdk-ts signer.revoke() and Go's own ClearAssociation symmetry.
+func TestRemoteSigner_Revoke(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	const walletID = "11111111-1111-1111-1111-111111111111"
+
+	var revoked bool
+	mux := http.NewServeMux()
+	// The wallet-info GET (construction) and the DELETE (revoke) share the same path, so
+	// multiplex on the method.
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID, func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"id": walletID, "address": wallet.GetAddress(),
+				"pubkey": hex.EncodeToString(wallet.GetPublicKeyBytes()),
+			})
+		case http.MethodDelete:
+			require.NotEmpty(t, r.Header.Get(apiKeyHeader))
+			revoked = true
+			w.WriteHeader(http.StatusNoContent) // 204, empty body — must be accepted as success
+		default:
+			t.Fatalf("unexpected method %q", r.Method)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	rs, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test", WalletID: walletID,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, rs.Revoke(context.Background()))
+	require.True(t, revoked, "backend revoke endpoint must be called")
+}
+
 // TestClearWalletAssociation_Standalone pins the by-id unbind path: it releases the binding
 // using only the wallet id, without constructing a RemoteSigner or issuing a wallet-info GET
 // (no GET handler is registered, so any fetch would fail the test). Mirrors the Python sibling's
