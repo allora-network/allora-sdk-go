@@ -421,6 +421,44 @@ func TestNewRemoteSigner_RejectsBackendURLWithPath(t *testing.T) {
 	require.ErrorContains(t, err, "must not contain a path")
 }
 
+// TestNewRemoteSigner_RejectsBackendURLWithQuery pins that a backend URL carrying a query
+// string is rejected: request paths are built by concatenation, so a query on the base URL
+// would be glued onto every request path (e.g. "https://host/?token=x/api/v1/...") and corrupt it.
+func TestNewRemoteSigner_RejectsBackendURLWithQuery(t *testing.T) {
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network/?token=x",
+		APIKey:     "forge_sk_test",
+		WalletID:   negWalletID,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "query string or fragment")
+}
+
+// TestNewRemoteSigner_RejectsBackendURLWithFragment pins that a fragment on the backend URL is
+// rejected for the same path-corruption reason as a query string.
+func TestNewRemoteSigner_RejectsBackendURLWithFragment(t *testing.T) {
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network/#frag",
+		APIKey:     "forge_sk_test",
+		WalletID:   negWalletID,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "query string or fragment")
+}
+
+// TestNewRemoteSigner_RejectsBackendURLWithUserinfo pins that embedded userinfo is rejected:
+// net/http would otherwise emit Basic Auth on every request alongside X-Forge-API-Key, and the
+// credentials would leak into *url.Error strings (and thus logs) on any network failure.
+func TestNewRemoteSigner_RejectsBackendURLWithUserinfo(t *testing.T) {
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://user:pass@forge.allora.network",
+		APIKey:     "forge_sk_test",
+		WalletID:   negWalletID,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "userinfo")
+}
+
 // TestIsLoopbackHost_NarrowedToCanonicalSet pins that the plaintext-http allowlist is the
 // canonical {localhost, 127.0.0.1, ::1} set shared with allora-sdk-py, not the whole
 // 127.0.0.0/8 block that net.IP.IsLoopback accepts. This keeps the cross-SDK policy aligned.
