@@ -227,6 +227,35 @@ func TestTxParamsValidation_FeeGranterLength(t *testing.T) {
 	require.ErrorContains(t, short.Validate(), "fee granter address must be 20 bytes")
 }
 
+// TestSignTransactionWith_AcceptsMinimalSignTimeParams pins that sign-time validation requires
+// only ChainID (synth-001): a two-phase flow can build the unsigned tx with full params, persist
+// it, then sign later with a minimal params carrying just ChainID/AccountNumber/Sequence. The
+// gas/fee already encoded in the unsigned tx are not re-required at sign time. Before this fix,
+// SignTransactionWith called the full Validate() and rejected such params with
+// "gas limit must be greater than 0", defeating the documented two-phase workflow.
+func TestSignTransactionWith_AcceptsMinimalSignTimeParams(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	buildParams := &TxParams{
+		ChainID:       "allora-testnet-1",
+		AccountNumber: 7,
+		Sequence:      3,
+		GasLimit:      200000,
+		FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	unsigned, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, buildParams)
+	require.NoError(t, err)
+
+	// Minimal sign-time params: no GasLimit / FeeAmount, mirroring a later phase that kept only
+	// the SignerData fields.
+	signParams := &TxParams{ChainID: "allora-testnet-1", AccountNumber: 7, Sequence: 3}
+	signed, err := SignTransactionWith(context.Background(), unsigned, wallet.PrivKey, signParams)
+	require.NoError(t, err)
+	require.NotEmpty(t, signed)
+}
+
 func TestDefaultTxParams(t *testing.T) {
 	params := DefaultTxParams()
 

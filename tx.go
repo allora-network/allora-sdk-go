@@ -81,6 +81,19 @@ func (p *TxParams) Validate() error {
 	return nil
 }
 
+// validateForSigning checks only the params fields consumed at sign time. Unlike Validate, it does
+// not require GasLimit or FeeAmount: SignTransactionWith signs over the gas/fee/memo/granter values
+// already encoded in the unsigned tx and reads only ChainID, AccountNumber, and Sequence from
+// params (see SignTransactionWith). Requiring gas/fee here would break the documented two-phase
+// flow — build + persist the unsigned tx, then sign later with minimal sign-time params — by
+// rejecting params that legitimately omit the already-encoded fee/gas fields.
+func (p *TxParams) validateForSigning() error {
+	if p.ChainID == "" {
+		return fmt.Errorf("chain ID is required")
+	}
+	return nil
+}
+
 // CreateUnsignedSendTx creates an unsigned send transaction
 //
 // This function creates a bank MsgSend transaction in unsigned form, which can be
@@ -189,8 +202,11 @@ func SignTransaction(
 // SignerData). GasLimit, FeeAmount, FeeGranter, Memo, and TimeoutHeight are NOT re-read from
 // params at sign time — the signature is computed over the values already encoded in
 // unsignedTx — so passing params whose fee/gas/memo/timeout-height differ from those used to
-// build unsignedTx does NOT change what is signed and is silently ignored. Always pass the
-// same params you built the unsigned tx with.
+// build unsignedTx does NOT change what is signed and is silently ignored. Consequently only
+// ChainID is required at sign time (validated non-empty); GasLimit and FeeAmount need not be
+// re-supplied, so a two-phase flow can sign later with a minimal params carrying just ChainID,
+// AccountNumber, and Sequence. Passing the same params you built the unsigned tx with remains the
+// simplest correct choice, since AccountNumber and Sequence must still match the encoded tx.
 //
 // Parameters:
 //   - ctx: Context for cancellation/deadlines, honored by I/O-backed signers
@@ -226,7 +242,10 @@ func SignTransactionWith(
 	if params == nil {
 		return nil, fmt.Errorf("tx params are required")
 	}
-	if err := params.Validate(); err != nil {
+	// Only validate the fields actually read at sign time (ChainID). Gas/fee/granter/memo/timeout
+	// are already encoded in unsignedTx, so requiring them again here would break the two-phase
+	// flow documented above (build now, sign later with minimal params).
+	if err := params.validateForSigning(); err != nil {
 		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
 	}
 	if len(unsignedTx) == 0 {
