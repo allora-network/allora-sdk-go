@@ -10,4 +10,10 @@ packages:
       filename: "mocks.go"
       pkgname: "mocks"
       structname: "{{.Mock}}{{.InterfaceName}}"
+  github.com/allora-network/allora-sdk-go/txsend:
+    config:
+      dir: "txsend/mocks"
+      filename: "mocks.go"
+      pkgname: "mocks"
+      structname: "{{.Mock}}{{.InterfaceName}}"
 
