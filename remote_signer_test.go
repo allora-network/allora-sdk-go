@@ -397,7 +397,9 @@ func TestNewRemoteSigner_RejectsPlaintextNonLocalhost(t *testing.T) {
 // canonical {localhost, 127.0.0.1, ::1} set shared with allora-sdk-py, not the whole
 // 127.0.0.0/8 block that net.IP.IsLoopback accepts. This keeps the cross-SDK policy aligned.
 func TestIsLoopbackHost_NarrowedToCanonicalSet(t *testing.T) {
-	for _, h := range []string{"localhost", "127.0.0.1", "::1"} {
+	// Mixed-case variants must also be accepted: Go's url.Hostname() preserves input case, so
+	// isLoopbackHost lower-cases before lookup to stay aligned with the Python sibling.
+	for _, h := range []string{"localhost", "127.0.0.1", "::1", "LOCALHOST", "Localhost"} {
 		require.True(t, isLoopbackHost(h), "%q must be allowed as loopback", h)
 	}
 	// 127.0.0.2 is loopback per net.IP.IsLoopback but is rejected by the Python sibling, so it

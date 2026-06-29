@@ -143,9 +143,12 @@ var loopbackHosts = map[string]bool{
 }
 
 // isLoopbackHost reports whether host is one of the canonical loopback hosts for which a
-// plaintext http backend URL is permitted.
+// plaintext http backend URL is permitted. The host is lower-cased before lookup to match the
+// auto-lowercasing the Python sibling gets for free via urllib.parse.hostname — Go's
+// url.URL.Hostname preserves input case — so a case-mixed input like "LOCALHOST" or "Localhost"
+// is accepted identically across SDKs.
 func isLoopbackHost(host string) bool {
-	return loopbackHosts[host]
+	return loopbackHosts[strings.ToLower(host)]
 }
 
 // PubKey returns the wallet's secp256k1 public key.
