@@ -160,20 +160,58 @@ func (rs *RemoteSigner) Address() string { return rs.address.String() }
 // clearAssociation): POST /api/v1/signing-wallets/{id}/clear-association with no body. A
 // non-2xx response (e.g. 404 for an unknown/foreign/already-cleared wallet) is returned as
 // an error so the caller decides whether an unbind failure is fatal or best-effort.
+//
+// Use the standalone ClearWalletAssociation when you only hold the wallet id (e.g. retiring a
+// worker) and do not want to construct a RemoteSigner (and pay its wallet-info fetch) first.
 func (rs *RemoteSigner) ClearAssociation(ctx context.Context) error {
 	if ctx == nil {
 		return fmt.Errorf("ctx must not be nil")
 	}
-	endpoint := fmt.Sprintf("%s/api/v1/signing-wallets/%s/clear-association", rs.cfg.BackendURL, url.PathEscape(rs.cfg.WalletID))
+	return clearAssociation(ctx, rs.httpClient, rs.cfg.BackendURL, rs.cfg.WalletID, rs.cfg.APIKey)
+}
+
+// ClearWalletAssociation releases walletID's topic binding on the Forge backend without first
+// constructing a RemoteSigner (no wallet-info fetch). Use it to unbind a wallet you only hold
+// the id for — e.g. retiring or rotating a worker — so its topic slot stops counting against
+// the per-user wallet cap. It mirrors the sibling SDKs' client-level unbind (allora-sdk-py
+// ForgeBackendClient.clear_association, allora-sdk-ts clearAssociation): POST
+// /api/v1/signing-wallets/{walletID}/clear-association with no body. A non-2xx response (e.g.
+// 404 for an unknown/foreign/already-cleared wallet) is returned as an error so the caller
+// decides whether an unbind failure is fatal or best-effort.
+func ClearWalletAssociation(ctx context.Context, cfg RemoteSignerConfig, walletID string) error {
+	if ctx == nil {
+		return fmt.Errorf("ctx must not be nil")
+	}
+	if cfg.BackendURL == "" || cfg.APIKey == "" {
+		return fmt.Errorf("backend URL and API key are required")
+	}
+	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
+	if err := requireSecureBackend(cfg.BackendURL); err != nil {
+		return err
+	}
+	// The wallet ID is interpolated into the request path; require it to be a UUID (and
+	// canonicalize it) so a malformed value cannot inject path segments or query strings.
+	parsed, err := uuid.Parse(walletID)
+	if err != nil {
+		return fmt.Errorf("wallet ID must be a UUID: %w", err)
+	}
+	return clearAssociation(ctx, newGuardedClient(cfg.HTTPClient), cfg.BackendURL, parsed.String(), cfg.APIKey)
+}
+
+// clearAssociation issues the POST /clear-association call for walletID with the given guarded
+// client. walletID must already be canonical. It is the shared implementation behind the
+// standalone ClearWalletAssociation function and the (*RemoteSigner).ClearAssociation method.
+func clearAssociation(ctx context.Context, httpClient *http.Client, backendURL, walletID, apiKey string) error {
+	endpoint := fmt.Sprintf("%s/api/v1/signing-wallets/%s/clear-association", backendURL, url.PathEscape(walletID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("creating clear-association request: %w", err)
 	}
-	req.Header.Set(apiKeyHeader, rs.cfg.APIKey)
+	req.Header.Set(apiKeyHeader, apiKey)
 
 	// clear-association returns 204 No Content, so this cannot use do() (which requires a
 	// JSON body); accept any 2xx with an empty/non-JSON body as success.
-	resp, err := rs.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("calling forge backend: %w", err)
 	}
@@ -401,6 +439,12 @@ func truncateForError(body []byte) string {
 // topicID (ENGN-8572 "one worker = one topic") and returns a RemoteSigner for it. Safe to call
 // on every worker start: the backend enforces one wallet per (user, topic). cfg.WalletID is
 // ignored; it is filled from the provision response.
+//
+// Each topic binding counts against a per-user wallet cap enforced by the backend. A worker
+// that is retired or rotated to a different topic leaves its binding in place, so in
+// autoscaling deployments abandoned bindings can accumulate until the cap is reached and new
+// provisions fail. Release a binding you no longer need with (*RemoteSigner).ClearAssociation,
+// or — when you only hold the wallet id — the standalone ClearWalletAssociation.
 func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicID int64, label string) (*RemoteSigner, error) {
 	// http.NewRequestWithContext panics on a nil context; reject it with a normal error so an
 	// accidentally-nil ctx cannot crash a worker during provisioning.

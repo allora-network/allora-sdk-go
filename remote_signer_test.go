@@ -602,3 +602,36 @@ func TestRemoteSigner_ClearAssociation_NonOKIsError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "404")
 }
+
+// TestClearWalletAssociation_Standalone pins the by-id unbind path: it releases the binding
+// using only the wallet id, without constructing a RemoteSigner or issuing a wallet-info GET
+// (no GET handler is registered, so any fetch would fail the test). Mirrors the Python sibling's
+// client-level ForgeBackendClient.clear_association(wallet_id).
+func TestClearWalletAssociation_Standalone(t *testing.T) {
+	const walletID = "11111111-1111-1111-1111-111111111111"
+	var cleared bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/signing-wallets/"+walletID+"/clear-association", func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.NotEmpty(t, r.Header.Get(apiKeyHeader))
+		cleared = true
+		w.WriteHeader(http.StatusNoContent) // 204, empty body — must be accepted as success
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	err := ClearWalletAssociation(context.Background(), RemoteSignerConfig{
+		BackendURL: srv.URL, APIKey: "forge_sk_test",
+	}, walletID)
+	require.NoError(t, err)
+	require.True(t, cleared, "backend clear-association endpoint must be called")
+}
+
+// TestClearWalletAssociation_RejectsNonUUID pins that a non-UUID wallet id is rejected before
+// any request is issued, so it cannot inject path segments into the request URL.
+func TestClearWalletAssociation_RejectsNonUUID(t *testing.T) {
+	err := ClearWalletAssociation(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network", APIKey: "forge_sk_test",
+	}, "not-a-uuid")
+	require.Error(t, err)
+}
