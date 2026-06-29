@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -912,6 +913,17 @@ func TestRevokeWallet_Standalone(t *testing.T) {
 	}, walletID)
 	require.NoError(t, err)
 	require.True(t, revoked, "backend revoke endpoint must be called")
+}
+
+// TestNewRemoteSignerForTopic_RejectsOverlongLabel pins the client-side label cap (synth-012):
+// NewRemoteSignerForTopic rejects a label longer than the backend's max=128 before issuing the
+// provision POST, so an oversized label fails fast instead of after a wasted round-trip.
+func TestNewRemoteSignerForTopic_RejectsOverlongLabel(t *testing.T) {
+	_, err := NewRemoteSignerForTopic(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network", APIKey: "forge_sk_test",
+	}, 1, strings.Repeat("x", 129))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "128")
 }
 
 // TestRevokeWallet_RejectsNonUUID pins that a non-UUID wallet id is rejected before any request

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
@@ -620,6 +621,13 @@ func NewRemoteSignerForTopic(ctx context.Context, cfg RemoteSignerConfig, topicI
 	}
 	if topicID <= 0 {
 		return nil, fmt.Errorf("topic id must be a positive integer")
+	}
+	// Bound the label client-side to mirror the backend's max=128 validation (forge-v2
+	// CreateSigningWallet uses binding:"omitempty,max=128", which counts runes), so an oversized
+	// label fails fast here instead of after a wasted TLS round-trip — matching the client-side
+	// validation already applied to WalletID and BackendURL.
+	if n := utf8.RuneCountInString(label); n > 128 {
+		return nil, fmt.Errorf("label must be at most 128 characters, got %d", n)
 	}
 	cfg.BackendURL = strings.TrimRight(cfg.BackendURL, "/")
 	if err := requireSecureBackend(cfg.BackendURL); err != nil {
