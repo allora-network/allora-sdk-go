@@ -611,6 +611,12 @@ func requireSecureBackend(backendURL string) error {
 	if base.RawQuery != "" || base.Fragment != "" {
 		return fmt.Errorf("backend URL must not contain a query string or fragment")
 	}
+	// A non-root Path is similarly prepended to every request URL (e.g. "https://host/api" ->
+	// "https://host/api/api/v1/signing-wallets/..."), silently producing 404s on a
+	// correctly-configured backend; reject it for the same reason.
+	if base.Path != "" && base.Path != "/" {
+		return fmt.Errorf("backend URL must not contain a path (got %q); pass only scheme+host", base.Path)
+	}
 	// Reject embedded userinfo (e.g. "https://user:pass@host"): net/http would emit Basic
 	// Auth on every request alongside the X-Forge-API-Key, and the credentials would leak
 	// into *url.Error strings (and thus logs) on any network failure.

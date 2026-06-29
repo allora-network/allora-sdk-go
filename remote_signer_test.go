@@ -393,6 +393,20 @@ func TestNewRemoteSigner_RejectsPlaintextNonLocalhost(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestNewRemoteSigner_RejectsBackendURLWithPath pins that a backend URL carrying a path is
+// rejected (synth-008): request paths are built by concatenation, so a base like
+// "https://host/api" would silently produce "https://host/api/api/v1/..." 404s that look correct
+// at a glance.
+func TestNewRemoteSigner_RejectsBackendURLWithPath(t *testing.T) {
+	_, err := NewRemoteSigner(context.Background(), RemoteSignerConfig{
+		BackendURL: "https://forge.allora.network/api",
+		APIKey:     "forge_sk_test",
+		WalletID:   negWalletID,
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "must not contain a path")
+}
+
 // TestIsLoopbackHost_NarrowedToCanonicalSet pins that the plaintext-http allowlist is the
 // canonical {localhost, 127.0.0.1, ::1} set shared with allora-sdk-py, not the whole
 // 127.0.0.0/8 block that net.IP.IsLoopback accepts. This keeps the cross-SDK policy aligned.
