@@ -185,11 +185,20 @@ func SignTransaction(
 // the backend, so a deadline or cancellation on ctx bounds that call. Local-key signers
 // ignore it.
 //
+// Only ChainID, AccountNumber, and Sequence from params are consumed here (they populate the
+// SignerData). GasLimit, FeeAmount, FeeGranter, Memo, and TimeoutHeight are NOT re-read from
+// params at sign time — the signature is computed over the values already encoded in
+// unsignedTx — so passing params whose fee/gas/memo/timeout-height differ from those used to
+// build unsignedTx does NOT change what is signed and is silently ignored. Always pass the
+// same params you built the unsigned tx with.
+//
 // Parameters:
 //   - ctx: Context for cancellation/deadlines, honored by I/O-backed signers
 //   - unsignedTx: The unsigned transaction bytes from CreateUnsignedSendTx
 //   - signer: The signer (local key or remote signer)
-//   - params: The same TxParams used to create the unsigned transaction
+//   - params: The same TxParams used to create the unsigned transaction. Only ChainID,
+//     AccountNumber, and Sequence are read at sign time; the fee/gas/memo/timeout-height
+//     fields come from the encoded tx, not from params (see the note above).
 //
 // Example:
 //
