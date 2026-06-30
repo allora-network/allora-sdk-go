@@ -511,11 +511,11 @@ func classifyCheckTxError(code uint32, codespace string) retryAdjustment {
 
 // isZeroLogger reports whether l is the zero-value zerolog.Logger
 // (unconfigured). zerolog.Logger has unexported fields, so a plain == won't
-// compile; reflect.DeepEqual against the zero value is the reliable check.
+// compile; we compare the configured log level against the zero value's level
+// (a zero logger defaults to NoLevel, matching a freshly-constructed one).
 // This mirrors cosmospool.isZeroLogger and lives in the root package to avoid
 // a dependency on cosmospool for this small helper.
 func isZeroLogger(l zerolog.Logger) bool {
-	// We use an interface-based comparison that works without reflect.
 	var zero zerolog.Logger
 	return l.GetLevel() == zero.GetLevel()
 }
