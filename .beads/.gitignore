@@ -1,6 +1,18 @@
 # Dolt database (managed by Dolt, not git)
 dolt/
 dolt-access.lock
+# Loose Dolt data files (newer Dolt versions create these as files, not under dolt/)
+dolt
+dolt-wal
+dolt-shm
+
+# Br history snapshots and recovery backups (local-only, never tracked)
+.br_history/
+.br_recovery/
+
+# Local interaction log and write lock (per-machine state)
+interactions.jsonl
+.write.lock
 
 # Runtime files
 bd.sock
