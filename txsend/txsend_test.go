@@ -31,17 +31,16 @@ func TestNewPanicsOnNilPool(t *testing.T) {
 	}, "New must panic when pool is nil")
 }
 
-// TestStubMethodsReturnNotImplemented asserts the skeleton's four methods
-// compile and return the "not implemented" error for their respective beads,
-// guarding against an accidental real implementation landing before its bead.
+// TestStubMethodsReturnNotImplemented asserts the skeleton's three remaining
+// stub methods (EstimateGas, Broadcast, WaitForTx) compile and return the
+// "not implemented" error for their respective beads, guarding against an
+// accidental real implementation landing before its bead. AccountInfo is
+// implemented in this bead (asg-pvd.3) and is exercised in
+// cosmospool_account_test.go instead.
 func TestStubMethodsReturnNotImplemented(t *testing.T) {
 	b := cosmospool.New(stubPool{}, zerolog.Nop())
 
-	_, _, err := b.AccountInfo(context.Background(), "allo1...")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.3")
-
-	_, err = b.EstimateGas(context.Background(), []byte{})
+	_, err := b.EstimateGas(context.Background(), []byte{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.4")
 

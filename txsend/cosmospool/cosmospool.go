@@ -13,10 +13,15 @@ package cosmospool
 import (
 	"context"
 	"reflect"
+	"strings"
 
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	"github.com/brynbellomy/go-utils/errors"
 	"github.com/rs/zerolog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
+	alloracodec "github.com/allora-network/allora-sdk-go/codec"
 	"github.com/allora-network/allora-sdk-go/txsend"
 )
 
@@ -87,11 +92,58 @@ func New(pool txsend.CosmosTxPool, logger zerolog.Logger, opts ...Option) *Broad
 	return b
 }
 
-// AccountInfo returns the on-chain account number and sequence for address.
+// AccountInfo returns the on-chain account number and sequence for address. It
+// queries the auth module via the pool's Auth client and unpacks the returned
+// *codectypes.Any into a authtypes.AccountI (BaseAccount in practice) using the
+// shared alloracodec.CosmosCodec() registry. ctx is threaded through the gRPC
+// call so a caller's cancellation/deadline propagates to the node.
 //
-// implemented in bead asg-pvd.3
+// A gRPC codes.NotFound — or any error whose message contains "not found" — is
+// treated as a clear signal that the address has never been seen on-chain (no
+// funding, no prior txs). That case is wrapped with explicit context so callers
+// can distinguish "account doesn't exist" from transient transport errors.
 func (b *Broadcaster) AccountInfo(ctx context.Context, address string) (uint64, uint64, error) {
-	return 0, 0, errors.New("not implemented: bead asg-pvd.3")
+	resp, err := b.pool.Auth().Account(ctx, &authtypes.QueryAccountRequest{Address: address})
+	if err != nil {
+		if isAccountNotFoundErr(err) {
+			return 0, 0, errors.Wrapf(err, "account %s not found on-chain (unfunded or never seen)", address)
+		}
+		return 0, 0, errors.Wrapf(err, "account %s: auth query failed", address)
+	}
+	if resp == nil || resp.Account == nil {
+		return 0, 0, errors.Wrapf(errMissingAccount, "account %s: empty response from auth module", address)
+	}
+
+	var acc authtypes.AccountI
+	if err := alloracodec.CosmosCodec().UnpackAny(resp.Account, &acc); err != nil {
+		return 0, 0, errors.Wrapf(err, "account %s: failed to unpack on-chain account", address)
+	}
+	if acc == nil {
+		return 0, 0, errors.Wrapf(errMissingAccount, "account %s: unpacked account is nil", address)
+	}
+
+	return acc.GetAccountNumber(), acc.GetSequence(), nil
+}
+
+// errMissingAccount is a sentinel for "the auth module returned success but
+// with no account payload" — a malformed/empty response, distinct from a real
+// gRPC error. Using a package-level error keeps the test surface stable.
+var errMissingAccount = errors.New("auth module returned nil account")
+
+// isAccountNotFoundErr reports whether err looks like a "not found" failure
+// from the cosmos auth module. It prefers the gRPC status code (codes.NotFound)
+// and falls back to a substring check on the message, because some cosmos
+// versions/wrappers surface the not-found condition as a plain error rather
+// than a gRPC status.
+func isAccountNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if st, ok := status.FromError(err); ok && st.Code() == codes.NotFound {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found")
 }
 
 // EstimateGas returns the simulated gas usage for unsignedTx.
