@@ -32,6 +32,40 @@ func newTxBuilder() *txBuilder {
 	}
 }
 
+// buildUnsignedTx creates an unsigned transaction from the given messages and
+// parameters. Unlike buildUnsignedSendTx, it accepts []sdk.Msg and does not
+// restrict callers to a single MsgSend — it is the generic builder backing
+// CreateUnsignedTx.
+func (b *txBuilder) buildUnsignedTx(
+	msgs []sdk.Msg,
+	params *TxParams,
+) ([]byte, error) {
+	txBuilder := b.txConfig.NewTxBuilder()
+
+	if err := txBuilder.SetMsgs(msgs...); err != nil {
+		return nil, fmt.Errorf("failed to set messages: %w", err)
+	}
+
+	txBuilder.SetGasLimit(params.GasLimit)
+	txBuilder.SetFeeAmount(params.FeeAmount)
+	txBuilder.SetMemo(params.Memo)
+
+	if !params.FeeGranter.Empty() {
+		txBuilder.SetFeeGranter(params.FeeGranter)
+	}
+
+	if params.TimeoutHeight > 0 {
+		txBuilder.SetTimeoutHeight(params.TimeoutHeight)
+	}
+
+	txBytes, err := b.txConfig.TxEncoder()(txBuilder.GetTx())
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode transaction: %w", err)
+	}
+
+	return txBytes, nil
+}
+
 // buildUnsignedSendTx creates an unsigned send transaction
 func (b *txBuilder) buildUnsignedSendTx(
 	fromAddr sdk.AccAddress,
@@ -41,37 +75,7 @@ func (b *txBuilder) buildUnsignedSendTx(
 ) ([]byte, error) {
 	// Create the MsgSend
 	msg := banktypes.NewMsgSend(fromAddr, toAddr, amount)
-
-	// Create transaction builder
-	txBuilder := b.txConfig.NewTxBuilder()
-
-	// Set the message
-	if err := txBuilder.SetMsgs(msg); err != nil {
-		return nil, fmt.Errorf("failed to set messages: %w", err)
-	}
-
-	// Set transaction parameters
-	txBuilder.SetGasLimit(params.GasLimit)
-	txBuilder.SetFeeAmount(params.FeeAmount)
-	txBuilder.SetMemo(params.Memo)
-
-	// Set the fee granter so a master/subsidy wallet pays the gas (feegrant). Empty
-	// means the signer pays its own fees.
-	if !params.FeeGranter.Empty() {
-		txBuilder.SetFeeGranter(params.FeeGranter)
-	}
-
-	if params.TimeoutHeight > 0 {
-		txBuilder.SetTimeoutHeight(params.TimeoutHeight)
-	}
-
-	// Encode the unsigned transaction
-	txBytes, err := b.txConfig.TxEncoder()(txBuilder.GetTx())
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode transaction: %w", err)
-	}
-
-	return txBytes, nil
+	return b.buildUnsignedTx([]sdk.Msg{msg}, params)
 }
 
 // signTx signs a transaction with the provided signer (a local key or a remote signer).
