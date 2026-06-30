@@ -100,6 +100,164 @@ func main() {
 }
 ```
 
+## Transaction sending
+
+The SDK provides a single high-level entry point — `client.Tx().SendTx(ctx, signer, msgs, opts)` — that drives a message set through the full send lifecycle: account discovery, build, sign, gas estimation, broadcast, and on-chain confirmation. It is the path most callers want; the lower-level `CreateUnsignedTx` / `SignTransactionWith` primitives are also exposed for the two-phase build-now / sign-later flow (below).
+
+### The one-call path
+
+`SendTx` takes an `allora.Signer` (a local `Wallet`'s `PrivKey` or a `*RemoteSigner`), a `[]sdk.Msg`, and a `SendOptions` value. The returned `*txsend.TxResult` carries the committed tx's hash, block height, and DeliverTx code; a non-nil error means the chain rejected the tx and retries were exhausted.
+
+```go
+client, err := allora.NewClient(cfg, logger) // see Quick Start
+if err != nil { /* ... */ }
+defer client.Close()
+
+// 1) build messages via the pure constructors in the txmsg package
+//    (validation up front; returns sdk.Msg, no network calls).
+sendMsg, err := txmsg.NewSend(fromAddr, toAddr, sdk.NewCoins(sdk.NewInt64Coin("uallo", 1_000_000)))
+if err != nil { /* ... */ }
+regMsg, err := txmsg.NewRegisterWorker(txmsg.RegisterWorkerParams{
+    Sender:  fromAddr,
+    TopicId: 42,
+    Owner:   fromAddr,
+})
+if err != nil { /* ... */ }
+
+msgs := []sdk.Msg{sendMsg, regMsg}
+
+// 2) construct a Signer — *Wallet.PrivKey or *RemoteSigner both fit.
+wallet, err := allora.NewWalletFromMnemonic(mnemonic, allora.DefaultHDPath)
+if err != nil { /* ... */ }
+
+// 3) optional: a master/subsidy wallet paying gas via an on-chain feegrant.
+//    Empty (nil) means the signing wallet pays its own fees.
+granter, err := allora.FeeGranterFromEnv() // reads FORGE_MASTER_GRANTER_ADDRESS
+if err != nil { /* ... */ }
+
+// 4) send. SendTx applies sensible defaults for any zero-valued
+//    SendOptions field: GasPrice=0.01, GasAdjustment=1.5,
+//    BroadcastMode=BroadcastModeSync, MaxRetries=2. Set GasLimit
+//    explicitly to skip the simulate round-trip.
+result, err := client.Tx().SendTx(ctx, wallet.PrivKey, msgs, allora.SendOptions{
+    ChainID:    "allora-testnet-1",
+    FeeGranter: granter,
+    Memo:       "deposit-12345",
+})
+if err != nil { /* chain rejected the tx */ }
+fmt.Printf("tx %s committed at height %d (code %d)\n", result.TxHash, result.Height, result.Code)
+```
+
+`SendOptions` fields (all optional; zero values produce defaults):
+
+| Field | Default | Notes |
+|---|---|---|
+| `ChainID` | **required** | The chain id (e.g. `allora-testnet-1`). SendTx errors if empty. |
+| `Memo` | `""` | Attached to the tx body. |
+| `FeeGranter` | `nil` | `sdk.AccAddress` of a feegrant granter (master/subsidy wallet). See below. |
+| `GasAdjustment` | `1.5` | Multiplier applied to simulated gas. Clamped to `>= 1.0`. |
+| `GasLimit` | `0` (simulate) | When non-zero, skips `EstimateGas` and uses this value directly. |
+| `GasPrice` | `0.01` | Per-gas-unit price in uallo. |
+| `BroadcastMode` | `BroadcastModeSync` | `BroadcastModeSync` / `Async` / `Block`. |
+| `SkipWait` | `false` | When true, returns after broadcast (no `WaitForTx` poll). |
+| `MaxRetries` | `2` | Retries for retryable CheckTx rejections. See "Retry behavior" below. |
+
+### The two-phase path (build now, sign later)
+
+When signing must be decoupled from building — e.g. an unsigned tx is persisted or queued on one host and signed on another, or signing is delegated to a remote service — the SDK exposes the lower-level primitives directly:
+
+```go
+// Phase 1: build the unsigned tx. Account info MUST be fresh here, since
+// the sequence is encoded into the tx.
+accNum, seq, err := broadcaster.AccountInfo(ctx, fromAddr.String())
+if err != nil { /* ... */ }
+
+params := &allora.TxParams{
+    ChainID:       "allora-testnet-1",
+    AccountNumber: accNum,
+    Sequence:      seq,
+    GasLimit:      200_000,
+    FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5_000)),
+    FeeGranter:    granter, // optional
+    Memo:          "deposit-12345",
+}
+unsignedTx, err := allora.CreateUnsignedTx(msgs, params)
+if err != nil { /* ... */ }
+// → persist unsignedTx (db, queue, file, ...)
+
+// Phase 2: sign on a different host / process / service. Only ChainID,
+// AccountNumber, and Sequence are read from params at sign time — the fee,
+// gas, memo, granter, and timeout-height are already encoded in the tx.
+signedTx, err := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
+if err != nil { /* ... */ }
+
+// Phase 3: broadcast the signed bytes through the same Tx() entry point
+// (use a Sender backed by the broadcaster of your choice, or wire
+// signedTx into your own broadcast path).
+```
+
+Why split build and sign? Two common cases:
+
+- **Remote signing.** The build step can run on a host that has the account/sequence info but does not hold the key; the sign step runs wherever the key lives (locally or behind a remote signer service). See "Privy-Managed Signing" below for the `*RemoteSigner` integration.
+- **Replay batching.** A worker builds and persists many unsigned txs up front (sharing one sequence-refetch), then signs and broadcasts them serially — minimizing the wall-clock between `AccountInfo` and broadcast so the sequence is still valid.
+
+### RemoteSigner (Privy) — any Signer works
+
+`SendTx` takes an `allora.Signer`, an interface satisfied by both a local `Wallet`'s `*secp256k1.PrivKey` (the default for self-managed keys) and a `*RemoteSigner` (Privy-managed, key never leaves the Forge backend). The remote path is documented in full in the "Privy-Managed Signing" section below; the only change for `SendTx` is that you pass the `*RemoteSigner` directly where the example above shows `wallet.PrivKey`.
+
+### Fee granter (gas subsidy)
+
+`SendOptions.FeeGranter` is an `sdk.AccAddress` of a feegrant granter — a master/subsidy wallet that pays the fee on behalf of the signer via an on-chain feegrant. When set, the signer's own ALLO balance is not debited. Discovery + resolution helpers, in precedence order:
+
+1. `allora.FeeGranterFromEnv()` — reads `FORGE_MASTER_GRANTER_ADDRESS` (and the legacy `FEE_GRANTER` fallback with a one-time deprecation warning). Returns `(nil, nil)` when unset.
+2. `signer.(*RemoteSigner).ResolveFeeGranter()` — returns the backend-discovered master granter for a `*RemoteSigner`. Local wallets have no discovery path; the call is a no-op for them.
+3. `nil` — the signing wallet pays its own fees.
+
+The combined result drops straight into `SendOptions.FeeGranter`.
+
+### Message constructors (txmsg)
+
+The `txmsg` package provides pure, validated constructors that return `sdk.Msg` values without touching signing, broadcasting, or the network. They are the recommended way to build messages for `SendTx`. Highlights:
+
+- **Bank** — `txmsg.NewSend(from, to, amount)`, `txmsg.NewMultiSend(inputs, outputs)` (input/output sum equality is checked up front).
+- **Emissions** — `txmsg.NewRegisterWorker(RegisterWorkerParams{Sender, TopicId, Owner, IsReputer})`, `txmsg.NewInsertWorkerPayload(InsertWorkerPayloadParams{Sender, WorkerDataBundle})` (validates bundle nonce and signature non-empty).
+- **Feegrant** — `txmsg.NewGrantAllowance(granter, grantee, allowance)` (validates `BasicAllowance.SpendLimit` and `PeriodicAllowance.PeriodSpendLimit` / `PeriodCanSpend`), `txmsg.NewRevokeAllowance(granter, grantee)`.
+
+Every constructor validates its inputs (non-empty addresses, positive amounts, valid bech32 against the Allora prefix) so chain rejections of bad-shaped messages are replaced by up-front errors at the call site.
+
+### Retry behavior
+
+`SendTx` classifies CheckTx rejections by `(code, codespace)` and retries the build → sign → broadcast cycle automatically, up to `MaxRetries` attempts. The retryable codes (all in the canonical `sdk` codespace) are:
+
+| Code | Meaning | Action on retry |
+|---|---|---|
+| `11` | out-of-gas | gas limit × `1.3` (`retryBumpGasFactor`) |
+| `13` | insufficient fee | fee × `2.0` (`retryBumpFeeFactor`) |
+| `32` | sequence mismatch | refetch account info, re-sign with the new sequence |
+
+A non-retryable CheckTx rejection (any other code, or any code in a non-`sdk` codespace) is returned as an error immediately. When retries are exhausted, `SendTx` returns the last `*TxResult` alongside an error so a caller can inspect the chain's raw `Codespace` / `RawLog` for triage.
+
+### A runnable example
+
+`example/txsend/main.go` is a runnable end-to-end example that wires it all together: it constructs a `Client`, picks a local `Wallet` or a `*RemoteSigner` based on env vars, builds a `NewSend` + `NewRegisterWorker` message set with a fee-granter subsidy, and prints the committed `TxResult`. By default it prints usage and exits — set `ALLORA_RUN_EXAMPLE=1` (and the other documented env vars) to actually broadcast.
+
+```bash
+go run ./example/txsend                 # prints usage, does not dial
+ALLORA_RUN_EXAMPLE=1 \
+  ALLORA_CHAIN_ID=allora-testnet-1 \
+  ALLORA_GRPC=https://allora-grpc.testnet.allora.network:443 \
+  ALLORA_MNEMONIC="<24-word mnemonic>" \
+  ALLORA_TO=allo1... \
+  ALLORA_AMOUNT_UALLO=1000 \
+  go run ./example/txsend
+```
+
+A tag-gated end-to-end integration test (`example/txsend/integration_test.go`, `//go:build integration`) exercises the same path against a live node; it `t.Skip`s when its `ALLORA_TEST_*` env vars are unset, so the default `go test ./...` is never affected:
+
+```bash
+mise exec -- go test -tags integration -run TestIntegrationSendTx -count=1 -v ./example/txsend
+```
+
 ## Privy-Managed Signing (delegated)
 
 By default the SDK signs with a local key (`Wallet`). Alternatively, you can delegate
