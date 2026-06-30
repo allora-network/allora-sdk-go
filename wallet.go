@@ -145,9 +145,9 @@ func (w *Wallet) VerifySignature(message, signature []byte) bool {
 }
 
 // init seals the SDK global config after the bech32 prefixes are configured.
-// The prefix configuration itself lives in internal/bech32conf (imported via
-// the blank import below) so subpackages such as txmsg can ensure the prefixes
-// are set without depending on this package's init side effects.
+// The prefix configuration itself lives in internal/bech32conf (imported above)
+// so subpackages such as txmsg can ensure the prefixes are set without
+// depending on this package's init side effects.
 //
 //go:generate echo
 func init() {
