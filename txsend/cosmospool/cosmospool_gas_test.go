@@ -82,7 +82,7 @@ func TestEstimateGas(t *testing.T) {
 		ctxDeadline   bool
 	}{
 		{
-			name:          "success: GasUsed=100000, adjustment=1.5 → 150000",
+			name:          "success: GasUsed=100000 returns raw 100000 (adjustment applied by caller)",
 			gasUsed:       100000,
 			adjustment:    1.5,
 			wantGas:       100000,
