@@ -34,30 +34,20 @@ func TestNewPanicsOnNilPool(t *testing.T) {
 	}, "New must panic when pool is nil")
 }
 
-// TestStubMethodsReturnNotImplemented asserts the skeleton's three remaining
-// stub methods (EstimateGas, Broadcast, WaitForTx) compile and return the
-// "not implemented" error for their respective beads, guarding against an
-// accidental real implementation landing before its bead. AccountInfo is
-// implemented in this bead (asg-pvd.3) and is exercised in
-// cosmospool_account_test.go instead.
-func TestStubMethodsReturnNotImplemented(t *testing.T) {
+// TestBroadcasterConstructsAndDegradesGracefully smoke-tests the constructed
+// Broadcaster against a stub pool whose Tx() client errors on every call. All
+// four TxBroadcaster methods are now implemented (asg-pvd.3/.4/.5) and their
+// behavior is covered in detail by cosmospool_account_test.go,
+// cosmospool_gas_test.go, and cosmospool_broadcast_test.go. Here we only assert
+// the one path that is safe to exercise with the nil-Auth stub pool: EstimateGas
+// recovers from the erroring Simulate via its fallback, returning a non-zero gas
+// estimate and no error.
+func TestBroadcasterConstructsAndDegradesGracefully(t *testing.T) {
 	b := cosmospool.New(stubPool{}, zerolog.Nop())
 
-	// AccountInfo (asg-pvd.3) and EstimateGas (asg-pvd.4) are now implemented;
-	// their behavior is covered by cosmospool_account_test.go and
-	// cosmospool_gas_test.go. EstimateGas with the stub pool's erroring Simulate
-	// recovers via the fallback path, returning FallbackGasEstimate and no error.
 	gas, err := b.EstimateGas(context.Background(), []byte{})
 	require.NoError(t, err)
 	require.NotZero(t, gas)
-
-	_, err = b.Broadcast(context.Background(), []byte{}, txsend.BroadcastModeSync)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.5")
-
-	_, err = b.WaitForTx(context.Background(), "DEADBEEF")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.5")
 }
 
 // stubPool satisfies txsend.CosmosTxPool minimally so the constructor's non-nil
