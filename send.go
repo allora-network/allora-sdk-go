@@ -349,6 +349,10 @@ func (s *defaultSender) trySend(
 	if br.Code != 0 {
 		ra := classifyCheckTxError(br.Code, br.Codespace)
 		if ra.retryable {
+			// Carry the gas limit actually used this attempt so the retry's
+			// apply() bumps from the real value rather than from the caller's
+			// (possibly zero, simulation-derived) opts.GasLimit.
+			ra.nextGasLimit = gasLimit
 			buildLog.Warn().
 				Uint32("code", br.Code).
 				Str("codespace", br.Codespace).
@@ -419,6 +423,13 @@ func (ra *retryAdjustment) apply(accNum, seq, currentGasLimit uint64) (
 	gasLimit = currentGasLimit
 	if ra.nextGasLimit > 0 {
 		gasLimit = ra.nextGasLimit
+	}
+	// On an out-of-gas rejection, raise the gas limit by retryBumpGasFactor so
+	// the re-signed tx carries enough gas to clear the operation that ran dry.
+	// Without this bump the retry would re-broadcast with the same limit and
+	// fail identically until retries are exhausted.
+	if ra.code == cosmosCodeOutOfGas {
+		gasLimit = uint64(float64(gasLimit) * retryBumpGasFactor)
 	}
 	if ra.code == cosmosCodeInsufficientFee {
 		// Double the fee using the base gas price as reference.

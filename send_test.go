@@ -197,12 +197,13 @@ func TestSendTx_RetrySequenceMismatch(t *testing.T) {
 		Return(uint64(7), uint64(3), error(nil)).
 		Once()
 
-	// First EstimateGas → OK.
+	// EstimateGas → OK. Only the initial attempt simulates; retries reuse the
+	// established gas limit (threaded via retryAdjustment.nextGasLimit), so a
+	// sequence-mismatch retry does not re-estimate.
 	mockBC.EXPECT().
 		EstimateGas(mock.Anything, mock.Anything).
 		Return(uint64(150_000), error(nil)).
-		// Twice: once for initial build, once for retry rebuild.
-		Times(2)
+		Once()
 
 	// First Broadcast → sequence mismatch (code 32, codespace "sdk").
 	mockBC.EXPECT().
@@ -265,11 +266,24 @@ func TestSendTx_RetryOutOfGas(t *testing.T) {
 	mockBC.EXPECT().
 		EstimateGas(mock.Anything, mock.Anything).
 		Return(uint64(150_000), error(nil)).
-		Times(2) // initial + retry rebuild
+		Once() // only the initial attempt simulates; the out-of-gas retry reuses the bumped gas limit (no re-estimation)
+
+	// Capture the gas limit of each broadcast tx so we can assert the retry
+	// actually raised it (an out-of-gas retry that re-sends the same gas would
+	// fail identically — see asg-pvd.8 fix).
+	var broadcastGas []uint64
+	captureGas := func(_ context.Context, signedTx []byte, _ txsend.BroadcastMode) {
+		decoded, derr := ParseTxBytes(signedTx)
+		require.NoError(t, derr)
+		feeTx, ok := (*decoded).(sdk.FeeTx)
+		require.True(t, ok, "decoded tx must be a FeeTx")
+		broadcastGas = append(broadcastGas, feeTx.GetGas())
+	}
 
 	// First Broadcast → out-of-gas.
 	mockBC.EXPECT().
 		Broadcast(mock.Anything, mock.Anything, txsend.BroadcastModeSync).
+		Run(captureGas).
 		Return(&txsend.BroadcastResult{
 			TxHash:    "HASH_OOG1",
 			Code:      11,
@@ -281,6 +295,7 @@ func TestSendTx_RetryOutOfGas(t *testing.T) {
 	// Second Broadcast → success (with bumped gas).
 	mockBC.EXPECT().
 		Broadcast(mock.Anything, mock.Anything, txsend.BroadcastModeSync).
+		Run(captureGas).
 		Return(&txsend.BroadcastResult{TxHash: "HASH_OOG2", Code: 0}, error(nil)).
 		Once()
 
@@ -302,6 +317,13 @@ func TestSendTx_RetryOutOfGas(t *testing.T) {
 
 	// Broadcast should be called 2 times (first failed, retry succeeded).
 	mockBC.AssertNumberOfCalls(t, "Broadcast", 2)
+
+	// The retry must carry STRICTLY MORE gas than the first attempt — otherwise
+	// an out-of-gas retry is a no-op that fails identically. Guards the
+	// asg-pvd.8 fix wiring retryBumpGasFactor through apply().
+	require.Len(t, broadcastGas, 2)
+	require.Greater(t, broadcastGas[1], broadcastGas[0],
+		"out-of-gas retry must bump the gas limit (got %d then %d)", broadcastGas[0], broadcastGas[1])
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +343,7 @@ func TestSendTx_RetryExhaustedInsufficientFee(t *testing.T) {
 	mockBC.EXPECT().
 		EstimateGas(mock.Anything, mock.Anything).
 		Return(uint64(150_000), error(nil)).
-		Times(3) // initial + 2 retry rebuilds
+		Once() // only the initial attempt simulates; retries reuse the established gas limit
 
 	// Three attempts all return code 13.
 	for i := 0; i < 3; i++ {

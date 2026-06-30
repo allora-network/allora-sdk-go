@@ -127,7 +127,7 @@ func New(pool txsend.CosmosTxPool, logger zerolog.Logger, opts ...Option) *Broad
 
 // AccountInfo returns the on-chain account number and sequence for address. It
 // queries the auth module via the pool's Auth client and unpacks the returned
-// *codectypes.Any into a authtypes.AccountI (BaseAccount in practice) using the
+// *codectypes.Any into a sdk.AccountI (BaseAccount in practice) using the
 // shared alloracodec.CosmosCodec() registry. ctx is threaded through the gRPC
 // call so a caller's cancellation/deadline propagates to the node.
 //
@@ -147,7 +147,7 @@ func (b *Broadcaster) AccountInfo(ctx context.Context, address string) (uint64, 
 		return 0, 0, errors.Wrapf(errMissingAccount, "account %s: empty response from auth module", address)
 	}
 
-	var acc authtypes.AccountI
+	var acc sdktx.AccountI
 	if err := alloracodec.CosmosCodec().UnpackAny(resp.Account, &acc); err != nil {
 		return 0, 0, errors.Wrapf(err, "account %s: failed to unpack on-chain account", address)
 	}
