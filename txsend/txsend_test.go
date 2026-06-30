@@ -31,8 +31,8 @@ func TestNewPanicsOnNilPool(t *testing.T) {
 	}, "New must panic when pool is nil")
 }
 
-// TestStubMethodsReturnNotImplemented asserts the skeleton's four methods
-// compile and return the "not implemented" error for their respective beads,
+// TestStubMethodsReturnNotImplemented asserts the skeleton's two remaining
+// stub methods compile and return the "not implemented" error for their beads,
 // guarding against an accidental real implementation landing before its bead.
 func TestStubMethodsReturnNotImplemented(t *testing.T) {
 	b := cosmospool.New(stubPool{}, zerolog.Nop())
@@ -44,14 +44,6 @@ func TestStubMethodsReturnNotImplemented(t *testing.T) {
 	_, err = b.EstimateGas(context.Background(), []byte{})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.4")
-
-	_, err = b.Broadcast(context.Background(), []byte{}, txsend.BroadcastModeSync)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.5")
-
-	_, err = b.WaitForTx(context.Background(), "DEADBEEF")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.5")
 }
 
 // stubPool satisfies txsend.CosmosTxPool minimally so the constructor's non-nil

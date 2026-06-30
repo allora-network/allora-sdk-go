@@ -13,20 +13,25 @@ package cosmospool
 import (
 	"context"
 	"reflect"
+	"time"
 
 	"github.com/brynbellomy/go-utils/errors"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
+	sdktx "github.com/cosmos/cosmos-sdk/types"
 	"github.com/rs/zerolog"
 
 	"github.com/allora-network/allora-sdk-go/txsend"
 )
 
 // Broadcaster is the concrete txsend.TxBroadcaster backed by a
-// txsend.CosmosTxPool. It holds the narrow pool, a logger, and a Clock (the
-// time seam for WaitForTx polling). Methods are stubbed until their beads land.
+// txsend.CosmosTxPool. It holds the narrow pool, a logger, a Clock (the
+// time seam for WaitForTx polling), and a pollInterval controlling the
+// WaitForTx polling cadence. Methods are stubbed until their beads land.
 type Broadcaster struct {
-	pool   txsend.CosmosTxPool
-	logger zerolog.Logger
-	clock  txsend.Clock
+	pool         txsend.CosmosTxPool
+	logger       zerolog.Logger
+	clock        txsend.Clock
+	pollInterval time.Duration
 }
 
 // Compile-time assertion that Broadcaster satisfies the txsend.TxBroadcaster
@@ -43,6 +48,17 @@ func WithClock(c txsend.Clock) Option {
 	return func(b *Broadcaster) {
 		if c != nil {
 			b.clock = c
+		}
+	}
+}
+
+// WithPollInterval sets the interval between WaitForTx polls.
+// Defaults to 1s; tests can inject shorter intervals or use the fake
+// clock seam to advance deterministically.
+func WithPollInterval(d time.Duration) Option {
+	return func(b *Broadcaster) {
+		if d > 0 {
+			b.pollInterval = d
 		}
 	}
 }
@@ -77,9 +93,10 @@ func New(pool txsend.CosmosTxPool, logger zerolog.Logger, opts ...Option) *Broad
 		logger = zerolog.Nop()
 	}
 	b := &Broadcaster{
-		pool:   pool,
-		logger: logger,
-		clock:  txsend.SystemClock{},
+		pool:         pool,
+		logger:       logger,
+		clock:        txsend.SystemClock{},
+		pollInterval: 1 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(b)
@@ -102,17 +119,120 @@ func (b *Broadcaster) EstimateGas(ctx context.Context, unsignedTx []byte) (uint6
 }
 
 // Broadcast submits signedTx in the given mode and returns the immediate
-// broadcast result.
+// broadcast result. It maps the txsend.BroadcastMode to the cosmos
+// txtypes.BroadcastMode, calls the pool's Tx().BroadcastTx RPC, and maps the
+// response to a *txsend.BroadcastResult. A non-zero CheckTx Code in the
+// response is NOT an error — the tx was successfully submitted to the
+// mempool and denied by CheckTx; the caller may inspect result.Code to decide
+// how to proceed. Only transport-level failures (network errors, gRPC errors,
+// pool retry exhaustion) return a wrapped error.
 //
 // implemented in bead asg-pvd.5
 func (b *Broadcaster) Broadcast(ctx context.Context, signedTx []byte, mode txsend.BroadcastMode) (*txsend.BroadcastResult, error) {
-	return nil, errors.New("not implemented: bead asg-pvd.5")
+	bm, err := mapBroadcastMode(mode)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := b.pool.Tx().BroadcastTx(ctx, &txtypes.BroadcastTxRequest{
+		TxBytes: signedTx,
+		Mode:    bm,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "broadcasting tx")
+	}
+
+	txResp := resp.GetTxResponse()
+	if txResp == nil {
+		return nil, errors.New("broadcast response missing TxResponse")
+	}
+
+	return &txsend.BroadcastResult{
+		TxHash:    txResp.TxHash,
+		Code:      txResp.Code,
+		Codespace: txResp.Codespace,
+		RawLog:    txResp.RawLog,
+	}, nil
 }
 
-// WaitForTx blocks until txHash is committed (or ctx is cancelled) and returns
-// the final result.
+// mapBroadcastMode converts txsend.BroadcastMode to the cosmos
+// txtypes.BroadcastMode. Unknown values return a wrapped error.
+func mapBroadcastMode(mode txsend.BroadcastMode) (txtypes.BroadcastMode, error) {
+	switch mode {
+	case txsend.BroadcastModeSync:
+		return txtypes.BroadcastMode_BROADCAST_MODE_SYNC, nil
+	case txsend.BroadcastModeAsync:
+		return txtypes.BroadcastMode_BROADCAST_MODE_ASYNC, nil
+	case txsend.BroadcastModeBlock:
+		return txtypes.BroadcastMode_BROADCAST_MODE_BLOCK, nil
+	default:
+		return txtypes.BroadcastMode_BROADCAST_MODE_UNSPECIFIED,
+			errors.Errorf("unknown broadcast mode: %d", mode)
+	}
+}
+
+// WaitForTx blocks until the transaction identified by txHash is committed
+// (included in a block) or ctx is cancelled, returning the final result. It
+// polls GetTx at pollInterval (default 1s) using the clock seam so tests can
+// drive time deterministically. A committed-but-failed tx (Code != 0) returns
+// the TxResult with the non-zero Code and nil error — the caller inspects
+// result.Code to determine success. Only context cancellation and transport
+// errors that persist through the polling loop return an error.
 //
 // implemented in bead asg-pvd.5
 func (b *Broadcaster) WaitForTx(ctx context.Context, txHash string) (*txsend.TxResult, error) {
-	return nil, errors.New("not implemented: bead asg-pvd.5")
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, errors.Wrap(ctx.Err(), "waiting for tx "+txHash)
+		case <-b.clock.After(b.pollInterval):
+		}
+
+		resp, err := b.pool.Tx().GetTx(ctx, &txtypes.GetTxRequest{Hash: txHash})
+		if err != nil {
+			// NotFound or transient errors: continue polling.
+			// The pool wrapper retries internally; a persistent error
+			// will surface again on the next poll.
+			continue
+		}
+
+		txResp := resp.GetTxResponse()
+		if txResp == nil {
+			continue
+		}
+
+		return mapTxResponse(txResp), nil
+	}
+}
+
+// mapTxResponse converts a cosmos SDK TxResponse to txsend.TxResult,
+// translating Events and their Attributes.
+func mapTxResponse(txResp *sdktx.TxResponse) *txsend.TxResult {
+	events := make([]txsend.Event, len(txResp.Events))
+	for i, ev := range txResp.Events {
+		attrs := make([]txsend.EventAttribute, len(ev.Attributes))
+		for j, attr := range ev.Attributes {
+			attrs[j] = txsend.EventAttribute{
+				Key:   attr.Key,
+				Value: attr.Value,
+			}
+		}
+		events[i] = txsend.Event{
+			Type:       ev.Type,
+			Attributes: attrs,
+		}
+	}
+
+	return &txsend.TxResult{
+		TxHash:    txResp.TxHash,
+		Height:    txResp.Height,
+		Code:      txResp.Code,
+		Codespace: txResp.Codespace,
+		Data:      txResp.Data,
+		RawLog:    txResp.RawLog,
+		GasWanted: txResp.GasWanted,
+		GasUsed:   txResp.GasUsed,
+		Timestamp: txResp.Timestamp,
+		Events:    events,
+	}
 }
