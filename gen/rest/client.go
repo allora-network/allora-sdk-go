@@ -48,6 +48,7 @@ type RESTClient struct {
 	params       *ParamsRESTClient
 	slashing     *SlashingRESTClient
 	staking      *StakingRESTClient
+	feemarket    *FeemarketRESTClient
 }
 
 var _ interfaces.CosmosClient = (*RESTClient)(nil)
@@ -77,6 +78,7 @@ func NewRESTClient(baseURL string, logger zerolog.Logger, opts ...RESTClientOpti
 		params:       NewParamsRESTClient(core, logger),
 		slashing:     NewSlashingRESTClient(core, logger),
 		staking:      NewStakingRESTClient(core, logger),
+		feemarket:    NewFeemarketRESTClient(core, logger),
 	}
 }
 
@@ -174,6 +176,10 @@ func (c *RESTClient) Staking() interfaces.StakingClient {
 	return c.staking
 }
 
+func (c *RESTClient) Feemarket() interfaces.FeemarketClient {
+	return c.feemarket
+}
+
 // Status implements a basic health check using the Tendermint service
 func (c *RESTClient) Status(ctx context.Context) error {
 	_, err := c.tendermint.GetSyncing(ctx, &cmtservice.GetSyncingRequest{})
@@ -184,6 +190,12 @@ func (c *RESTClient) Status(ctx context.Context) error {
 func (c *RESTClient) HealthCheck(ctx context.Context) error {
 	return c.Status(ctx)
 }
+
+// ResetConnectBackoff is a no-op for the REST client. The pool calls it
+// when a cooling client's health check fails; the REST transport is a
+// plain net/http client whose connection pooling is managed by Go's
+// stdlib, with no analogue of grpc-go's internal reconnect backoff.
+func (c *RESTClient) ResetConnectBackoff() {}
 
 type RESTClientCore struct {
 	baseURL    string

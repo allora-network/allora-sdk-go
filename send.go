@@ -84,6 +84,16 @@ type SendOptions struct {
 	// returning.
 	SkipWait bool
 
+	// TimeoutHeight is the block height after which the transaction may
+	// be removed from the mempool and no longer included in a block. A
+	// value of 0 means no timeout (the tx is valid until manually removed
+	// or the default mempool TTL expires). Callers that submit
+	// time-bounded work — e.g. an epoch-bound payload that must land
+	// within a submission window — should set this to window_end + a
+	// small buffer so a delayed inclusion does not land in the next
+	// window. The height is encoded into the tx AuthInfo verbatim.
+	TimeoutHeight uint64
+
 	// MaxRetries is the maximum number of retries for retryable CheckTx
 	// rejections (out-of-gas, insufficient-fee, sequence-mismatch). It
 	// defaults to DefaultMaxRetries (2) when zero. Each retry re-derives
@@ -294,6 +304,7 @@ func (s *defaultSender) trySend(
 		Sequence:      seq,
 		FeeGranter:    opts.FeeGranter,
 		Memo:          opts.Memo,
+		TimeoutHeight: opts.TimeoutHeight,
 		GasLimit:      200_000,                             // placeholder
 		FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 1)), // placeholder
 	}

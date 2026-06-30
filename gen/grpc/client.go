@@ -44,6 +44,7 @@ type GRPCClient struct {
 	params       *ParamsGRPCClient
 	slashing     *SlashingGRPCClient
 	staking      *StakingGRPCClient
+	feemarket    *FeemarketGRPCClient
 }
 
 var _ interfaces.CosmosClient = (*GRPCClient)(nil)
@@ -117,6 +118,7 @@ func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClien
 		params:       NewParamsGRPCClient(conn, logger),
 		slashing:     NewSlashingGRPCClient(conn, logger),
 		staking:      NewStakingGRPCClient(conn, logger),
+		feemarket:    NewFeemarketGRPCClient(conn, logger),
 	}
 
 	return client, nil
@@ -182,6 +184,9 @@ func (c *GRPCClient) Slashing() interfaces.SlashingClient {
 func (c *GRPCClient) Staking() interfaces.StakingClient {
 	return c.staking
 }
+func (c *GRPCClient) Feemarket() interfaces.FeemarketClient {
+	return c.feemarket
+}
 
 type callFn[In, Out any] func(ctx context.Context, i In, opts ...grpc.CallOption) (Out, error)
 
@@ -208,4 +213,13 @@ func (c *GRPCClient) Status(ctx context.Context) error {
 // HealthCheck wraps Status to satisfy pool requirements
 func (c *GRPCClient) HealthCheck(ctx context.Context) error {
 	return c.Status(ctx)
+}
+
+// ResetConnectBackoff tells grpc-go's internal connection state machine to
+// abandon any pending reconnect backoff and attempt to re-establish the
+// underlying transport immediately. The pool calls this when a cooling
+// client's health check fails, so the pool does not sit idle waiting for
+// grpc-go's own backoff timer while a half-closed connection lingers.
+func (c *GRPCClient) ResetConnectBackoff() {
+	c.conn.ResetConnectBackoff()
 }

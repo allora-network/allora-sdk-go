@@ -152,3 +152,12 @@ func (c *GRPCClient) Status(ctx context.Context) error {
 func (c *GRPCClient) HealthCheck(ctx context.Context) error {
     return c.Status(ctx)
 }
+
+// ResetConnectBackoff tells grpc-go's internal connection state machine to
+// abandon any pending reconnect backoff and attempt to re-establish the
+// underlying transport immediately. The pool calls this when a cooling
+// client's health check fails, so the pool does not sit idle waiting for
+// grpc-go's own backoff timer while a half-closed connection lingers.
+func (c *GRPCClient) ResetConnectBackoff() {
+    c.conn.ResetConnectBackoff()
+}

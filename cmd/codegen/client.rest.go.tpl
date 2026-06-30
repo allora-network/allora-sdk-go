@@ -102,6 +102,12 @@ func (c *RESTClient) HealthCheck(ctx context.Context) error {
     return c.Status(ctx)
 }
 
+// ResetConnectBackoff is a no-op for the REST client. The pool calls it
+// when a cooling client's health check fails; the REST transport is a
+// plain net/http client whose connection pooling is managed by Go's
+// stdlib, with no analogue of grpc-go's internal reconnect backoff.
+func (c *RESTClient) ResetConnectBackoff() {}
+
 type RESTClientCore struct {
     baseURL    string
     httpClient *http.Client

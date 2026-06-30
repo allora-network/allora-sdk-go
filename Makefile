@@ -6,6 +6,7 @@ COSMOS_PROTO_VERSION := v1.0.0-beta.5
 COSMOS_SDK_VERSION := v0.50.13
 GOOGLEAPIS_VERSION := master
 ALLORA_CHAIN_VERSION := v0.15.1
+FEEMARKET_VERSION := v1.1.1
 
 # --- Paths
 PROTO_DEPS := ./proto-deps
@@ -14,6 +15,7 @@ COSMOS_PROTO_DIR := $(PROTO_DEPS)/cosmos-proto
 GOGOPROTO_DIR := $(PROTO_DEPS)/gogoproto
 GOOGLEAPIS_DIR := $(PROTO_DEPS)/googleapis
 ALLORA_CHAIN_DIR := $(PROTO_DEPS)/allora-chain
+FEEMARKET_DIR := $(PROTO_DEPS)/feemarket
 
 # --- Codegen inputs
 CODEGEN_INCLUDES := \
@@ -22,7 +24,8 @@ CODEGEN_INCLUDES := \
   -I $(GOOGLEAPIS_DIR) \
   -I $(GOGOPROTO_DIR) \
   -I $(ALLORA_CHAIN_DIR)/x/emissions/proto \
-  -I $(ALLORA_CHAIN_DIR)/x/mint/proto
+  -I $(ALLORA_CHAIN_DIR)/x/mint/proto \
+  -I $(FEEMARKET_DIR)/proto
 
 CODEGEN_FILES := \
   $(COSMOS_SDK_DIR)/proto/cosmos/auth/v1beta1/query.proto \
@@ -40,7 +43,8 @@ CODEGEN_FILES := \
   $(COSMOS_SDK_DIR)/proto/cosmos/staking/v1beta1/query.proto \
   $(COSMOS_SDK_DIR)/proto/cosmos/tx/v1beta1/service.proto \
   $(ALLORA_CHAIN_DIR)/x/emissions/proto/emissions/v9/query.proto \
-  $(ALLORA_CHAIN_DIR)/x/mint/proto/mint/v5/query.proto
+  $(ALLORA_CHAIN_DIR)/x/mint/proto/mint/v5/query.proto \
+  $(FEEMARKET_DIR)/proto/feemarket/feemarket/v1/query.proto
 
 
 # --- Git dependencies
@@ -69,13 +73,19 @@ $(ALLORA_CHAIN_DIR)/.git:
 	git clone --depth 1 --single-branch --branch $(ALLORA_CHAIN_VERSION) \
 	  https://github.com/allora-network/allora-chain "$(ALLORA_CHAIN_DIR)"
 
+$(FEEMARKET_DIR)/.git:
+	rm -rf "$(FEEMARKET_DIR)"
+	git clone --depth 1 --single-branch --branch $(FEEMARKET_VERSION) \
+	  https://github.com/skip-mev/feemarket "$(FEEMARKET_DIR)"
+
 .PHONY: proto-deps
 proto-deps: \
   $(GOGOPROTO_DIR)/.git \
   $(COSMOS_PROTO_DIR)/.git \
   $(COSMOS_SDK_DIR)/.git \
   $(GOOGLEAPIS_DIR)/.git \
-  $(ALLORA_CHAIN_DIR)/.git
+  $(ALLORA_CHAIN_DIR)/.git \
+  $(FEEMARKET_DIR)/.git
 
 .PHONY: proto-deps-update
 proto-deps-update:
@@ -84,6 +94,7 @@ proto-deps-update:
 	git -C "$(COSMOS_SDK_DIR)" fetch --depth 1 origin $(COSMOS_SDK_VERSION) && git -C "$(COSMOS_SDK_DIR)" reset --hard FETCH_HEAD
 	git -C "$(GOOGLEAPIS_DIR)" fetch --depth 1 origin $(GOOGLEAPIS_VERSION) && git -C "$(GOOGLEAPIS_DIR)" reset --hard FETCH_HEAD
 	git -C "$(ALLORA_CHAIN_DIR)" fetch --depth 1 origin $(ALLORA_CHAIN_VERSION) && git -C "$(ALLORA_CHAIN_DIR)" reset --hard FETCH_HEAD
+	git -C "$(FEEMARKET_DIR)" fetch --depth 1 origin $(FEEMARKET_VERSION) && git -C "$(FEEMARKET_DIR)" reset --hard FETCH_HEAD
 
 
 
