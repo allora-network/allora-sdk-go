@@ -105,7 +105,7 @@ func TestEstimateGas(t *testing.T) {
 			wantCallCount: 1,
 		},
 		{
-			name:          "ceil edge: GasUsed=100001*1.5 → 150002",
+			name:          "returns raw GasUsed (no multiplier): 100001 returns 100001",
 			gasUsed:       100001,
 			adjustment:    1.5,
 			wantGas:       100001,
