@@ -1,8 +1,7 @@
 // Package txsend defines the contract for sending, simulating, and confirming
-// Cosmos transactions through a pooled, health-tracked client. It is the seam
-// the later beads (asg-pvd.3 account-info, asg-pvd.4 gas estimation,
-// asg-pvd.5 broadcast+wait) fill in: the interface and value types live here,
-// the concrete pooled implementation lives in txsend/cosmospool.
+// Cosmos transactions through a pooled, health-tracked client. The interface
+// and value types live here; the concrete pooled implementation lives in
+// txsend/cosmospool.
 //
 // txsend deliberately depends only on gen/interfaces and the standard library.
 // It must NOT import cosmosrpc: cosmosrpc.ClientPool embeds
@@ -18,8 +17,8 @@
 // (signer.go) and the two-phase build/sign flow (tx.go, tx_builder.go) produce
 // signed tx bytes; txsend takes those bytes as opaque input and is responsible
 // only for account discovery, gas estimation, broadcast, and confirmation.
-// The shared codec (alloracodec.CosmosCodec, codec/registry.go) is what the
-// later beads use to (un)marshal SimulateRequest/BroadcastTxRequest payloads
+// The shared codec (alloracodec.CosmosCodec, codec/registry.go) is what
+// cosmospool uses to (un)marshal SimulateRequest/BroadcastTxRequest payloads
 // and to decode TxResponse events into the value types defined below.
 package txsend
 
@@ -41,31 +40,30 @@ import (
 // and these types.
 type TxBroadcaster interface {
 	// AccountInfo returns the on-chain account number and sequence for address,
-	// used to populate TxParams before building/signing. A later bead (asg-pvd.3)
-	// implements this via CosmosTxPool.Auth().Account; sequence must reflect the
-	// latest committed state so a signed tx is not immediately stale.
+	// used to populate TxParams before building/signing. It queries
+	// CosmosTxPool.Auth().Account; sequence must reflect the latest committed
+	// state so a signed tx is not immediately stale.
 	AccountInfo(ctx context.Context, address string) (accountNumber, sequence uint64, err error)
 
 	// EstimateGas returns the simulated gas usage for unsignedTx (raw tx bytes
-	// produced by allora.CreateUnsignedTx / CreateUnsignedSendTx). A later bead
-	// (asg-pvd.4) implements this via CosmosTxPool.Tx().Simulate. The returned
-	// gas is the simulation's GasUsed; callers typically apply a multiplier
-	// before setting TxParams.GasLimit.
+	// produced by allora.CreateUnsignedTx / CreateUnsignedSendTx). It queries
+	// CosmosTxPool.Tx().Simulate. The returned gas is the simulation's
+	// GasUsed; callers typically apply a multiplier before setting
+	// TxParams.GasLimit.
 	EstimateGas(ctx context.Context, unsignedTx []byte) (gas uint64, err error)
 
 	// Broadcast submits signedTx (raw bytes from allora.SignTransactionWith) in
-	// the given mode and returns the immediate broadcast result. A later bead
-	// (asg-pvd.5) implements this via CosmosTxPool.Tx().BroadcastTx. The result
-	// carries the tx hash and the CheckTx code; a non-zero Code means the tx was
-	// rejected before mempool acceptance.
+	// the given mode and returns the immediate broadcast result. It calls
+	// CosmosTxPool.Tx().BroadcastTx. The result carries the tx hash and the
+	// CheckTx code; a non-zero Code means the tx was rejected before mempool
+	// acceptance.
 	Broadcast(ctx context.Context, signedTx []byte, mode BroadcastMode) (*BroadcastResult, error)
 
 	// WaitForTx blocks until the transaction identified by txHash is committed
-	// (or ctx is cancelled), returning the final result. A later bead
-	// (asg-pvd.5) implements this by polling GetTx / GetTxsEvent with backoff
-	// gated by the Clock seam; it returns an error only if ctx is cancelled
-	// before inclusion, not if the tx committed with a non-zero code (that is
-	// reported in TxResult.Code).
+	// (or ctx is cancelled), returning the final result. It polls GetTx at
+	// pollInterval gated by the Clock seam; it returns an error only if ctx is
+	// cancelled before inclusion, not if the tx committed with a non-zero code
+	// (that is reported in TxResult.Code).
 	WaitForTx(ctx context.Context, txHash string) (*TxResult, error)
 }
 

@@ -5,9 +5,9 @@
 //
 // This is the impl subpackage: the interface lives in the parent txsend
 // package, and this package owns the heavy deps (zerolog) and the real logic.
-// The methods are currently stubs — each is implemented in a later bead
-// (asg-pvd.3/.4/.5) — but the constructor, option set, and static interface
-// check are real and final so the wiring shape is fixed.
+// The constructor, option set, and static interface check are final; every
+// TxBroadcaster method is implemented against the pool's Tx() and Auth()
+// clients.
 package cosmospool
 
 import (
@@ -32,7 +32,7 @@ import (
 // Broadcaster is the concrete txsend.TxBroadcaster backed by a
 // txsend.CosmosTxPool. It holds the narrow pool, a logger, a Clock (the
 // time seam for WaitForTx polling), and a pollInterval controlling the
-// WaitForTx polling cadence. Methods are stubbed until their beads land.
+// WaitForTx polling cadence.
 type Broadcaster struct {
 	pool          txsend.CosmosTxPool
 	logger        zerolog.Logger
@@ -225,8 +225,6 @@ func (b *Broadcaster) EstimateGas(ctx context.Context, unsignedTx []byte) (uint6
 // mempool and denied by CheckTx; the caller may inspect result.Code to decide
 // how to proceed. Only transport-level failures (network errors, gRPC errors,
 // pool retry exhaustion) return a wrapped error.
-//
-// implemented in bead asg-pvd.5
 func (b *Broadcaster) Broadcast(ctx context.Context, signedTx []byte, mode txsend.BroadcastMode) (*txsend.BroadcastResult, error) {
 	bm, err := mapBroadcastMode(mode)
 	if err != nil {
@@ -277,8 +275,6 @@ func mapBroadcastMode(mode txsend.BroadcastMode) (txtypes.BroadcastMode, error) 
 // the TxResult with the non-zero Code and nil error — the caller inspects
 // result.Code to determine success. Only context cancellation and transport
 // errors that persist through the polling loop return an error.
-//
-// implemented in bead asg-pvd.5
 func (b *Broadcaster) WaitForTx(ctx context.Context, txHash string) (*txsend.TxResult, error) {
 	for {
 		select {

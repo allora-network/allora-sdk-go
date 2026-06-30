@@ -36,12 +36,12 @@ func TestNewPanicsOnNilPool(t *testing.T) {
 
 // TestBroadcasterConstructsAndDegradesGracefully smoke-tests the constructed
 // Broadcaster against a stub pool whose Tx() client errors on every call. All
-// four TxBroadcaster methods are now implemented (asg-pvd.3/.4/.5) and their
-// behavior is covered in detail by cosmospool_account_test.go,
-// cosmospool_gas_test.go, and cosmospool_broadcast_test.go. Here we only assert
-// the one path that is safe to exercise with the nil-Auth stub pool: EstimateGas
-// recovers from the erroring Simulate via its fallback, returning a non-zero gas
-// estimate and no error.
+// four TxBroadcaster methods are implemented and their behavior is covered in
+// detail by cosmospool_account_test.go, cosmospool_gas_test.go, and
+// cosmospool_broadcast_test.go. Here we only assert the one path that is safe
+// to exercise with the nil-Auth stub pool: EstimateGas recovers from the
+// erroring Simulate via its fallback, returning a non-zero gas estimate and
+// no error.
 func TestBroadcasterConstructsAndDegradesGracefully(t *testing.T) {
 	b := cosmospool.New(stubPool{}, zerolog.Nop())
 
@@ -51,8 +51,8 @@ func TestBroadcasterConstructsAndDegradesGracefully(t *testing.T) {
 }
 
 // stubPool satisfies txsend.CosmosTxPool minimally so the constructor's non-nil
-// path and the stub methods can be exercised without a real cosmos client. Auth
-// is nil (only AccountInfo touches it, still a stub). Tx returns a
+// path can be exercised without a real cosmos client. Auth is nil (only
+// AccountInfo touches it, which is not exercised here). Tx returns a
 // stubTxClient whose Simulate always errors, so EstimateGas's fallback path
 // returns the fallback gas without panicking on a nil interface.
 type stubPool struct{}
@@ -61,8 +61,8 @@ func (stubPool) Tx() interfaces.TxClient   { return stubTxClient{} }
 func (stubPool) Auth() interfaces.AuthClient { return nil }
 
 // stubTxClient satisfies interfaces.TxClient with every method returning the
-// zero value / an error. Only Simulate is meaningful (EstimateGas calls it);
-// the rest exist so the interface is satisfied.
+// zero value / an error. Only Simulate is meaningful here (EstimateGas calls
+// it); the rest exist so the interface is satisfied.
 type stubTxClient struct{}
 
 func (stubTxClient) Simulate(_ context.Context, _ *txtypes.SimulateRequest, _ ...config.CallOpt) (*txtypes.SimulateResponse, error) {
