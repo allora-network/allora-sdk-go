@@ -71,36 +71,36 @@ func (f *fakeAuthClient) Params(context.Context, *authtypes.QueryParamsRequest, 
 	panic("Params not expected in this test")
 }
 
-// fakeTxClient implements interfaces.TxClient with every method panicking.
+// panicTxClient implements interfaces.TxClient with every method panicking.
 // AccountInfo must not touch Tx(); a panic here would catch a regression where
 // the broadcaster's call graph accidentally reached into the tx service.
-type fakeTxClient struct{}
+type panicTxClient struct{}
 
-func (fakeTxClient) BroadcastTx(context.Context, *tx.BroadcastTxRequest, ...config.CallOpt) (*tx.BroadcastTxResponse, error) {
+func (panicTxClient) BroadcastTx(context.Context, *tx.BroadcastTxRequest, ...config.CallOpt) (*tx.BroadcastTxResponse, error) {
 	panic("BroadcastTx not expected in this test")
 }
-func (fakeTxClient) GetBlockWithTxs(context.Context, *tx.GetBlockWithTxsRequest, ...config.CallOpt) (*tx.GetBlockWithTxsResponse, error) {
+func (panicTxClient) GetBlockWithTxs(context.Context, *tx.GetBlockWithTxsRequest, ...config.CallOpt) (*tx.GetBlockWithTxsResponse, error) {
 	panic("GetBlockWithTxs not expected in this test")
 }
-func (fakeTxClient) GetTx(context.Context, *tx.GetTxRequest, ...config.CallOpt) (*tx.GetTxResponse, error) {
+func (panicTxClient) GetTx(context.Context, *tx.GetTxRequest, ...config.CallOpt) (*tx.GetTxResponse, error) {
 	panic("GetTx not expected in this test")
 }
-func (fakeTxClient) GetTxsEvent(context.Context, *tx.GetTxsEventRequest, ...config.CallOpt) (*tx.GetTxsEventResponse, error) {
+func (panicTxClient) GetTxsEvent(context.Context, *tx.GetTxsEventRequest, ...config.CallOpt) (*tx.GetTxsEventResponse, error) {
 	panic("GetTxsEvent not expected in this test")
 }
-func (fakeTxClient) Simulate(context.Context, *tx.SimulateRequest, ...config.CallOpt) (*tx.SimulateResponse, error) {
+func (panicTxClient) Simulate(context.Context, *tx.SimulateRequest, ...config.CallOpt) (*tx.SimulateResponse, error) {
 	panic("Simulate not expected in this test")
 }
-func (fakeTxClient) TxDecode(context.Context, *tx.TxDecodeRequest, ...config.CallOpt) (*tx.TxDecodeResponse, error) {
+func (panicTxClient) TxDecode(context.Context, *tx.TxDecodeRequest, ...config.CallOpt) (*tx.TxDecodeResponse, error) {
 	panic("TxDecode not expected in this test")
 }
-func (fakeTxClient) TxDecodeAmino(context.Context, *tx.TxDecodeAminoRequest, ...config.CallOpt) (*tx.TxDecodeAminoResponse, error) {
+func (panicTxClient) TxDecodeAmino(context.Context, *tx.TxDecodeAminoRequest, ...config.CallOpt) (*tx.TxDecodeAminoResponse, error) {
 	panic("TxDecodeAmino not expected in this test")
 }
-func (fakeTxClient) TxEncode(context.Context, *tx.TxEncodeRequest, ...config.CallOpt) (*tx.TxEncodeResponse, error) {
+func (panicTxClient) TxEncode(context.Context, *tx.TxEncodeRequest, ...config.CallOpt) (*tx.TxEncodeResponse, error) {
 	panic("TxEncode not expected in this test")
 }
-func (fakeTxClient) TxEncodeAmino(context.Context, *tx.TxEncodeAminoRequest, ...config.CallOpt) (*tx.TxEncodeAminoResponse, error) {
+func (panicTxClient) TxEncodeAmino(context.Context, *tx.TxEncodeAminoRequest, ...config.CallOpt) (*tx.TxEncodeAminoResponse, error) {
 	panic("TxEncodeAmino not expected in this test")
 }
 
@@ -110,7 +110,7 @@ func (fakeTxClient) TxEncodeAmino(context.Context, *tx.TxEncodeAminoRequest, ...
 // "Tx() interfaces.TxClient; Auth() interfaces.AuthClient").
 type testPool struct {
 	auth *fakeAuthClient
-	tx   *fakeTxClient
+	tx   *panicTxClient
 }
 
 func (p *testPool) Auth() interfaces.AuthClient { return p.auth }
@@ -195,7 +195,7 @@ func TestAccountInfo(t *testing.T) {
 			auth := &fakeAuthClient{}
 			tt.setup(auth)
 
-			pool := &testPool{auth: auth, tx: &fakeTxClient{}}
+			pool := &testPool{auth: auth, tx: &panicTxClient{}}
 			b := cosmospool.New(pool, zerolog.Nop())
 
 			gotNum, gotSeq, err := b.AccountInfo(context.Background(), address)

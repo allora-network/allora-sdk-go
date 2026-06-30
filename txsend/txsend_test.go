@@ -5,9 +5,12 @@ import (
 	"testing"
 
 	"github.com/allora-network/allora-sdk-go/cosmosrpc"
+	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 	"github.com/allora-network/allora-sdk-go/txsend"
 	"github.com/allora-network/allora-sdk-go/txsend/cosmospool"
+	"github.com/brynbellomy/go-utils/errors"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 )
@@ -40,9 +43,13 @@ func TestNewPanicsOnNilPool(t *testing.T) {
 func TestStubMethodsReturnNotImplemented(t *testing.T) {
 	b := cosmospool.New(stubPool{}, zerolog.Nop())
 
-	_, err := b.EstimateGas(context.Background(), []byte{})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "not implemented: bead asg-pvd.4")
+	// AccountInfo (asg-pvd.3) and EstimateGas (asg-pvd.4) are now implemented;
+	// their behavior is covered by cosmospool_account_test.go and
+	// cosmospool_gas_test.go. EstimateGas with the stub pool's erroring Simulate
+	// recovers via the fallback path, returning FallbackGasEstimate and no error.
+	gas, err := b.EstimateGas(context.Background(), []byte{})
+	require.NoError(t, err)
+	require.NotZero(t, gas)
 
 	_, err = b.Broadcast(context.Background(), []byte{}, txsend.BroadcastModeSync)
 	require.Error(t, err)
@@ -54,10 +61,44 @@ func TestStubMethodsReturnNotImplemented(t *testing.T) {
 }
 
 // stubPool satisfies txsend.CosmosTxPool minimally so the constructor's non-nil
-// path and the stub methods can be exercised without a real cosmos client. The
-// returned clients are nil interface values; the stub broadcaster methods never
-// call them, so this is safe.
+// path and the stub methods can be exercised without a real cosmos client. Auth
+// is nil (only AccountInfo touches it, still a stub). Tx returns a
+// stubTxClient whose Simulate always errors, so EstimateGas's fallback path
+// returns the fallback gas without panicking on a nil interface.
 type stubPool struct{}
 
-func (stubPool) Tx() interfaces.TxClient   { return nil }
+func (stubPool) Tx() interfaces.TxClient   { return stubTxClient{} }
 func (stubPool) Auth() interfaces.AuthClient { return nil }
+
+// stubTxClient satisfies interfaces.TxClient with every method returning the
+// zero value / an error. Only Simulate is meaningful (EstimateGas calls it);
+// the rest exist so the interface is satisfied.
+type stubTxClient struct{}
+
+func (stubTxClient) Simulate(_ context.Context, _ *txtypes.SimulateRequest, _ ...config.CallOpt) (*txtypes.SimulateResponse, error) {
+	return nil, errors.New("stub: simulate unavailable")
+}
+func (stubTxClient) BroadcastTx(_ context.Context, _ *txtypes.BroadcastTxRequest, _ ...config.CallOpt) (*txtypes.BroadcastTxResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) GetBlockWithTxs(_ context.Context, _ *txtypes.GetBlockWithTxsRequest, _ ...config.CallOpt) (*txtypes.GetBlockWithTxsResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) GetTx(_ context.Context, _ *txtypes.GetTxRequest, _ ...config.CallOpt) (*txtypes.GetTxResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) GetTxsEvent(_ context.Context, _ *txtypes.GetTxsEventRequest, _ ...config.CallOpt) (*txtypes.GetTxsEventResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) TxDecode(_ context.Context, _ *txtypes.TxDecodeRequest, _ ...config.CallOpt) (*txtypes.TxDecodeResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) TxDecodeAmino(_ context.Context, _ *txtypes.TxDecodeAminoRequest, _ ...config.CallOpt) (*txtypes.TxDecodeAminoResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) TxEncode(_ context.Context, _ *txtypes.TxEncodeRequest, _ ...config.CallOpt) (*txtypes.TxEncodeResponse, error) {
+	return nil, errors.New("not implemented")
+}
+func (stubTxClient) TxEncodeAmino(_ context.Context, _ *txtypes.TxEncodeAminoRequest, _ ...config.CallOpt) (*txtypes.TxEncodeAminoResponse, error) {
+	return nil, errors.New("not implemented")
+}
