@@ -65,6 +65,17 @@ func NewGrantAllowance(granter, grantee string, allowance FeeAllowance) (sdk.Msg
 		return nil, errors.New("fee allowance is required")
 	}
 
+	// Validate the allowance is one of the SDK's known feegrant allowance
+	// types. feegrant.FeeAllowanceI is unexported in this cosmos version, so
+	// we assert against the three concrete registered types; anything else is
+	// rejected up front rather than failing later during on-chain unpacking.
+	switch allowance.(type) {
+	case *feegrant.BasicAllowance, *feegrant.PeriodicAllowance, *feegrant.AllowedMsgAllowance:
+		// ok — known allowance type
+	default:
+		return nil, errors.Errorf("allowance must be *feegrant.BasicAllowance, *feegrant.PeriodicAllowance, or *feegrant.AllowedMsgAllowance, got %T", allowance)
+	}
+
 	any, err := codectypes.NewAnyWithValue(allowance)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to pack fee allowance into Any")

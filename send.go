@@ -73,6 +73,13 @@ type SendOptions struct {
 	// When zero, SendTx uses a default of 0.01 (FeeTierMedium).
 	GasPrice float64
 
+	// FeeAmount, when non-empty, overrides the computed fee (gasLimit *
+	// GasPrice) and is used verbatim as the transaction's fee. This is
+	// primarily an internal retry seam: an insufficient-fee retry sets this
+	// to the bumped fee so the re-signed tx carries a higher fee rather than
+	// recomputing the same value. Callers normally leave it empty.
+	FeeAmount sdk.Coins
+
 	// BroadcastMode selects the broadcast mode. Defaults to
 	// txsend.BroadcastModeSync so CheckTx rejections are visible
 	// immediately.
@@ -255,7 +262,17 @@ func (s *defaultSender) SendTx(
 		}
 		gasLimit, feeAmount := ra.apply(accNum, seq, buildOpts.GasLimit)
 		buildOpts.GasLimit = gasLimit
-		_ = feeAmount // feeAmount is applied inside trySend when rebuilding
+		// Propagate the fee bump from apply(). Without this the retry would
+		// recompute the fee from gasLimit*GasPrice (no bump factor) and
+		// re-sign with the SAME fee — an insufficient-fee retry no-op. Only
+		// set when apply() produced a bumped fee (insufficient-fee case);
+		// otherwise clear any stale override so a non-fee retry recomputes
+		// normally.
+		if ra.code == cosmosCodeInsufficientFee {
+			buildOpts.FeeAmount = feeAmount
+		} else {
+			buildOpts.FeeAmount = sdk.Coins{}
+		}
 
 		s.logger.Info().
 			Str("op", "SendTx").
@@ -331,11 +348,15 @@ func (s *defaultSender) trySend(
 	}
 	params.GasLimit = gasLimit
 
-	// --- compute fee amount from gas price ---------------------------------
-	params.FeeAmount = sdk.NewCoins(sdk.NewInt64Coin(
-		"uallo",
-		int64(float64(gasLimit)*opts.GasPrice),
-	))
+	// --- compute fee amount from gas price (unless overridden) ------------
+	if len(opts.FeeAmount) > 0 {
+		params.FeeAmount = opts.FeeAmount
+	} else {
+		params.FeeAmount = sdk.NewCoins(sdk.NewInt64Coin(
+			"uallo",
+			int64(float64(gasLimit)*opts.GasPrice),
+		))
+	}
 
 	// --- rebuild unsigned tx with final gas+fee --------------------------
 	unsignedTx, err = CreateUnsignedTx(msgs, params)

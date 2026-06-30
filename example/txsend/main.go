@@ -10,7 +10,7 @@
 //
 //	export ALLORA_RUN_EXAMPLE=1
 //	export ALLORA_CHAIN_ID=allora-testnet-1          # or allora-mainnet-1
-//	export ALLORA_GRPC=https://allora-grpc.testnet.allora.network:443
+//	export ALLORA_GRPC=grpcs://allora-grpc.testnet.allora.network:443
 //	# (optional) export ALLORA_REST=https://allora-api.testnet.allora.network
 //	export ALLORA_MNEMONIC="word1 word2 ... word24"  # the signer key
 //	# (optional) export FORGE_MASTER_GRANTER_ADDRESS=allo1... # master wallet paying gas
@@ -267,7 +267,7 @@ set. To actually send a tx, set the variables below and re-run.
 Required:
   ALLORA_RUN_EXAMPLE=1
   ALLORA_CHAIN_ID=allora-testnet-1
-  ALLORA_GRPC=https://allora-grpc.testnet.allora.network:443
+  ALLORA_GRPC=grpcs://allora-grpc.testnet.allora.network:443
   ALLORA_MNEMONIC="<24-word bip39 mnemonic>"
   ALLORA_TO=allo1...
   ALLORA_AMOUNT_UALLO=1000

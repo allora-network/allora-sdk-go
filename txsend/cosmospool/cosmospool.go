@@ -12,7 +12,6 @@ package cosmospool
 
 import (
 	"context"
-	"math"
 	"reflect"
 	"strings"
 	"time"
@@ -62,15 +61,23 @@ func WithClock(c txsend.Clock) Option {
 // WithGasAdjustment sets the multiplier applied to simulated gas usage to
 // derive the gas limit returned by EstimateGas. The default is
 // DefaultGasAdjustment (1.5), mirroring the cosmos-cli --gas-adjustment default;
-// callers can raise it for complex txs prone to out-of-gas, or lower it
-// (never below 1.0) for tight, well-understood txs.
+// callers can raise it for complex txs prone to out-of-gas. Values below 1.0
+// are clamped to 1.0 — a sub-1.0 multiplier would under-estimate gas and
+// contradict the headroom intent.
 func WithGasAdjustment(adj float64) Option {
 	return func(b *Broadcaster) {
 		if adj > 0 {
+			if adj < 1.0 {
+				adj = 1.0
+			}
 			b.gasAdjustment = adj
 		}
 	}
 }
+
+// GasAdjustment returns the configured gas-adjustment multiplier. Primarily a
+// test/inspection seam.
+func (b *Broadcaster) GasAdjustment() float64 { return b.gasAdjustment }
 
 // WithPollInterval sets the interval between WaitForTx polls.
 // Defaults to 1s; tests can inject shorter intervals or use the fake
@@ -179,26 +186,31 @@ func isAccountNotFoundErr(err error) bool {
 	return strings.Contains(msg, "not found")
 }
 
-// EstimateGas returns the simulated gas usage for unsignedTx, adjusted by the
-// broadcaster's gas-adjustment multiplier (default 1.5) so the returned value
-// has headroom for the variance between simulation and actual inclusion.
+// EstimateGas returns the RAW simulated gas usage for unsignedTx (the node's
+// reported GasInfo.GasUsed), with NO adjustment multiplier applied. The caller
+// (SendTx) applies the gas-adjustment multiplier in a single place, so the
+// adjustment is not double-applied.
 //
-// It calls CosmosTxPool.Tx().Simulate with the raw tx bytes and reads
-// GasInfo.GasUsed from the response, then applies ceil(GasUsed * adjustment).
+// It calls CosmosTxPool.Tx().Simulate with the raw tx bytes.
 //
-// On simulation ERROR the method returns a static fallback gas estimate
-// (FallbackGasEstimate) WITHOUT an error, after logging a structured WARN.
-// Simulation is best-effort: the caller can still build and broadcast the tx
-// with the fallback gas limit, and the node's CheckTx will reject it if the
-// gas is genuinely insufficient — which is the same outcome as a too-low
-// simulation-derived limit. Returning (fallback, nil) keeps the send path
-// operational during transient simulate failures (node overloaded, network
-// blip) rather than aborting the tx entirely. The ctx is threaded to Simulate
-// and honored for cancellation.
+// On simulation ERROR: if the caller's context is done (cancelled/deadline
+// exceeded), the ctx error is returned (wrapped) so SendTx stops rather than
+// continuing on a dead context. For any other simulate failure the method
+// returns a static fallback gas estimate (FallbackGasEstimate) WITHOUT an
+// error, after logging a structured WARN — simulation is best-effort, and the
+// caller can still build and broadcast with the fallback; CheckTx is the final
+// arbiter. Returning (fallback, nil) for transient non-ctx failures keeps the
+// send path operational during node/network blips.
 func (b *Broadcaster) EstimateGas(ctx context.Context, unsignedTx []byte) (uint64, error) {
 	req := txtypes.SimulateRequest{TxBytes: unsignedTx}
 	resp, err := b.pool.Tx().Simulate(ctx, &req)
 	if err != nil {
+		// If the caller's context is done, surface that rather than swallowing
+		// it as a successful fallback — otherwise SendTx keeps building/signing
+		// and broadcasting on a dead context.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, errors.Wrap(ctxErr, "estimating gas: context done")
+		}
 		b.logger.Warn().
 			Err(err).
 			Str("op", "EstimateGas").
@@ -213,8 +225,10 @@ func (b *Broadcaster) EstimateGas(ctx context.Context, unsignedTx []byte) (uint6
 			Msg("simulate returned nil GasInfo; returning fallback gas estimate")
 		return FallbackGasEstimate, nil
 	}
-	gasUsed := resp.GasInfo.GasUsed
-	return uint64(math.Ceil(float64(gasUsed) * b.gasAdjustment)), nil
+	// Return the RAW simulated gas usage; the caller (SendTx) applies the
+	// gas-adjustment multiplier. Applying it here as well would double-bill
+	// (GasUsed * adjustment * adjustment).
+	return resp.GasInfo.GasUsed, nil
 }
 
 // Broadcast submits signedTx in the given mode and returns the immediate

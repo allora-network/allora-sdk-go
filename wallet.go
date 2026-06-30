@@ -9,6 +9,8 @@ import (
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/go-bip39"
+
+	_ "github.com/allora-network/allora-sdk-go/internal/bech32conf"
 )
 
 const (
@@ -139,11 +141,12 @@ func (w *Wallet) VerifySignature(message, signature []byte) bool {
 	return w.PubKey.VerifySignature(message, signature)
 }
 
-// init configures the SDK to use the Allora bech32 prefix
+// init seals the SDK global config after the bech32 prefixes are configured.
+// The prefix configuration itself lives in internal/bech32conf (imported via
+// the blank import below) so subpackages such as txmsg can ensure the prefixes
+// are set without depending on this package's init side effects.
+//
+//go:generate echo
 func init() {
-	config := sdk.GetConfig()
-	config.SetBech32PrefixForAccount(AlloraBech32Prefix, AlloraBech32Prefix+"pub")
-	config.SetBech32PrefixForValidator(AlloraBech32Prefix+"valoper", AlloraBech32Prefix+"valoperpub")
-	config.SetBech32PrefixForConsensusNode(AlloraBech32Prefix+"valcons", AlloraBech32Prefix+"valconspub")
-	config.Seal()
+	sdk.GetConfig().Seal()
 }

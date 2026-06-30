@@ -167,6 +167,10 @@ fmt.Printf("tx %s committed at height %d (code %d)\n", result.TxHash, result.Hei
 When signing must be decoupled from building — e.g. an unsigned tx is persisted or queued on one host and signed on another, or signing is delegated to a remote service — the SDK exposes the lower-level primitives directly:
 
 ```go
+// The high-level client.Tx() returns a Sender (one-call SendTx). For the
+// lower-level two-phase primitives you need a TxBroadcaster directly:
+broadcaster := cosmospool.New(client.Cosmos(), logger)
+
 // Phase 1: build the unsigned tx. Account info MUST be fresh here, since
 // the sequence is encoded into the tx.
 accNum, seq, err := broadcaster.AccountInfo(ctx, fromAddr.String())

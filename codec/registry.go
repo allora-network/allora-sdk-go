@@ -73,7 +73,7 @@ func init() {
 	registry, err = codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
 		SigningOptions: txsigning.Options{
 			AddressCodec:          &lazyAddressCodec{},
-			ValidatorAddressCodec: &lazyAddressCodec{},
+			ValidatorAddressCodec: &lazyValidatorAddressCodec{},
 		},
 		// Use gogoproto's hybrid resolver (the same default NewInterfaceRegistry uses)
 		// rather than protoregistry.GlobalFiles: the cosmos modules register their
@@ -222,4 +222,20 @@ func (lazyAddressCodec) StringToBytes(text string) ([]byte, error) {
 
 func (lazyAddressCodec) BytesToString(bz []byte) (string, error) {
 	return cosmossdktypes.AccAddress(bz).String(), nil
+}
+
+// lazyValidatorAddressCodec is the validator-address counterpart of
+// lazyAddressCodec: it resolves validator bech32 (alloravaloper...) signers via
+// the SDK global config's validator prefix. Using the account codec here would
+// mis-resolve staking messages whose signer is a validator address.
+type lazyValidatorAddressCodec struct{}
+
+var _ coreaddress.Codec = (*lazyValidatorAddressCodec)(nil)
+
+func (lazyValidatorAddressCodec) StringToBytes(text string) ([]byte, error) {
+	return cosmossdktypes.ValAddressFromBech32(text)
+}
+
+func (lazyValidatorAddressCodec) BytesToString(bz []byte) (string, error) {
+	return cosmossdktypes.ValAddress(bz).String(), nil
 }

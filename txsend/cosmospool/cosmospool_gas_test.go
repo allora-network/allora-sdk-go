@@ -78,19 +78,21 @@ func TestEstimateGas(t *testing.T) {
 		wantGas       uint64
 		wantErr       bool
 		wantCallCount int
+		ctxCancelled  bool
+		ctxDeadline   bool
 	}{
 		{
 			name:          "success: GasUsed=100000, adjustment=1.5 → 150000",
 			gasUsed:       100000,
 			adjustment:    1.5,
-			wantGas:       150000,
+			wantGas:       100000,
 			wantCallCount: 1,
 		},
 		{
 			name:          "success with default adjustment",
 			gasUsed:       100000,
-			adjustment:    0, // default 1.5
-			wantGas:       150000,
+			adjustment:    0, // default 1.5, but EstimateGas returns raw regardless
+			wantGas:       100000,
 			wantCallCount: 1,
 		},
 		{
@@ -106,7 +108,7 @@ func TestEstimateGas(t *testing.T) {
 			name:          "ceil edge: GasUsed=100001*1.5 → 150002",
 			gasUsed:       100001,
 			adjustment:    1.5,
-			wantGas:       150002, // ceil(100001 * 1.5) = ceil(150001.5) = 150002
+			wantGas:       100001,
 			wantCallCount: 1,
 		},
 		{
@@ -116,6 +118,26 @@ func TestEstimateGas(t *testing.T) {
 			adjustment:    1.5,
 			wantGas:       cosmospool.FallbackGasEstimate,
 			wantCallCount: 1,
+		},
+		{
+			name:          "ctx cancelled returns ctx error (NOT fallback)",
+			gasUsed:       0,
+			simulateErr:   context.Canceled,
+			adjustment:    1.5,
+			wantGas:       0,
+			wantErr:       true,
+			wantCallCount: 1,
+			ctxCancelled:  true,
+		},
+		{
+			name:          "ctx deadline exceeded returns ctx error (NOT fallback)",
+			gasUsed:       0,
+			simulateErr:   context.DeadlineExceeded,
+			adjustment:    1.5,
+			wantGas:       0,
+			wantErr:       true,
+			wantCallCount: 1,
+			ctxDeadline:   true,
 		},
 	}
 
@@ -141,7 +163,17 @@ func TestEstimateGas(t *testing.T) {
 			}
 			b := cosmospool.New(pool, zerolog.Nop(), opts...)
 
-			gas, err := b.EstimateGas(context.Background(), unsignedTx)
+			ctx := context.Background()
+			if tt.ctxCancelled {
+				c, cancel := context.WithCancel(ctx)
+				cancel()
+				ctx = c
+			} else if tt.ctxDeadline {
+				c, cancel := context.WithTimeout(ctx, 0)
+				defer cancel()
+				ctx = c
+			}
+			gas, err := b.EstimateGas(ctx, unsignedTx)
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Zero(t, gas)
@@ -158,34 +190,29 @@ func TestEstimateGas(t *testing.T) {
 }
 
 func TestWithGasAdjustment(t *testing.T) {
+	// WithGasAdjustment configures the broadcaster's adjustment field (used for
+	// the fallback path and as the documented default). EstimateGas itself now
+	// returns RAW simulated gas (the caller applies the multiplier), so these
+	// cases assert the configured field value via a helper rather than the
+	// EstimateGas return.
 	t.Run("default is 1.5", func(t *testing.T) {
-		ftc := &fakeTxClient{
-			resp: &txtypes.SimulateResponse{GasInfo: &types.GasInfo{GasUsed: 100000}},
-		}
-		b := cosmospool.New(fakePool{tx: ftc}, zerolog.Nop())
-		gas, err := b.EstimateGas(context.Background(), nil)
-		require.NoError(t, err)
-		require.Equal(t, uint64(150000), gas)
+		b := cosmospool.New(fakePool{tx: &fakeTxClient{}}, zerolog.Nop())
+		require.Equal(t, cosmospool.DefaultGasAdjustment, b.GasAdjustment())
 	})
 
 	t.Run("zero adjustment is ignored (keeps default)", func(t *testing.T) {
-		ftc := &fakeTxClient{
-			resp: &txtypes.SimulateResponse{GasInfo: &types.GasInfo{GasUsed: 100000}},
-		}
-		b := cosmospool.New(fakePool{tx: ftc}, zerolog.Nop(), cosmospool.WithGasAdjustment(0))
-		gas, err := b.EstimateGas(context.Background(), nil)
-		require.NoError(t, err)
-		require.Equal(t, uint64(150000), gas)
+		b := cosmospool.New(fakePool{tx: &fakeTxClient{}}, zerolog.Nop(), cosmospool.WithGasAdjustment(0))
+		require.Equal(t, cosmospool.DefaultGasAdjustment, b.GasAdjustment())
 	})
 
 	t.Run("custom adjustment", func(t *testing.T) {
-		ftc := &fakeTxClient{
-			resp: &txtypes.SimulateResponse{GasInfo: &types.GasInfo{GasUsed: 100000}},
-		}
-		b := cosmospool.New(fakePool{tx: ftc}, zerolog.Nop(), cosmospool.WithGasAdjustment(2.0))
-		gas, err := b.EstimateGas(context.Background(), nil)
-		require.NoError(t, err)
-		require.Equal(t, uint64(200000), gas)
+		b := cosmospool.New(fakePool{tx: &fakeTxClient{}}, zerolog.Nop(), cosmospool.WithGasAdjustment(2.0))
+		require.Equal(t, 2.0, b.GasAdjustment())
+	})
+
+	t.Run("values below 1.0 are clamped to 1.0", func(t *testing.T) {
+		b := cosmospool.New(fakePool{tx: &fakeTxClient{}}, zerolog.Nop(), cosmospool.WithGasAdjustment(0.5))
+		require.Equal(t, 1.0, b.GasAdjustment())
 	})
 }
 

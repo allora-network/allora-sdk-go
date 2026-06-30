@@ -103,6 +103,12 @@ func NewInsertWorkerPayload(p InsertWorkerPayloadParams) (sdk.Msg, error) {
 	if len(p.WorkerDataBundle.InferencesForecastsBundleSignature) == 0 {
 		return nil, errors.New("worker data bundle signature is required")
 	}
+	// Validate the bundle's worker address up front (constructors are
+	// documented as pre-validating required addresses); an empty or malformed
+	// worker address would otherwise defer a predictable failure to broadcast.
+	if _, err := validateBech32(p.WorkerDataBundle.Worker, "worker"); err != nil {
+		return nil, err
+	}
 
 	return &emissionstypes.InsertWorkerPayloadRequest{
 		Sender:           p.Sender,

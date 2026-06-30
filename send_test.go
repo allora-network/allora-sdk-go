@@ -327,6 +327,85 @@ func TestSendTx_RetryOutOfGas(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Retry: insufficient fee (code 13) — the fee must STRICTLY INCREASE on retry
+// ---------------------------------------------------------------------------
+
+func TestSendTx_RetryInsufficientFee(t *testing.T) {
+	w := testWallet(t)
+	msgs := testMsgs(t, w)
+	mockBC := newMockBroadcaster(t)
+
+	mockBC.EXPECT().
+		AccountInfo(mock.Anything, w.GetAddress()).
+		Return(uint64(7), uint64(3), error(nil)).
+		Once()
+
+	mockBC.EXPECT().
+		EstimateGas(mock.Anything, mock.Anything).
+		Return(uint64(150_000), error(nil)).
+		Once() // only the initial attempt simulates; retries reuse the established gas limit
+
+	// Capture the fee of each broadcast tx so we can assert the retry actually
+	// raised it. An insufficient-fee retry that re-sends the same fee fails
+	// identically — this test guards the fix that propagates apply()'s bumped
+	// fee into the retry (previously discarded with `_ = feeAmount`).
+	var broadcastFee []sdk.Coins
+	captureFee := func(_ context.Context, signedTx []byte, _ txsend.BroadcastMode) {
+		decoded, derr := ParseTxBytes(signedTx)
+		require.NoError(t, derr)
+		feeTx, ok := (*decoded).(sdk.FeeTx)
+		require.True(t, ok, "decoded tx must be a FeeTx")
+		broadcastFee = append(broadcastFee, feeTx.GetFee())
+	}
+
+	// First Broadcast → insufficient fee (code 13).
+	mockBC.EXPECT().
+		Broadcast(mock.Anything, mock.Anything, txsend.BroadcastModeSync).
+		Run(captureFee).
+		Return(&txsend.BroadcastResult{
+			TxHash:    "HASH_FEE1",
+			Code:      13,
+			Codespace: "sdk",
+			RawLog:    "insufficient fee",
+		}, error(nil)).
+		Once()
+
+	// Second Broadcast → success (with bumped fee).
+	mockBC.EXPECT().
+		Broadcast(mock.Anything, mock.Anything, txsend.BroadcastModeSync).
+		Run(captureFee).
+		Return(&txsend.BroadcastResult{TxHash: "HASH_FEE2", Code: 0}, error(nil)).
+		Once()
+
+	mockBC.EXPECT().
+		WaitForTx(mock.Anything, "HASH_FEE2").
+		Return(&txsend.TxResult{TxHash: "HASH_FEE2", Code: 0, Height: 700}, error(nil)).
+		Once()
+
+	s := stubSender(t, mockBC)
+	result, err := s.SendTx(
+		context.Background(),
+		w.PrivKey,
+		msgs,
+		SendOptions{ChainID: "allora-testnet-1"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, "HASH_FEE2", result.TxHash)
+	require.Equal(t, uint32(0), result.Code)
+
+	// Broadcast should be called 2 times (first failed, retry succeeded).
+	mockBC.AssertNumberOfCalls(t, "Broadcast", 2)
+
+	// The retry must carry STRICTLY MORE fee than the first attempt — otherwise
+	// an insufficient-fee retry is a no-op that fails identically.
+	require.Len(t, broadcastFee, 2)
+	firstAmt := broadcastFee[0].AmountOf("uallo")
+	secondAmt := broadcastFee[1].AmountOf("uallo")
+	require.True(t, secondAmt.GT(firstAmt),
+		"insufficient-fee retry must bump the fee (got %s then %s)", firstAmt, secondAmt)
+}
+
+// ---------------------------------------------------------------------------
 // Retry: insufficient fee (code 13) exhausted
 // ---------------------------------------------------------------------------
 

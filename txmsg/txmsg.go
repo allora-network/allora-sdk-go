@@ -22,6 +22,8 @@ package txmsg
 import (
 	"github.com/brynbellomy/go-utils/errors"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+
+	_ "github.com/allora-network/allora-sdk-go/internal/bech32conf"
 )
 
 // validateBech32 decodes addr with the SDK's bech32 decoder (which enforces
