@@ -10,12 +10,15 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/go-bip39"
 
-	_ "github.com/allora-network/allora-sdk-go/internal/bech32conf"
+	"github.com/allora-network/allora-sdk-go/internal/bech32conf"
 )
 
 const (
-	// AlloraBech32Prefix is the human-readable prefix for Allora addresses
-	AlloraBech32Prefix = "allo"
+	// AlloraBech32Prefix is the human-readable prefix for Allora addresses.
+	// The canonical definition lives in internal/bech32conf (the importable
+	// config package) so subpackages can use it without importing this one;
+	// it is re-exported here for callers that already import allora.
+	AlloraBech32Prefix = bech32conf.AlloraBech32Prefix
 
 	// DefaultBIP44CoinType is the coin type for Allora (118 is standard for Cosmos chains)
 	DefaultBIP44CoinType = 118
