@@ -12,10 +12,12 @@ package cosmospool
 
 import (
 	"context"
+	"math"
 	"reflect"
 
 	"github.com/brynbellomy/go-utils/errors"
 	"github.com/rs/zerolog"
+	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 
 	"github.com/allora-network/allora-sdk-go/txsend"
 )
@@ -24,9 +26,10 @@ import (
 // txsend.CosmosTxPool. It holds the narrow pool, a logger, and a Clock (the
 // time seam for WaitForTx polling). Methods are stubbed until their beads land.
 type Broadcaster struct {
-	pool   txsend.CosmosTxPool
-	logger zerolog.Logger
-	clock  txsend.Clock
+	pool          txsend.CosmosTxPool
+	logger        zerolog.Logger
+	clock         txsend.Clock
+	gasAdjustment float64
 }
 
 // Compile-time assertion that Broadcaster satisfies the txsend.TxBroadcaster
@@ -43,6 +46,19 @@ func WithClock(c txsend.Clock) Option {
 	return func(b *Broadcaster) {
 		if c != nil {
 			b.clock = c
+		}
+	}
+}
+
+// WithGasAdjustment sets the multiplier applied to simulated gas usage to
+// derive the gas limit returned by EstimateGas. The default is
+// DefaultGasAdjustment (1.5), mirroring the cosmos-cli --gas-adjustment default;
+// callers can raise it for complex txs prone to out-of-gas, or lower it
+// (never below 1.0) for tight, well-understood txs.
+func WithGasAdjustment(adj float64) Option {
+	return func(b *Broadcaster) {
+		if adj > 0 {
+			b.gasAdjustment = adj
 		}
 	}
 }
@@ -77,9 +93,10 @@ func New(pool txsend.CosmosTxPool, logger zerolog.Logger, opts ...Option) *Broad
 		logger = zerolog.Nop()
 	}
 	b := &Broadcaster{
-		pool:   pool,
-		logger: logger,
-		clock:  txsend.SystemClock{},
+		pool:          pool,
+		logger:        logger,
+		clock:         txsend.SystemClock{},
+		gasAdjustment: DefaultGasAdjustment,
 	}
 	for _, opt := range opts {
 		opt(b)
@@ -94,11 +111,42 @@ func (b *Broadcaster) AccountInfo(ctx context.Context, address string) (uint64, 
 	return 0, 0, errors.New("not implemented: bead asg-pvd.3")
 }
 
-// EstimateGas returns the simulated gas usage for unsignedTx.
+// EstimateGas returns the simulated gas usage for unsignedTx, adjusted by the
+// broadcaster's gas-adjustment multiplier (default 1.5) so the returned value
+// has headroom for the variance between simulation and actual inclusion.
 //
-// implemented in bead asg-pvd.4
+// It calls CosmosTxPool.Tx().Simulate with the raw tx bytes and reads
+// GasInfo.GasUsed from the response, then applies ceil(GasUsed * adjustment).
+//
+// On simulation ERROR the method returns a static fallback gas estimate
+// (FallbackGasEstimate) WITHOUT an error, after logging a structured WARN.
+// Simulation is best-effort: the caller can still build and broadcast the tx
+// with the fallback gas limit, and the node's CheckTx will reject it if the
+// gas is genuinely insufficient — which is the same outcome as a too-low
+// simulation-derived limit. Returning (fallback, nil) keeps the send path
+// operational during transient simulate failures (node overloaded, network
+// blip) rather than aborting the tx entirely. The ctx is threaded to Simulate
+// and honored for cancellation.
 func (b *Broadcaster) EstimateGas(ctx context.Context, unsignedTx []byte) (uint64, error) {
-	return 0, errors.New("not implemented: bead asg-pvd.4")
+	req := txtypes.SimulateRequest{TxBytes: unsignedTx}
+	resp, err := b.pool.Tx().Simulate(ctx, &req)
+	if err != nil {
+		b.logger.Warn().
+			Err(err).
+			Str("op", "EstimateGas").
+			Uint64("fallback_gas", FallbackGasEstimate).
+			Msg("simulate failed; returning fallback gas estimate")
+		return FallbackGasEstimate, nil
+	}
+	if resp == nil || resp.GasInfo == nil {
+		b.logger.Warn().
+			Str("op", "EstimateGas").
+			Uint64("fallback_gas", FallbackGasEstimate).
+			Msg("simulate returned nil GasInfo; returning fallback gas estimate")
+		return FallbackGasEstimate, nil
+	}
+	gasUsed := resp.GasInfo.GasUsed
+	return uint64(math.Ceil(float64(gasUsed) * b.gasAdjustment)), nil
 }
 
 // Broadcast submits signedTx in the given mode and returns the immediate
