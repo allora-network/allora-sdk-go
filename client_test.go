@@ -210,6 +210,31 @@ func TestClientTxAccessor(t *testing.T) {
 	var _ Client = c
 }
 
+// TestClientTxAccessorGasAdjustment confirms that a ClientConfig with a
+// non-zero GasAdjustment flows through Tx() into the broadcaster without error
+// (the option is applied; the broadcaster's own TestWithGasAdjustment covers
+// the value-clamping/setting behavior).
+func TestClientTxAccessorGasAdjustment(t *testing.T) {
+	logger := zerolog.Nop()
+	cfg := &config.ClientConfig{
+		Endpoints: []config.EndpointConfig{
+			{URL: "http://localhost:1317", Protocol: config.ProtocolREST},
+		},
+		GasAdjustment: 1.2, // downstream node's configured adjustment
+	}
+
+	c, err := NewClient(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	defer c.Close()
+
+	sender := c.Tx()
+	if sender == nil {
+		t.Fatal("Tx() returned nil Sender with GasAdjustment configured")
+	}
+}
+
 // Helper function to check if string contains substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))

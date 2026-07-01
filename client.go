@@ -171,7 +171,13 @@ func (c *client) Tx() Sender {
 	c.senderMu.Lock()
 	defer c.senderMu.Unlock()
 	if c.sender == nil {
-		broadcaster := cosmospool.New(c.cosmosPool, c.logger)
+		opts := []cosmospool.Option{}
+		// Only override the broadcaster default when the caller explicitly set a
+		// gas adjustment; a zero value keeps the broadcaster's default (1.5).
+		if c.config.GasAdjustment > 0 {
+			opts = append(opts, cosmospool.WithGasAdjustment(c.config.GasAdjustment))
+		}
+		broadcaster := cosmospool.New(c.cosmosPool, c.logger, opts...)
 		c.sender = NewSender(broadcaster, c.logger)
 	}
 	return c.sender
