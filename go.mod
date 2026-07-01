@@ -10,7 +10,7 @@ require (
 	cosmossdk.io/x/evidence v0.1.1
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/upgrade v0.1.4
-	github.com/allora-network/allora-chain v0.16.1-0.20260610170524-75609caf781b
+	github.com/allora-network/allora-chain v0.16.1-0.20260630181843-74d202c08811
 	github.com/brynbellomy/go-utils v0.0.0-20250825055819-60c6be9b3b8d
 	github.com/cometbft/cometbft v0.38.21
 	github.com/cosmos/cosmos-sdk v0.50.14
