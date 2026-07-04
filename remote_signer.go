@@ -590,20 +590,23 @@ func (rs *RemoteSigner) do(req *http.Request) ([]byte, error) {
 	// A 2xx with a non-JSON body usually means a captive portal, auth proxy, or
 	// misconfigured CDN; surface that clearly instead of an opaque JSON-decode error.
 	// RFC 7231 §3.1.1.1 declares media types case-insensitive, so lower-case before matching.
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/json") {
-		return nil, fmt.Errorf("forge backend returned non-JSON response (content-type %q): %s", ct, redactSecret(truncateForError(body), rs.cfg.APIKey))
+	if ct := resp.Header.Get("Content-Type"); !isJSONContentType(ct) {
+		return nil, fmt.Errorf("forge backend returned non-JSON response (content-type %q): %s", ct, truncateForError(redactSecret(string(body), rs.cfg.APIKey)))
 	}
 	return body, nil
 }
 
 // truncateForError bounds an error-message body excerpt so a large response body does
-// not bloat logs or error chains.
-func truncateForError(body []byte) string {
+// not bloat logs or error chains. It slices on byte boundaries and may split a multi-byte
+// UTF-8 sequence at the cap; the excerpt is intended for diagnostics (logs/error strings),
+// not for display, so an invalid trailing rune is acceptable and cheaper than a rune-aware
+// slice on every error path.
+func truncateForError(s string) string {
 	const max = 512
-	if len(body) > max {
-		return string(body[:max]) + "..."
+	if len(s) > max {
+		return s[:max] + "..."
 	}
-	return string(body)
+	return s
 }
 
 // redactSecret removes every occurrence of secret from s, so a backend or intermediary error body
@@ -615,6 +618,17 @@ func redactSecret(s, secret string) string {
 		return s
 	}
 	return strings.ReplaceAll(s, secret, "[REDACTED]")
+}
+
+// isJSONContentType reports whether a Content-Type header value designates a JSON media
+// type. A bare HasPrefix(ct, "application/json") would match non-JSON subtypes like
+// "application/jsonfoo" or "application/jsonp"; the backend and well-behaved intermediaries
+// always send either "application/json" or "application/json; charset=..." (the type
+// optionally followed by a semicolon and parameters, per RFC 7231 §3.1.1.1), so the media
+// type is extracted up to the first semicolon and compared exactly (case-insensitively).
+func isJSONContentType(ct string) bool {
+	mediaType, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(ct)), ";")
+	return mediaType == "application/json"
 }
 
 // NewRemoteSignerForTopic idempotently gets-or-creates the user's managed wallet bound to
@@ -763,8 +777,8 @@ func provisionWalletForTopic(ctx context.Context, client *http.Client, cfg Remot
 	// misconfigured CDN. Provisioning is the call most likely to hit an unauthenticated gateway
 	// (worker first start), so surface that clearly instead of an opaque JSON-decode error.
 	// RFC 7231 §3.1.1.1 declares media types case-insensitive, so lower-case before matching.
-	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "application/json") {
-		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, redactSecret(truncateForError(body), cfg.APIKey))
+	if ct := resp.Header.Get("Content-Type"); !isJSONContentType(ct) {
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend returned non-JSON provision response (content-type %q): %s", ct, truncateForError(redactSecret(string(body), cfg.APIKey)))
 	}
 	var info signingWalletInfoResponse
 	if err := json.Unmarshal(body, &info); err != nil {
@@ -782,5 +796,17 @@ func provisionWalletForTopic(ctx context.Context, client *http.Client, cfg Remot
 		return signingWalletInfoResponse{}, fmt.Errorf("forge backend provision response returned non-UUID wallet id %q: %w", info.ID, err)
 	}
 	info.ID = parsed.String()
+	// Reject an empty pubkey and address at the source so a provision response that omits
+	// either surfaces as a provision fault here (with the provisioning context) rather than a
+	// later applyWalletInfo error that blames a "wallet id" the caller never chose. An empty
+	// pubkey would otherwise produce the misleading "0-byte pubkey, expected 33" during
+	// applyWalletInfo; an empty address would silently disable the pubkey-derived address cross-
+	// check. Matches the non-empty posture applyWalletInfo enforces on the wallet-info path.
+	if info.PubKey == "" {
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend provision response missing wallet pubkey")
+	}
+	if info.Address == "" {
+		return signingWalletInfoResponse{}, fmt.Errorf("forge backend provision response missing wallet address")
+	}
 	return info, nil
 }
