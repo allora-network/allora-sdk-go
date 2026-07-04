@@ -575,7 +575,7 @@ func sendForgeRequest(httpClient *http.Client, req *http.Request, readErrLabel s
 	// an abnormal response).
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, redactSecret(truncateForError(body), req.Header.Get(apiKeyHeader)))
+		return nil, nil, fmt.Errorf("forge backend returned status %d: %s", resp.StatusCode, truncateForError(redactSecret(string(body), req.Header.Get(apiKeyHeader))))
 	}
 	return resp, body, nil
 }
