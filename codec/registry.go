@@ -2,15 +2,18 @@ package codec
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"cosmossdk.io/x/feegrant"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/brynbellomy/go-utils/errors"
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	cosmoscodec "github.com/cosmos/cosmos-sdk/codec"
+	addresscodec "github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	stdtypes "github.com/cosmos/cosmos-sdk/std"
 	cosmossdktypes "github.com/cosmos/cosmos-sdk/types"
+	txsigning "cosmossdk.io/x/tx/signing"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
@@ -51,10 +54,38 @@ import (
 	emissionsv9 "github.com/allora-network/allora-chain/x/emissions/types"
 )
 
+// alloraAccountPrefix is the bech32 prefix for Allora user accounts. The interface registry
+// needs an address codec so codec.GetMsgV1Signers can resolve message signer addresses (the
+// SDK's signer-resolution path runs bytes -> string through the registry's AddressCodec).
+// Without it the registry uses a failingAddressCodec that rejects every conversion with
+// "InterfaceRegistry requires a proper address codec implementation to do address conversion".
+const alloraAccountPrefix = "allo"
+
+// alloraValidatorPrefix is the bech32 prefix for Allora validator addresses, used by the
+// registry's ValidatorAddressCodec for validator-address resolution in signer paths.
+const alloraValidatorPrefix = "allovaloper"
+
 var (
 	grpcCodec   encoding.Codec
 	cosmosCodec *cosmoscodec.ProtoCodec
-	registry    = codectypes.NewInterfaceRegistry()
+	registry    = func() codectypes.InterfaceRegistry {
+		// NewInterfaceRegistry defaults to a failingAddressCodec, so codec.GetMsgV1Signers
+		// (the SDK's signer-resolution path) rejects every address conversion with
+		// "InterfaceRegistry requires a proper address codec implementation". Construct the
+		// registry with Allora's bech32 prefixes so signer resolution works for any message
+		// type resolved through this codec (MsgSend, MsgDelegate, emissions messages, ...).
+		reg, err := codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+			ProtoFiles: proto.HybridResolver,
+			SigningOptions: txsigning.Options{
+				AddressCodec:          addresscodec.NewBech32Codec(alloraAccountPrefix),
+				ValidatorAddressCodec: addresscodec.NewBech32Codec(alloraValidatorPrefix),
+			},
+		})
+		if err != nil {
+			panic(fmt.Errorf("failed to construct interface registry: %w", err))
+		}
+		return reg
+	}()
 )
 
 func init() {

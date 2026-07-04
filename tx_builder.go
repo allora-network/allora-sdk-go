@@ -112,15 +112,28 @@ func (b *txBuilder) signTx(
 	// Guard against signing a transaction whose message sender is not the signer; such a
 	// tx is rejected on-chain ("signature verification failed") far from the cause.
 	//
-	// NOTE: this only checks *banktypes.MsgSend, the single message type the SDK's only
-	// builder (CreateUnsignedSendTx) emits. It is defense-in-depth, not a security
-	// boundary: a caller who hand-assembles another message type (MsgDelegate, MsgExec, an
-	// IBC transfer, an emissions message, ...) and passes the bytes to SignTransactionWith
-	// bypasses this guard. When a second message-builder is added, generalize this to
-	// msg.GetSigners() (or codec GetMsgV1Signers) so the check becomes type-agnostic.
+	// The check is type-agnostic: it covers the SDK's MsgSend builder and any caller-assembled
+	// message (MsgDelegate, MsgExec, an IBC transfer, an emissions message, ...) passed to
+	// SignTransactionWith. It is defense-in-depth, not a security boundary — a multi-signer tx
+	// (one signer signing for another via authz, or a multi-sig) will have signers beyond the
+	// first; the guard rejects only when none of the message's required signers matches the
+	// signer address. codec.GetMsgV1Signers resolves signers through the interface registry's
+	// address codec (configured with Allora's bech32 prefix in codec/registry.go), so it works
+	// for any v1 message type without a per-type method.
 	for _, msg := range decodedTx.GetMsgs() {
-		if send, ok := msg.(*banktypes.MsgSend); ok && send.FromAddress != signerAddr {
-			return nil, fmt.Errorf("signer address %s does not match transaction sender %s", signerAddr, send.FromAddress)
+		signerAddrs, _, err := b.codec.GetMsgV1Signers(msg)
+		if err != nil {
+			return nil, fmt.Errorf("resolving message signers: %w", err)
+		}
+		matched := false
+		for _, addrBytes := range signerAddrs {
+			if sdk.AccAddress(addrBytes).String() == signerAddr {
+				matched = true
+				break
+			}
+		}
+		if !matched && len(signerAddrs) > 0 {
+			return nil, fmt.Errorf("signer address %s does not match transaction sender", signerAddr)
 		}
 	}
 
