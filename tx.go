@@ -78,7 +78,7 @@ func resetFeeGranterDeprecationOnce() {
 // For parity with allora-sdk-py, the pre-rename FEE_GRANTER is still accepted as a fallback for one
 // release (with a one-time deprecation warning): a deployment migrating from Python that still sets
 // FEE_GRANTER keeps working instead of silently falling through to no-granter. Rename it to
-// FORGE_MASTER_GRANTER_ADDRESS. @@TODO: drop the FEE_GRANTER fallback in the next minor release.
+// FORGE_MASTER_GRANTER_ADDRESS. TODO: drop the FEE_GRANTER fallback in the next minor release.
 func FeeGranterFromEnv() (sdk.AccAddress, error) {
 	envVar := feeGranterEnvVar
 	addr := strings.TrimSpace(os.Getenv(envVar))
@@ -88,7 +88,7 @@ func FeeGranterFromEnv() (sdk.AccAddress, error) {
 		if legacy := strings.TrimSpace(os.Getenv(legacyFeeGranterEnvVar)); legacy != "" {
 			envVar, addr = legacyFeeGranterEnvVar, legacy
 			feeGranterDeprecationOnce.Do(func() {
-				log.Warn().Msgf("%s is deprecated; rename it to %s", legacyFeeGranterEnvVar, feeGranterEnvVar)
+				log.Warn().Str("deprecated_env_var", legacyFeeGranterEnvVar).Str("replacement_env_var", feeGranterEnvVar).Msg("FEE_GRANTER env var is deprecated; rename it")
 			})
 		}
 	}
