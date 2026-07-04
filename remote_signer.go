@@ -452,10 +452,11 @@ func (rs *RemoteSigner) applyWalletInfo(info signingWalletInfoResponse) error {
 	rs.address = derived
 	// The master granter is an optional discovery hint, not part of the wallet's identity, so it
 	// is validated only when ResolveFeeGranter parses it. Store it verbatim — no trimming — so
-	// MasterGranter() returns exactly what the backend sent (as the README documents) and Go stays
-	// at parity with allora-sdk-py / allora-sdk-ts, which assign master_granter unmodified. An
+	// MasterGranter() returns exactly what the backend sent (as the README documents). An
 	// absent value degrades gracefully to "no granter"; a padded value surfaces as a bech32 parse
-	// error in ResolveFeeGranter, identically across the three SDKs.
+	// error in ResolveFeeGranter. allora-sdk-py and allora-sdk-ts assign master_granter
+	// unmodified too, so the three SDKs store and report the same string; only the downstream
+	// parse+validate step (ResolveFeeGranter / its py-ts counterparts) catches a malformed value.
 	rs.masterGranter = info.MasterGranter
 	return nil
 }
