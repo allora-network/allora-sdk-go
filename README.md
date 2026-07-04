@@ -195,6 +195,61 @@ if granter == nil {
 params.FeeGranter = granter // nil ⇒ the signing wallet pays its own fees
 ```
 
+### Topic-bound provisioning (one worker = one topic)
+
+`NewRemoteSigner` binds to an existing wallet id you already hold. For a worker that should
+get-or-create a wallet bound to a specific topic (ENGN-8572 "one worker = one topic"), use
+`NewRemoteSignerForTopic` instead — it idempotently provisions a managed wallet for the
+given topic and returns a `RemoteSigner` built directly from the provision response (no
+second wallet-info round-trip):
+
+```go
+signer, err := allora.NewRemoteSignerForTopic(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+    // WalletID must be empty — it is filled from the provision response.
+}, topicID, "my-worker")
+if err != nil {
+    panic(err)
+}
+```
+
+Each topic binding counts against a per-user wallet cap enforced by the backend. When a
+worker is retired or rotated to a different topic, release its binding so the slot stops
+counting against the cap.
+
+### Unbinding and revoking wallets
+
+A `*RemoteSigner` exposes two lifecycle methods for the wallet it wraps:
+
+- **`signer.ClearAssociation(ctx)`** — unbinds the wallet from its topic (Forge-side
+  bookkeeping only; it does NOT unregister the worker on-chain). Reversible by
+  re-provisioning. Use it before re-provisioning a wallet against a new topic or before
+  decommissioning it.
+- **`signer.Revoke(ctx)`** — permanently decommissions the wallet (DELETE
+  `/api/v1/signing-wallets/{id}`). Destructive counterpart to `ClearAssociation`: clearing
+  only unbinds, revoking tears the wallet down for good.
+
+When you only hold the wallet id (e.g. retiring a worker without constructing a signer —
+no wallet-info fetch), use the standalone by-id variants:
+
+```go
+// Unbind a wallet from its topic by id:
+err := allora.ClearWalletAssociation(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+}, walletID)
+
+// Permanently decommission a wallet by id:
+err := allora.RevokeWallet(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+}, walletID)
+```
+
+Both return a non-2xx response (e.g. 404 for an unknown/foreign/already-cleared wallet) as
+an error so the caller decides whether the failure is fatal or best-effort.
+
 ## Configuration
 
 ### Client Configuration
