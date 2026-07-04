@@ -175,6 +175,66 @@ func TestConfigValidation(t *testing.T) {
 	}
 }
 
+// TestClientTxAccessor verifies that a constructed client wires the Tx()
+// sender accessor through cosmospool.New(Cosmos()). It uses a REST endpoint
+// (which does not dial eagerly) so the test makes no network calls. The
+// assertion is wiring-only: the returned Sender is non-nil and stable across
+// calls (cached on first construction).
+func TestClientTxAccessor(t *testing.T) {
+	logger := zerolog.Nop()
+	cfg := &config.ClientConfig{
+		Endpoints: []config.EndpointConfig{
+			{URL: "http://localhost:1317", Protocol: config.ProtocolREST},
+		},
+	}
+
+	c, err := NewClient(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	defer c.Close()
+
+	sender := c.Tx()
+	if sender == nil {
+		t.Fatal("Tx() returned nil Sender; accessor not wired")
+	}
+
+	// Tx() must be cached: a second call returns the same Sender value so the
+	// cosmospool.Broadcaster is constructed exactly once.
+	if c.Tx() != sender {
+		t.Fatal("Tx() returned a different Sender on second call; expected cached value")
+	}
+
+	// The Sender must also satisfy the compile-time Client contract: Tx() is
+	// part of the allora.Client interface, so this assert is structural.
+	var _ Client = c
+}
+
+// TestClientTxAccessorGasAdjustment confirms that a ClientConfig with a
+// non-zero GasAdjustment flows through Tx() into the broadcaster without error
+// (the option is applied; the broadcaster's own TestWithGasAdjustment covers
+// the value-clamping/setting behavior).
+func TestClientTxAccessorGasAdjustment(t *testing.T) {
+	logger := zerolog.Nop()
+	cfg := &config.ClientConfig{
+		Endpoints: []config.EndpointConfig{
+			{URL: "http://localhost:1317", Protocol: config.ProtocolREST},
+		},
+		GasAdjustment: 1.2, // downstream node's configured adjustment
+	}
+
+	c, err := NewClient(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	defer c.Close()
+
+	sender := c.Tx()
+	if sender == nil {
+		t.Fatal("Tx() returned nil Sender with GasAdjustment configured")
+	}
+}
+
 // Helper function to check if string contains substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))

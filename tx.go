@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/rs/zerolog/log"
 )
 
@@ -37,7 +38,7 @@ type TxParams struct {
 // Note: ChainID, AccountNumber, and Sequence must still be set by the caller
 func DefaultTxParams() *TxParams {
 	return &TxParams{
-		GasLimit:  200000, // Standard gas limit for simple transfers
+		GasLimit:  200000,                                        // Standard gas limit for simple transfers
 		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)), // Default fee
 	}
 }
@@ -184,8 +185,36 @@ func CreateUnsignedSendTx(
 		return nil, fmt.Errorf("invalid amount: %w", err)
 	}
 
+	return CreateUnsignedTx([]sdk.Msg{banktypes.NewMsgSend(fromAddr, toAddr, amount)}, params)
+}
+
+// CreateUnsignedTx creates an unsigned transaction from arbitrary sdk.Msg values.
+//
+// This is the general entrypoint for building unsigned transactions; the returned
+// bytes can be stored, queued, or signed later with SignTransaction /
+// SignTransactionWith. CreateUnsignedSendTx is a thin wrapper that constructs a
+// single bank MsgSend and delegates here.
+//
+// Parameters:
+//   - msgs: The messages to include in the transaction. Must be non-empty.
+//   - params: Transaction parameters including chain ID, account info, gas, and fees.
+//
+// Returns:
+//   - []byte: The unsigned transaction bytes (can be stored and signed later)
+//   - error: Any error that occurred during transaction creation
+func CreateUnsignedTx(msgs []sdk.Msg, params *TxParams) ([]byte, error) {
+	if params == nil {
+		return nil, fmt.Errorf("tx params are required")
+	}
+	if err := params.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
+	}
+	if len(msgs) == 0 {
+		return nil, fmt.Errorf("at least one message is required")
+	}
+
 	builder := newTxBuilder()
-	return builder.buildUnsignedSendTx(fromAddr, toAddr, amount, params)
+	return builder.buildUnsignedTx(msgs, params)
 }
 
 // SignTransaction signs a previously created unsigned transaction

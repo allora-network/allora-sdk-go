@@ -61,6 +61,13 @@ func (c *httpClient) HealthCheck(ctx context.Context) error {
 	return err
 }
 
+// ResetConnectBackoff is a no-op for the Tendermint HTTP client. The pool
+// calls it when a cooling client's health check fails; net/http-backed
+// transports have no analogue of grpc-go's internal reconnect backoff to
+// abandon (idle conns are reaped by the transport's IdleConnTimeout), so
+// there is nothing to reset.
+func (c *httpClient) ResetConnectBackoff() {}
+
 func (c *httpClient) GetEndpointURL() string {
 	return c.remote
 }

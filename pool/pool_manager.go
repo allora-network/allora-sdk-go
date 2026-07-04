@@ -46,6 +46,17 @@ type PoolParticipant interface {
 	GetEndpointURL() string
 	GetProtocol() config.Protocol
 	HealthCheck(ctx context.Context) error
+	// ResetConnectBackoff tells the underlying transport to abandon its
+	// internal reconnect backoff and attempt to reconnect immediately. It
+	// is called by the pool when a cooling client's HealthCheck fails, so
+	// the pool does not sit idle waiting for grpc-go's (or the HTTP
+	// client's) own backoff timer to expire while a half-closed connection
+	// lingers in a stuck-Ready or Idle state.
+	//
+	// Implementations that do not have a notion of transport-level
+	// backoff (e.g. a REST client over a plain net/http transport) may
+	// make this a no-op.
+	ResetConnectBackoff()
 }
 
 // ClientInfo wraps an Client with health tracking metadata
@@ -355,6 +366,14 @@ func (cpm *ClientPoolManager[T]) probeCooling() {
 			}
 		} else {
 			clientInfo.healthStreak = 0
+			// The health check failed, which means the underlying transport
+			// is still not ready. Ask it to abandon any internal reconnect
+			// backoff and try again immediately, rather than waiting for
+			// grpc-go's own backoff timer to expire. Without this, a
+			// half-closed connection that grpc-go still believes is Ready
+			// can linger in the cooling pool until the next probe tick,
+			// every call falling back to the same dead client.
+			clientInfo.Client.ResetConnectBackoff()
 			cpm.logger.Debug().Str("client_url", clientInfo.Client.GetEndpointURL()).Msg("client health check failed")
 		}
 	}

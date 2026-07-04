@@ -9,11 +9,16 @@ import (
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/go-bip39"
+
+	"github.com/allora-network/allora-sdk-go/internal/bech32conf"
 )
 
 const (
-	// AlloraBech32Prefix is the human-readable prefix for Allora addresses
-	AlloraBech32Prefix = "allo"
+	// AlloraBech32Prefix is the human-readable prefix for Allora addresses.
+	// The canonical definition lives in internal/bech32conf (the importable
+	// config package) so subpackages can use it without importing this one;
+	// it is re-exported here for callers that already import allora.
+	AlloraBech32Prefix = bech32conf.AlloraBech32Prefix
 
 	// DefaultBIP44CoinType is the coin type for Allora (118 is standard for Cosmos chains)
 	DefaultBIP44CoinType = 118
@@ -139,11 +144,12 @@ func (w *Wallet) VerifySignature(message, signature []byte) bool {
 	return w.PubKey.VerifySignature(message, signature)
 }
 
-// init configures the SDK to use the Allora bech32 prefix
+// init seals the SDK global config after the bech32 prefixes are configured.
+// The prefix configuration itself lives in internal/bech32conf (imported above)
+// so subpackages such as txmsg can ensure the prefixes are set without
+// depending on this package's init side effects.
+//
+//go:generate echo
 func init() {
-	config := sdk.GetConfig()
-	config.SetBech32PrefixForAccount(AlloraBech32Prefix, AlloraBech32Prefix+"pub")
-	config.SetBech32PrefixForValidator(AlloraBech32Prefix+"valoper", AlloraBech32Prefix+"valoperpub")
-	config.SetBech32PrefixForConsensusNode(AlloraBech32Prefix+"valcons", AlloraBech32Prefix+"valconspub")
-	config.Seal()
+	sdk.GetConfig().Seal()
 }

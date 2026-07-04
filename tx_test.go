@@ -479,7 +479,9 @@ func TestSignTransactionWith_RejectsSenderMismatch(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = SignTransactionWith(context.Background(), unsigned, walletB.PrivKey, params)
-	require.ErrorContains(t, err, "does not match transaction sender")
+	// The msg-agnostic sender guard resolves required signers via the codec and rejects a
+	// signer that is not among them; walletB is not the MsgSend sender (walletA is).
+	require.ErrorContains(t, err, "is not a required signer")
 }
 
 // nilPubKeySigner is a Signer whose PubKey() returns a literal-nil interface value. Signer is a

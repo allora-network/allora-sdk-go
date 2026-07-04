@@ -24,6 +24,7 @@ type WrapperClient struct {
 	params       *ParamsClientWrapper
 	slashing     *SlashingClientWrapper
 	staking      *StakingClientWrapper
+	feemarket    *FeemarketClientWrapper
 }
 
 func NewWrapperClient(poolManager *pool.ClientPoolManager[interfaces.CosmosClient], logger zerolog.Logger) *WrapperClient {
@@ -44,6 +45,7 @@ func NewWrapperClient(poolManager *pool.ClientPoolManager[interfaces.CosmosClien
 		params:       NewParamsClientWrapper(poolManager, logger),
 		slashing:     NewSlashingClientWrapper(poolManager, logger),
 		staking:      NewStakingClientWrapper(poolManager, logger),
+		feemarket:    NewFeemarketClientWrapper(poolManager, logger),
 	}
 }
 
@@ -112,4 +114,8 @@ func (c *WrapperClient) Slashing() interfaces.SlashingClient {
 
 func (c *WrapperClient) Staking() interfaces.StakingClient {
 	return c.staking
+}
+
+func (c *WrapperClient) Feemarket() interfaces.FeemarketClient {
+	return c.feemarket
 }

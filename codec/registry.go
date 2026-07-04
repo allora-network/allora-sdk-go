@@ -2,7 +2,11 @@ package codec
 
 import (
 	"encoding/json"
+	"fmt"
 
+	txsigning "cosmossdk.io/x/tx/signing"
+
+	coreaddress "cosmossdk.io/core/address"
 	"cosmossdk.io/x/feegrant"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
 	"github.com/brynbellomy/go-utils/errors"
@@ -54,10 +58,32 @@ import (
 var (
 	grpcCodec   encoding.Codec
 	cosmosCodec *cosmoscodec.ProtoCodec
-	registry    = codectypes.NewInterfaceRegistry()
+	registry    codectypes.InterfaceRegistry
 )
 
 func init() {
+	// Build the interface registry with an address codec that delegates to the
+	// SDK's global config at call time. This is required for the registry's
+	// GetMsgV1Signers to resolve message signers (the tx builder's
+	// message-agnostic sender guard depends on it); a bare
+	// NewInterfaceRegistry() has no address codec and fails at signer-resolution
+	// time. Using a lazy codec avoids init-order coupling with the allora wallet
+	// package, which sets the bech32 prefix and seals the SDK config.
+	var err error
+	registry, err = codectypes.NewInterfaceRegistryWithOptions(codectypes.InterfaceRegistryOptions{
+		SigningOptions: txsigning.Options{
+			AddressCodec:          &lazyAddressCodec{},
+			ValidatorAddressCodec: &lazyValidatorAddressCodec{},
+		},
+		// Use gogoproto's hybrid resolver (the same default NewInterfaceRegistry uses)
+		// rather than protoregistry.GlobalFiles: the cosmos modules register their
+		// descriptors through gogoproto, so GlobalFiles alone cannot resolve signers for
+		// types like feegrant.MsgRevokeAllowance, while the hybrid resolver can.
+		ProtoFiles: proto.HybridResolver,
+	})
+	if err != nil {
+		panic(fmt.Errorf("failed to create interface registry: %w", err))
+	}
 	registerFuncs := []func(codectypes.InterfaceRegistry){
 		upgradetypes.RegisterInterfaces,
 		banktypes.RegisterInterfaces,
@@ -180,4 +206,36 @@ func (c *Codec) ParseTxMessage(message *codectypes.Any) (proto.Message, error) {
 		return nil, errors.WithMessage(err, "failed to unpack any")
 	}
 	return msg, nil
+}
+
+// lazyAddressCodec delegates StringToBytes / BytesToString to the SDK global
+// config's bech32 account prefix at call time. This avoids init-order coupling
+// between the codec package and the allora wallet package (which sets the
+// bech32 prefix and seals the SDK config in its own init).
+type lazyAddressCodec struct{}
+
+var _ coreaddress.Codec = (*lazyAddressCodec)(nil)
+
+func (lazyAddressCodec) StringToBytes(text string) ([]byte, error) {
+	return cosmossdktypes.AccAddressFromBech32(text)
+}
+
+func (lazyAddressCodec) BytesToString(bz []byte) (string, error) {
+	return cosmossdktypes.AccAddress(bz).String(), nil
+}
+
+// lazyValidatorAddressCodec is the validator-address counterpart of
+// lazyAddressCodec: it resolves validator bech32 (alloravaloper...) signers via
+// the SDK global config's validator prefix. Using the account codec here would
+// mis-resolve staking messages whose signer is a validator address.
+type lazyValidatorAddressCodec struct{}
+
+var _ coreaddress.Codec = (*lazyValidatorAddressCodec)(nil)
+
+func (lazyValidatorAddressCodec) StringToBytes(text string) ([]byte, error) {
+	return cosmossdktypes.ValAddressFromBech32(text)
+}
+
+func (lazyValidatorAddressCodec) BytesToString(bz []byte) (string, error) {
+	return cosmossdktypes.ValAddress(bz).String(), nil
 }

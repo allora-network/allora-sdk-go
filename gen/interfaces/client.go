@@ -23,6 +23,7 @@ type CosmosClientPool interface {
 	Params() ParamsClient
 	Slashing() SlashingClient
 	Staking() StakingClient
+	Feemarket() FeemarketClient
 }
 
 type CosmosClient interface {
