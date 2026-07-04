@@ -2,6 +2,7 @@ package allora
 
 import (
 	"bytes"
+	"crypto/tls"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -111,7 +112,13 @@ func NewRemoteSigner(ctx context.Context, cfg RemoteSignerConfig) (*RemoteSigner
 
 // newGuardedClient returns the HTTP client used for backend calls. A nil client gets a
 // default 30s-timeout client; a caller-supplied client is shallow-copied so the redirect
-// policy can be installed without mutating the caller's instance.
+// policy can be installed without mutating the caller's instance. The copy explicitly drops
+// any inherited cookie jar (cleared so the Forge client never silently shares cookies — the
+// backend uses a header-based API key, and a stale cookie from another endpoint on the same
+// host could leak across signers) and forces TLS verification on by cloning a *http.Transport
+// (when the caller's transport is one) and clearing InsecureSkipVerify on the clone's
+// TLSClientConfig, so a caller that disabled TLS verification on a shared transport cannot
+// accidentally disable it for Forge backend calls.
 func newGuardedClient(c *http.Client) *http.Client {
 	guarded := &http.Client{Timeout: 30 * time.Second}
 	if c != nil {
@@ -129,6 +136,22 @@ func newGuardedClient(c *http.Client) *http.Client {
 		t.MaxIdleConnsPerHost = 64
 		guarded.Transport = t
 	}
+	// Force TLS verification on by clearing InsecureSkipVerify on the transport's TLSClientConfig
+	// (when the transport is a *http.Transport), so a caller that disabled TLS verification on a
+	// shared transport cannot accidentally disable it for Forge backend calls. Clone the transport
+	// first so the caller's instance is not mutated.
+	if t, ok := guarded.Transport.(*http.Transport); ok {
+		tc := t.Clone()
+		if tc.TLSClientConfig == nil {
+			tc.TLSClientConfig = &tls.Config{}
+		}
+		tc.TLSClientConfig.InsecureSkipVerify = false
+		guarded.Transport = tc
+	}
+	// Clear any inherited cookie jar so the Forge backend call is stateless (the backend uses a
+	// header-based API key; a stale cookie from another endpoint on the same host could leak
+	// across signers).
+	guarded.Jar = nil
 	// Refuse every redirect (rejectRedirect returns http.ErrUseLastResponse) so the Forge API key
 	// and SignDoc are never re-sent to a redirect target. This replaces any CheckRedirect on a
 	// caller-supplied client: a redirect is never followed (it surfaces as a non-2xx error via
