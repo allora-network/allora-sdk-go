@@ -24,13 +24,15 @@ type TxParams struct {
 	GasLimit  uint64
 	FeeAmount sdk.Coins
 
-	// Optional fields
+	// Optional fields. Appended at the end so adding new optional fields does not
+	// shift the position of existing ones, which would break any caller using
+	// positional (unkeyed) struct literals.
+	Memo          string
+	TimeoutHeight uint64
 
 	// FeeGranter, when set, is the address that pays the transaction fee via an
 	// on-chain feegrant (e.g. a master subsidy wallet). Empty means the signer pays.
-	FeeGranter    sdk.AccAddress
-	Memo          string
-	TimeoutHeight uint64
+	FeeGranter sdk.AccAddress
 }
 
 // DefaultTxParams returns TxParams with sensible defaults for Allora Network
