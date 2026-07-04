@@ -51,14 +51,23 @@ const (
 	// legacyFeeGranterEnvVar is the pre-rename name. allora-sdk-py still accepts it for one
 	// release with a deprecation warning, so FeeGranterFromEnv honors it too (with a warning)
 	// to avoid silently dropping the granter on a Python->Go migration.
-	// @@TODO: remove the FEE_GRANTER fallback in the next minor release.
+	// TODO: remove the FEE_GRANTER fallback in the next minor release.
 	legacyFeeGranterEnvVar = "FEE_GRANTER"
 )
 
 // feeGranterDeprecationOnce limits the FEE_GRANTER deprecation notice to one emission per
 // process, mirroring Python's once-per-location DeprecationWarning (FeeGranterFromEnv may be
-// called once per transaction).
+// called once per transaction). resetFeeGranterDeprecationOnce is a test-only escape hatch so
+// tests that exercise the deprecation path can observe each emission instead of being silenced
+// by the process-wide once (see TestFeeGranterFromEnv_DeprecationWarning).
 var feeGranterDeprecationOnce sync.Once
+
+// resetFeeGranterDeprecationOnce resets the one-shot deprecation warning latch. It is intended
+// only for tests; non-test callers must not use it (it would re-enable a warning that the
+// process-wide once deliberately suppresses after the first emission).
+func resetFeeGranterDeprecationOnce() {
+	feeGranterDeprecationOnce = sync.Once{}
+}
 
 // FeeGranterFromEnv reads the canonical FORGE_MASTER_GRANTER_ADDRESS environment variable and
 // parses it into an AccAddress suitable for TxParams.FeeGranter. This is the fee-granter (master
