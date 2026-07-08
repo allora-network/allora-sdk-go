@@ -188,10 +188,10 @@ func (c *Codec) ParseTxMessage(message *codectypes.Any) (proto.Message, error) {
 var v9TypedEvents = []proto.Message{
 	&emissionsv9.EventScoresSet{},
 	&emissionsv9.EventRewardsSettled{},
-	&emissionsv9.EventNetworkLossSet{},
-	&emissionsv9.EventNetworkInferences{},
-	&emissionsv9.EventOutlierResistantNetworkInferences{},
-	&emissionsv9.EventValueBundle{},
+	//	&emissionsv9.EventNetworkLossSet{},  -- typed decoding currently unsupported due to use of multi-D arrays
+	//	&emissionsv9.EventNetworkInferences{},  -- typed decoding currently unsupported due to use of multi-D arrays
+	//	&emissionsv9.EventOutlierResistantNetworkInferences{},  -- typed decoding currently unsupported due to use of multi-D arrays
+	//	&emissionsv9.EventValueBundle{},  -- typed decoding currently unsupported due to use of multi-D arrays
 	&emissionsv9.EventInsertInfererPayload{},
 	&emissionsv9.EventInsertForecasterPayload{},
 	&emissionsv9.EventCreateNewTopic{},
