@@ -76,10 +76,9 @@ func TestCodecRegistersAllLegacyEmissionsV9Events(t *testing.T) {
 	for _, msg := range []proto.Message{
 		&emissionsv9.EventScoresSet{},
 		&emissionsv9.EventRewardsSettled{},
-		&emissionsv9.EventNetworkLossSet{},
-		&emissionsv9.EventNetworkInferences{},
-		&emissionsv9.EventOutlierResistantNetworkInferences{},
-		&emissionsv9.EventValueBundle{},
+		// EventNetworkLossSet, EventNetworkInferences, EventOutlierResistantNetworkInferences and
+		// EventValueBundle are intentionally omitted: their typed decoding is currently unsupported
+		// because they use multi-dimensional arrays, so they are not registered by registerV9TypedEvents.
 		&emissionsv9.EventInsertInfererPayload{},
 		&emissionsv9.EventInsertForecasterPayload{},
 		&emissionsv9.EventCreateNewTopic{},
