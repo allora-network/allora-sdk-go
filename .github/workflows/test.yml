@@ -1,0 +1,36 @@
+name: Unit Tests
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Track the Go version declared in go.mod so CI never drifts from the module.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # -short skips the live-testnet integration test (TestClientWithTestnetEndpoints),
+      # keeping the run hermetic and free of network flakiness.
+      - name: Test
+        run: go test -short ./...
