@@ -1,0 +1,29 @@
+# Scheduled govulncheck (DEVOP-618 — Shai-Hulud defense)
+#
+# DEVOP-619 (Go env pinning) is COVERED-BY the open PR adopting
+# .github/workflows/go-hardened.yml + go.env in this repo (PR #8). The
+# reusable hardened-install workflow sets GOPROXY/GOSUMDB/GOFLAGS for every
+# Go-invoking workflow in this repo, including this scan once PR #8 lands.
+#
+# Reusable-workflow pin is TEMPORARY: it tracks the HEAD of
+# allora-network/ci-workflows-private PR #17 (which adds
+# go-vuln-scan.yml). Re-pin to the merge commit after PR #17 merges to
+# main.
+name: Go vulnerability scan (scheduled)
+on:
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  govulncheck:
+    uses: allora-network/ci-workflows-private/.github/workflows/go-vuln-scan.yml@185ec34dc707e6779bcc06fe2a592e07f29de8ed
+    with:
+      go_version: '1.24.x'
+      fail_on_findings: true
+    secrets:
+      slack_webhook_url: ${{ secrets.SLACK_SECURITY_WEBHOOK }}
