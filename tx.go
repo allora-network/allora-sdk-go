@@ -1,9 +1,14 @@
 package allora
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"strings"
+	"sync"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/rs/zerolog/log"
 )
 
 // TxParams contains all parameters needed to build and sign a transaction
@@ -19,9 +24,15 @@ type TxParams struct {
 	GasLimit  uint64
 	FeeAmount sdk.Coins
 
-	// Optional fields
+	// Optional fields. Appended at the end so adding new optional fields does not
+	// shift the position of existing ones, which would break any caller using
+	// positional (unkeyed) struct literals.
 	Memo          string
 	TimeoutHeight uint64
+
+	// FeeGranter, when set, is the address that pays the transaction fee via an
+	// on-chain feegrant (e.g. a master subsidy wallet). Empty means the signer pays.
+	FeeGranter sdk.AccAddress
 }
 
 // DefaultTxParams returns TxParams with sensible defaults for Allora Network
@@ -33,7 +44,67 @@ func DefaultTxParams() *TxParams {
 	}
 }
 
-// Validate checks that all required parameters are set
+const (
+	// feeGranterEnvVar is the canonical fee-granter (master subsidy wallet) env var, shared
+	// across the Allora SDKs (allora-sdk-py / allora-sdk-ts).
+	feeGranterEnvVar = "FORGE_MASTER_GRANTER_ADDRESS"
+	// legacyFeeGranterEnvVar is the pre-rename name. allora-sdk-py still accepts it for one
+	// release with a deprecation warning, so FeeGranterFromEnv honors it too (with a warning)
+	// to avoid silently dropping the granter on a Python->Go migration.
+	// TODO: remove the FEE_GRANTER fallback in the next minor release.
+	legacyFeeGranterEnvVar = "FEE_GRANTER"
+)
+
+// feeGranterDeprecationOnce limits the FEE_GRANTER deprecation notice to one emission per
+// process, mirroring Python's once-per-location DeprecationWarning (FeeGranterFromEnv may be
+// called once per transaction). resetFeeGranterDeprecationOnce is a test-only escape hatch so
+// tests that exercise the deprecation path can observe each emission instead of being silenced
+// by the process-wide once (see TestFeeGranterFromEnv_DeprecationWarning).
+var feeGranterDeprecationOnce sync.Once
+
+// resetFeeGranterDeprecationOnce resets the one-shot deprecation warning latch. It is intended
+// only for tests; non-test callers must not use it (it would re-enable a warning that the
+// process-wide once deliberately suppresses after the first emission).
+func resetFeeGranterDeprecationOnce() {
+	feeGranterDeprecationOnce = sync.Once{}
+}
+
+// FeeGranterFromEnv reads the canonical FORGE_MASTER_GRANTER_ADDRESS environment variable and
+// parses it into an AccAddress suitable for TxParams.FeeGranter. This is the fee-granter (master
+// subsidy wallet) env var shared across the Allora SDKs (allora-sdk-py / allora-sdk-ts), giving Go
+// callers a single discovery path for the same value. It returns (nil, nil) when neither variable
+// is set or blank, in which case the signing wallet pays its own fees.
+//
+// For parity with allora-sdk-py, the pre-rename FEE_GRANTER is still accepted as a fallback for one
+// release (with a one-time deprecation warning): a deployment migrating from Python that still sets
+// FEE_GRANTER keeps working instead of silently falling through to no-granter. Rename it to
+// FORGE_MASTER_GRANTER_ADDRESS. TODO: drop the FEE_GRANTER fallback in the next minor release.
+func FeeGranterFromEnv() (sdk.AccAddress, error) {
+	envVar := feeGranterEnvVar
+	addr := strings.TrimSpace(os.Getenv(envVar))
+	if addr == "" {
+		// Fall back to the deprecated name so a Python->Go migration does not silently lose the
+		// granter (allora-sdk-py accepts FEE_GRANTER for one release with a deprecation warning).
+		if legacy := strings.TrimSpace(os.Getenv(legacyFeeGranterEnvVar)); legacy != "" {
+			envVar, addr = legacyFeeGranterEnvVar, legacy
+			feeGranterDeprecationOnce.Do(func() {
+				log.Warn().Str("deprecated_env_var", legacyFeeGranterEnvVar).Str("replacement_env_var", feeGranterEnvVar).Msg("FEE_GRANTER env var is deprecated; rename it")
+			})
+		}
+	}
+	if addr == "" {
+		return nil, nil
+	}
+	granter, err := sdk.AccAddressFromBech32(addr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid %s %q: %w", envVar, addr, err)
+	}
+	return granter, nil
+}
+
+// Validate checks that all required parameters are set. The receiver must be non-nil; the
+// SDK's call sites guard for a nil *TxParams before invoking Validate, keeping the nil check
+// at the call site rather than masking it inside a method on a nil pointer.
 func (p *TxParams) Validate() error {
 	if p.ChainID == "" {
 		return fmt.Errorf("chain ID is required")
@@ -43,6 +114,26 @@ func (p *TxParams) Validate() error {
 	}
 	if p.FeeAmount.Empty() {
 		return fmt.Errorf("fee amount is required")
+	}
+	// FeeGranter, when set, is encoded verbatim into the tx AuthInfo; a wrong-length []byte
+	// serializes without error and only fails on-chain (feegrant not found) far from here,
+	// after wasting a broadcast round-trip. Cosmos account addresses are 20 bytes, so reject
+	// any other non-empty length up front.
+	if len(p.FeeGranter) != 0 && len(p.FeeGranter) != 20 {
+		return fmt.Errorf("fee granter address must be 20 bytes when set, got %d", len(p.FeeGranter))
+	}
+	return nil
+}
+
+// validateForSigning checks only the params fields consumed at sign time. Unlike Validate, it does
+// not require GasLimit or FeeAmount: SignTransactionWith signs over the gas/fee/memo/granter values
+// already encoded in the unsigned tx and reads only ChainID, AccountNumber, and Sequence from
+// params (see SignTransactionWith). Requiring gas/fee here would break the documented two-phase
+// flow — build + persist the unsigned tx, then sign later with minimal sign-time params — by
+// rejecting params that legitimately omit the already-encoded fee/gas fields.
+func (p *TxParams) validateForSigning() error {
+	if p.ChainID == "" {
+		return fmt.Errorf("chain ID is required")
 	}
 	return nil
 }
@@ -84,6 +175,9 @@ func CreateUnsignedSendTx(
 	amount sdk.Coins,
 	params *TxParams,
 ) ([]byte, error) {
+	if params == nil {
+		return nil, fmt.Errorf("tx params are required")
+	}
 	if err := params.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
 	}
@@ -132,20 +226,81 @@ func SignTransaction(
 	wallet *Wallet,
 	params *TxParams,
 ) ([]byte, error) {
-	if err := params.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
-	}
-
-	if len(unsignedTx) == 0 {
-		return nil, fmt.Errorf("unsigned transaction is empty")
-	}
-
 	if wallet == nil {
 		return nil, fmt.Errorf("wallet is required")
 	}
+	// wallet.PrivKey is a cryptotypes.PrivKey, which satisfies Signer. Local signing is
+	// CPU-bound, so a background context is sufficient.
+	return SignTransactionWith(context.Background(), unsignedTx, wallet.PrivKey, params)
+}
+
+// SignTransactionWith signs an unsigned transaction with any Signer. This is the
+// general form of SignTransaction: pass a local wallet's key for self-managed signing,
+// or a *RemoteSigner to delegate signing to the Forge backend (Privy-managed wallet).
+//
+// ctx is propagated to signers that perform I/O: a *RemoteSigner issues an HTTP call to
+// the backend, so a deadline or cancellation on ctx bounds that call. Local-key signers
+// ignore it.
+//
+// Only ChainID, AccountNumber, and Sequence from params are consumed here (they populate the
+// SignerData). GasLimit, FeeAmount, FeeGranter, Memo, and TimeoutHeight are NOT re-read from
+// params at sign time — the signature is computed over the values already encoded in
+// unsignedTx — so passing params whose fee/gas/memo/timeout-height differ from those used to
+// build unsignedTx does NOT change what is signed and is silently ignored. Consequently only
+// ChainID is required at sign time (validated non-empty); GasLimit and FeeAmount need not be
+// re-supplied, so a two-phase flow can sign later with a minimal params carrying just ChainID,
+// AccountNumber, and Sequence. Passing the same params you built the unsigned tx with remains the
+// simplest correct choice, since AccountNumber and Sequence must still match the encoded tx.
+//
+// Parameters:
+//   - ctx: Context for cancellation/deadlines, honored by I/O-backed signers
+//   - unsignedTx: The unsigned transaction bytes from CreateUnsignedSendTx
+//   - signer: The signer (local key or remote signer)
+//   - params: The same TxParams used to create the unsigned transaction. Only ChainID,
+//     AccountNumber, and Sequence are read at sign time; the fee/gas/memo/timeout-height
+//     fields come from the encoded tx, not from params (see the note above).
+//
+// Example:
+//
+//	signer, err := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
+//	    BackendURL: "https://forge.allora.network",
+//	    APIKey:     apiKey,
+//	    WalletID:   walletID,
+//	})
+//	if err != nil {
+//	    return err
+//	}
+//	signedTx, err := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
+func SignTransactionWith(
+	ctx context.Context,
+	unsignedTx []byte,
+	signer Signer,
+	params *TxParams,
+) ([]byte, error) {
+	// A nil context would panic in http.NewRequestWithContext when the signer is a
+	// RemoteSigner. Default it to context.Background() (as SignTransaction already does) so a
+	// nil ctx degrades to "no deadline/cancellation" instead of crashing during signing.
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if params == nil {
+		return nil, fmt.Errorf("tx params are required")
+	}
+	// Only validate the fields actually read at sign time (ChainID). Gas/fee/granter/memo/timeout
+	// are already encoded in unsignedTx, so requiring them again here would break the two-phase
+	// flow documented above (build now, sign later with minimal params).
+	if err := params.validateForSigning(); err != nil {
+		return nil, fmt.Errorf("invalid transaction parameters: %w", err)
+	}
+	if len(unsignedTx) == 0 {
+		return nil, fmt.Errorf("unsigned transaction is empty")
+	}
+	if isNilSigner(signer) {
+		return nil, fmt.Errorf("signer is required")
+	}
 
 	builder := newTxBuilder()
-	return builder.signTx(unsignedTx, wallet.PrivKey, params)
+	return builder.signTx(ctx, unsignedTx, signer, params)
 }
 
 // CreateSignedSendTx is a convenience function that creates and signs a send transaction in one step

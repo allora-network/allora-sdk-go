@@ -100,6 +100,163 @@ func main() {
 }
 ```
 
+## Privy-Managed Signing (delegated)
+
+By default the SDK signs with a local key (`Wallet`). Alternatively, you can delegate
+signing to the Forge backend, which signs with a Privy-managed server wallet — the worker
+holds no private key. A local wallet's key (`wallet.PrivKey`) and the backend-backed
+`RemoteSigner` both satisfy the `Signer` interface, so `SignTransactionWith` accepts
+either. (For a local wallet you can also use the `SignTransaction(unsignedTx, wallet,
+params)` convenience wrapper.)
+
+```go
+ctx := context.Background()
+
+// The wallet ID and API key are minted in the Forge web app. The signer fetches its
+// address + public key from the backend on construction.
+signer, err := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+    WalletID:   os.Getenv("FORGE_SIGNING_WALLET_ID"),
+})
+if err != nil {
+    panic(err)
+}
+
+params := &allora.TxParams{
+    ChainID:       "allora-testnet-1",
+    AccountNumber: accountNumber,
+    Sequence:      sequence,
+    GasLimit:      200000,
+    FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+    // FeeGranter: masterAddr, // optional: subsidize gas from a master wallet via feegrant
+}
+
+// signer.PubKey().Address() works for any Signer (local key or RemoteSigner); a
+// *RemoteSigner additionally offers the signer.AccAddress() convenience helper.
+fromAddr := sdk.AccAddress(signer.PubKey().Address())
+unsignedTx, _ := allora.CreateUnsignedSendTx(fromAddr, toAddr, amount, params)
+signedTx, _ := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
+// broadcast signedTx via client.Cosmos().Tx().BroadcastTx(...)
+```
+
+> **Security boundary:** `FORGE_API_KEY` is a managed-wallet signing credential, not a
+> transaction-scoped permission. `RemoteSigner` can send arbitrary SignDoc bytes and 32-byte
+> digests to Forge, so possession of the key authorizes any transaction the managed wallet can
+> sign. Disabling Forge's optional `/transfer` convenience route does not prevent a caller from
+> building, signing, and broadcasting a transfer through `/sign`. Store, rotate, and revoke this
+> API key with the same care as a private wallet key.
+
+The self-managed path — `SignTransaction(unsignedTx, wallet, params)` with a local
+`Wallet` — is unchanged.
+
+### Fee granter (optional gas subsidy)
+
+Set `TxParams.FeeGranter` to have the transaction fee paid by another account via an
+on-chain feegrant, so a Privy-managed worker can hold no ALLO of its own. The granter is
+the Forge **master wallet address**: forge-v2 auto-creates a feegrant from it to each new
+signing wallet.
+
+A `RemoteSigner` **discovers that address at runtime**: the signing-wallet GET and the
+provision response now carry a `master_granter` field, which the signer reads from the
+backend response and exposes — as the raw string, verbatim — via `signer.MasterGranter()`
+(empty when the backend has no master wallet configured). `MasterGranter()` does not parse
+or validate the value; parsing into an `sdk.AccAddress` happens in `signer.ResolveFeeGranter()`
+(below). Runtime discovery means a master-wallet rotation no longer forces every SDK consumer
+to reconfigure.
+
+For 12-factor deployments you can **override** discovery with the canonical
+`FORGE_MASTER_GRANTER_ADDRESS` environment variable (the same name used by allora-sdk-py
+and allora-sdk-ts), read and parsed by `allora.FeeGranterFromEnv()` (returns `(nil, nil)`
+when unset). The former name `FEE_GRANTER` is still accepted as a fallback for one release
+(with a one-time deprecation warning), for parity with allora-sdk-py; rename it to
+`FORGE_MASTER_GRANTER_ADDRESS`.
+
+`signer.ResolveFeeGranter()` applies the precedence for you and returns a parsed
+`sdk.AccAddress` — env override first, then the discovered granter, then `nil` (the signing
+wallet pays its own fees) — so it drops straight into `TxParams.FeeGranter`:
+
+```go
+granter, err := signer.ResolveFeeGranter()
+if err != nil {
+    return err
+}
+params.FeeGranter = granter // nil ⇒ the signing wallet pays its own fees
+```
+
+To wire the precedence yourself instead — preferring an explicit env value and falling back
+to the discovered granter:
+
+```go
+granter, err := allora.FeeGranterFromEnv() // FORGE_MASTER_GRANTER_ADDRESS, nil when unset
+if err != nil {
+    return err
+}
+if granter == nil {
+    if discovered := signer.MasterGranter(); discovered != "" {
+        if granter, err = sdk.AccAddressFromBech32(discovered); err != nil {
+            return err
+        }
+    }
+}
+params.FeeGranter = granter // nil ⇒ the signing wallet pays its own fees
+```
+
+### Topic-bound provisioning (one worker = one topic)
+
+`NewRemoteSigner` binds to an existing wallet id you already hold. For a worker that should
+get-or-create a wallet bound to a specific topic (ENGN-8572 "one worker = one topic"), use
+`NewRemoteSignerForTopic` instead — it idempotently provisions a managed wallet for the
+given topic and returns a `RemoteSigner` built directly from the provision response (no
+second wallet-info round-trip):
+
+```go
+signer, err := allora.NewRemoteSignerForTopic(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+    // WalletID must be empty — it is filled from the provision response.
+}, topicID, "my-worker")
+if err != nil {
+    panic(err)
+}
+```
+
+Each topic binding counts against a per-user wallet cap enforced by the backend. When a
+worker is retired or rotated to a different topic, release its binding so the slot stops
+counting against the cap.
+
+### Unbinding and revoking wallets
+
+A `*RemoteSigner` exposes two lifecycle methods for the wallet it wraps:
+
+- **`signer.ClearAssociation(ctx)`** — unbinds the wallet from its topic (Forge-side
+  bookkeeping only; it does NOT unregister the worker on-chain). Reversible by
+  re-provisioning. Use it before re-provisioning a wallet against a new topic or before
+  decommissioning it.
+- **`signer.Revoke(ctx)`** — permanently decommissions the wallet (DELETE
+  `/api/v1/signing-wallets/{id}`). Destructive counterpart to `ClearAssociation`: clearing
+  only unbinds, revoking tears the wallet down for good.
+
+When you only hold the wallet id (e.g. retiring a worker without constructing a signer —
+no wallet-info fetch), use the standalone by-id variants:
+
+```go
+// Unbind a wallet from its topic by id:
+err := allora.ClearWalletAssociation(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+}, walletID)
+
+// Permanently decommission a wallet by id:
+err := allora.RevokeWallet(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+}, walletID)
+```
+
+Both return a non-2xx response (e.g. 404 for an unknown/foreign/already-cleared wallet) as
+an error so the caller decides whether the failure is fatal or best-effort.
+
 ## Configuration
 
 ### Client Configuration
