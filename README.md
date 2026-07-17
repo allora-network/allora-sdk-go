@@ -140,6 +140,13 @@ signedTx, _ := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
 // broadcast signedTx via client.Cosmos().Tx().BroadcastTx(...)
 ```
 
+> **Security boundary:** `FORGE_API_KEY` is a managed-wallet signing credential, not a
+> transaction-scoped permission. `RemoteSigner` can send arbitrary SignDoc bytes and 32-byte
+> digests to Forge, so possession of the key authorizes any transaction the managed wallet can
+> sign. Disabling Forge's optional `/transfer` convenience route does not prevent a caller from
+> building, signing, and broadcasting a transfer through `/sign`. Store, rotate, and revoke this
+> API key with the same care as a private wallet key.
+
 The self-managed path — `SignTransaction(unsignedTx, wallet, params)` with a local
 `Wallet` — is unchanged.
 
