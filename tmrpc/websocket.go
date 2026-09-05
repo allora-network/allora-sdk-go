@@ -1,6 +1,7 @@
 package tmrpc
 
 import (
+	"math/rand"
 	"net/url"
 	"sync"
 	"time"
@@ -12,6 +13,14 @@ import (
 	ctypes "github.com/cometbft/cometbft/types"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog"
+)
+
+// Reconnect policy for the websocket connection manager.
+const (
+	wsReconnectBaseDelay = 500 * time.Millisecond
+	wsReconnectMaxDelay  = 30 * time.Second
+	// wsJitterFrac is the symmetric jitter fraction applied to reconnect delays.
+	wsJitterFrac = 0.2
 )
 
 type Websocket interface {
@@ -91,38 +100,75 @@ func (ws *tmWebsocket) connectionManager() {
 	defer ws.wgDone.Done()
 	defer ws.terminateConnection()
 
+	attempt := 0
 	for {
-		ws.readConnection()
-
 		select {
 		case <-ws.chStop:
 			return
 		default:
 		}
 
-		ws.resetConnection()
-	}
-}
-
-func (ws *tmWebsocket) readConnection() {
-	defer func() {
-		if perr := recover(); perr != nil {
-			ws.logger.Error().Msgf("recovered from panic: %v", perr)
+		if ws.readConnection() {
+			// Clean shutdown requested.
+			return
 		}
-	}()
 
-	for {
+		// The connection dropped. Back off with jitter before redialling so a
+		// flapping endpoint does not trigger a tight reconnect loop.
+		delay := reconnectDelay(attempt)
+		attempt++
+		ws.logger.Info().Dur("delay", delay).Int("attempt", attempt).Msg("websocket connection lost, reconnecting")
 		select {
 		case <-ws.chStop:
 			return
+		case <-time.After(delay):
+		}
+
+		if ws.resetConnection() {
+			// Redial succeeded; reset the backoff counter.
+			attempt = 0
+		}
+	}
+}
+
+// reconnectDelay returns an exponential backoff delay with symmetric jitter.
+func reconnectDelay(attempt int) time.Duration {
+	if attempt > 30 { // 2^30 overflows practical delays
+		attempt = 30
+	}
+	d := float64(wsReconnectBaseDelay) * float64(int64(1)<<uint(attempt))
+	if d > float64(wsReconnectMaxDelay) {
+		d = float64(wsReconnectMaxDelay)
+	}
+	jitter := d * wsJitterFrac * (2*rand.Float64() - 1)
+	return time.Duration(d + jitter)
+}
+
+// readConnection reads events until the connection fails or Close is called.
+// It returns true if shutdown was requested, false if the connection broke and
+// the caller should reconnect. A read error breaks the loop (previously it
+// spun on a broken connection).
+func (ws *tmWebsocket) readConnection() (stop bool) {
+	defer func() {
+		if perr := recover(); perr != nil {
+			ws.logger.Error().Interface("panic", perr).Stack().Msg("websocket readConnection panicked; reconnecting")
+			stop = false
+		}
+	}()
+
+readLoop:
+	for {
+		select {
+		case <-ws.chStop:
+			return true
 		default:
 		}
 
 		var resp jsonrpctypes.RPCResponse
 		err := ws.read(&resp)
 		if err != nil {
-			ws.logger.Error().Err(err).Msg("could not read websocket msg")
-			continue
+			ws.logger.Error().Err(err).Msg("websocket read failed; breaking to reconnect")
+			break readLoop
 		} else if resp.Error != nil {
 			ws.logger.Error().Err(*resp.Error).Msg("rpc received error")
 			continue
@@ -139,15 +185,20 @@ func (ws *tmWebsocket) readConnection() {
 			continue
 		}
 
-		subID := int(resp.ID.(jsonrpctypes.JSONRPCIntID))
-		sub, ok := ws.subs.Get(subID)
+		subID, ok := resp.ID.(jsonrpctypes.JSONRPCIntID)
+		if !ok {
+			ws.logger.Error().Msg("received event with unexpected ID type")
+			continue
+		}
+		s, ok := ws.subs.Get(int(subID))
 		if !ok {
 			ws.logger.Error().Msgf("received event for unknown subscription ID %d", subID)
 			continue
 		}
 
-		sub.mb.Deliver(event.Data)
+		s.mb.Deliver(event.Data)
 	}
+	return false
 }
 
 func (ws *tmWebsocket) read(resp any) error {
@@ -157,21 +208,19 @@ func (ws *tmWebsocket) read(resp any) error {
 	return ws.conn.ReadJSON(&resp)
 }
 
-func (ws *tmWebsocket) resetConnection() {
-	ws.muConn.Lock()
-	defer ws.muConn.Unlock()
-
+// resetConnection closes any active connection and redials with retry until
+// the connection is re-established or Close is called. It returns true if a
+// new connection was established.
+func (ws *tmWebsocket) resetConnection() bool {
 	// close connection if active
+	ws.muConn.Lock()
 	if ws.conn != nil {
-		ws.logger.Info().Msg("websocket connection closed, reconnecting...")
-		err := ws.conn.Close()
-		if err != nil {
+		if err := ws.conn.Close(); err != nil {
 			ws.logger.Error().Err(err).Msg("error closing websocket connection")
-		} else {
-			ws.logger.Info().Msg("websocket connection closed, reconnecting...")
 		}
 		ws.conn = nil
 	}
+	ws.muConn.Unlock()
 
 	// wait for a new connection
 	for {
@@ -180,23 +229,26 @@ func (ws *tmWebsocket) resetConnection() {
 			ws.logger.Error().Err(err).Msg("websocket dial failed")
 			select {
 			case <-ws.chStop:
-				return
-			case <-time.After(5 * time.Second):
+				return false
+			case <-time.After(reconnectDelay(0)):
 			}
 			continue
 		}
 
+		ws.muConn.Lock()
 		ws.conn = conn
+		ws.muConn.Unlock()
 		break
 	}
 
 	ws.logger.Info().Str("url", ws.conn.RemoteAddr().String()).Msg("connected to comet rpc websocket")
 
 	// resubscribe to everything
-	for _, sub := range ws.subs.Iter() {
-		ws.logger.Debug().Msgf("subscribing to subscription ID %d with event %v", sub.id, sub.event)
-		ws.sendSubscribeMsg(sub)
+	for _, s := range ws.subs.Iter() {
+		ws.logger.Debug().Msgf("subscribing to subscription ID %d with event %v", s.id, s.event)
+		ws.sendSubscribeMsg(s)
 	}
+	return true
 }
 
 // terminateConnection closes the websocket connection and cleans up resources permanently.
@@ -218,30 +270,39 @@ func (ws *tmWebsocket) terminateConnection() {
 func (ws *tmWebsocket) Subscribe(mb *Mailbox, query string) {
 	ws.subIDNonce++
 
-	sub := sub{
+	s := sub{
 		id:    ws.subIDNonce,
 		event: query,
 		mb:    mb,
 	}
 
-	ws.subs.Set(sub.id, sub)
-	ws.sendSubscribeMsg(sub)
+	ws.subs.Set(s.id, s)
+	ws.sendSubscribeMsg(s)
 }
 
-func (ws *tmWebsocket) sendSubscribeMsg(sub sub) {
+func (ws *tmWebsocket) sendSubscribeMsg(s sub) {
 	subMsg := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "subscribe",
-		"id":      sub.id,
+		"id":      s.id,
 		"params": map[string]any{
-			"query": sub.event,
+			"query": s.event,
 		},
 	}
 
-	ws.logger.Info().Msg("subscribing to " + sub.event)
+	ws.logger.Info().Msg("subscribing to " + s.event)
 
-	err := ws.conn.WriteJSON(subMsg)
-	if err != nil {
+	// Grab the connection under the lock, then write WITHOUT holding muConn so
+	// a blocked write cannot deadlock a concurrent read/reset.
+	ws.muConn.Lock()
+	conn := ws.conn
+	ws.muConn.Unlock()
+
+	if conn == nil {
+		ws.logger.Debug().Msg("no active websocket connection; subscription will be sent on reconnect")
+		return
+	}
+	if err := conn.WriteJSON(subMsg); err != nil {
 		ws.logger.Error().Err(err).Msg("could not write subscription message")
 	}
 }
