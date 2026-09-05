@@ -132,38 +132,43 @@ func (p *clientPool) GetHealthStatus() map[string]any {
 	return p.poolManager.GetHealthStatus()
 }
 
+// SetRequestTimeout sets the per-attempt RPC timeout for the pool.
+func (p *clientPool) SetRequestTimeout(d time.Duration) {
+	p.poolManager.SetRequestTimeout(d)
+}
+
 func (p *clientPool) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
-	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultBlockResults, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(ctx context.Context, c Client) (*coretypes.ResultBlockResults, error) {
 		return c.BlockResults(ctx, height)
 	})
 }
 
 func (p *clientPool) Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error) {
-	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultBlock, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(ctx context.Context, c Client) (*coretypes.ResultBlock, error) {
 		return c.Block(ctx, height)
 	})
 }
 
 func (p *clientPool) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
-	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultCommit, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(ctx context.Context, c Client) (*coretypes.ResultCommit, error) {
 		return c.Commit(ctx, height)
 	})
 }
 
 func (p *clientPool) ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error) {
-	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultABCIQuery, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(ctx context.Context, c Client) (*coretypes.ResultABCIQuery, error) {
 		return c.ABCIQuery(ctx, path, data)
 	})
 }
 
 func (p *clientPool) Status(ctx context.Context) (*coretypes.ResultStatus, error) {
-	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (*coretypes.ResultStatus, error) {
+	return pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(ctx context.Context, c Client) (*coretypes.ResultStatus, error) {
 		return c.Status(ctx)
 	})
 }
 
 func (p *clientPool) HealthCheck(ctx context.Context) error {
-	_, err := pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(c Client) (struct{}, error) {
+	_, err := pool.ExecuteWithRetry(ctx, p.poolManager, &p.logger, func(ctx context.Context, c Client) (struct{}, error) {
 		return struct{}{}, c.HealthCheck(ctx)
 	})
 	return err

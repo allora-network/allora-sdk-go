@@ -26,13 +26,13 @@ func NewNodeClientWrapper(poolManager *pool.ClientPoolManager[interfaces.CosmosC
 }
 
 func (c *NodeClientWrapper) Config(ctx context.Context, req *node.ConfigRequest, opts ...config.CallOpt) (*node.ConfigResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*node.ConfigResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*node.ConfigResponse, error) {
 		return client.Node().Config(ctx, req, opts...)
 	})
 }
 
 func (c *NodeClientWrapper) Status(ctx context.Context, req *node.StatusRequest, opts ...config.CallOpt) (*node.StatusResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*node.StatusResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*node.StatusResponse, error) {
 		return client.Node().Status(ctx, req, opts...)
 	})
 }

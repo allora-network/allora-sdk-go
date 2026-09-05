@@ -27,6 +27,7 @@ type ClientPoolManager[T PoolParticipant] struct {
 	active, cooling          []ClientInfo[T]
 	currentIndex             int // round-robin index for load distribution
 	checkRate                time.Duration
+	requestTimeout           time.Duration
 	coolingThreshold         float64
 	minActiveStreak          int
 	startReactivatedSuccRate float64
@@ -60,6 +61,7 @@ type ClientInfo[T PoolParticipant] struct {
 
 const (
 	defaultClientCheckRate                = 10 * time.Second
+	defaultClientRequestTimeout           = 30 * time.Second
 	defaultClientCoolingThreshold         = 0.5
 	defaultClientMinActiveStreak          = 3
 	defaultClientStartReactivatedSuccRate = 0.8
@@ -98,6 +100,7 @@ func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger)
 		active:                   clientInfos,
 		currentIndex:             startOffset,
 		checkRate:                defaultClientCheckRate,
+		requestTimeout:           defaultClientRequestTimeout,
 		coolingThreshold:         defaultClientCoolingThreshold,
 		minActiveStreak:          defaultClientMinActiveStreak,
 		startReactivatedSuccRate: defaultClientStartReactivatedSuccRate,
@@ -494,6 +497,31 @@ func (cpm *ClientPoolManager[T]) shortestBackoff() time.Duration {
 	return minDur
 }
 
+// SetRequestTimeout sets the per-attempt timeout applied to each RPC attempt
+// in ExecuteWithRetry. A non-positive value restores the default.
+func (cpm *ClientPoolManager[T]) SetRequestTimeout(d time.Duration) {
+	cpm.mu.Lock()
+	defer cpm.mu.Unlock()
+	if d <= 0 {
+		d = defaultClientRequestTimeout
+	}
+	cpm.requestTimeout = d
+}
+
+// attemptContext derives the context for a single RPC attempt. The attempt
+// deadline is the tighter of the configured per-attempt timeout and the
+// caller's remaining deadline, so caller cancellation always propagates while
+// a slow endpoint cannot consume the budget reserved for sibling attempts.
+func (cpm *ClientPoolManager[T]) attemptContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	cpm.mu.RLock()
+	timeout := cpm.requestTimeout
+	cpm.mu.RUnlock()
+	if timeout <= 0 {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
 // GetMaxRetries returns the MaxRetries value for a given client
 func (cpm *ClientPoolManager[T]) GetMaxRetries(client T) int {
 	cpm.mu.RLock()
@@ -620,7 +648,7 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 	ctx context.Context,
 	poolManager *ClientPoolManager[T],
 	logger *zerolog.Logger,
-	operation func(client T) (Result, error),
+	operation func(ctx context.Context, client T) (Result, error),
 ) (_ Result, err error) {
 	overallStart := time.Now()
 	service, method := deriveRPCOperation()
@@ -675,7 +703,13 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		endpoint := aggregatedClient.GetEndpointURL()
 		attemptStart := time.Now()
 
-		result, operationErr := operation(aggregatedClient)
+		// Give each attempt its own deadline so a slow endpoint cannot burn the
+		// caller's context for the remaining endpoints. The attempt deadline is
+		// the tighter of the configured per-attempt timeout and the caller's
+		// remaining deadline, so caller cancellation still propagates.
+		attemptCtx, cancel := poolManager.attemptContext(ctx)
+		result, operationErr := operation(attemptCtx, aggregatedClient)
+		cancel()
 		attemptDuration := time.Since(attemptStart)
 
 		attemptCount := attempts

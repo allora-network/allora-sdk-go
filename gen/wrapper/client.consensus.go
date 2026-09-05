@@ -26,7 +26,7 @@ func NewConsensusClientWrapper(poolManager *pool.ClientPoolManager[interfaces.Co
 }
 
 func (c *ConsensusClientWrapper) Params(ctx context.Context, req *consensustypes.QueryParamsRequest, opts ...config.CallOpt) (*consensustypes.QueryParamsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*consensustypes.QueryParamsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*consensustypes.QueryParamsResponse, error) {
 		return client.Consensus().Params(ctx, req, opts...)
 	})
 }
