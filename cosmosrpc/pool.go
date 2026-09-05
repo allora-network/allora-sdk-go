@@ -25,7 +25,7 @@ func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
 	mgr := pool.NewClientPoolManager(clients, logger)
 	return &clientPool{
 		WrapperClient: wrapper.NewWrapperClient(mgr, logger),
-		poolManager:   pool.NewClientPoolManager(clients, logger),
+		poolManager:   mgr,
 	}
 }
 
