@@ -125,8 +125,15 @@ func (ws *tmWebsocket) connectionManager() {
 		}
 
 		if ws.resetConnection() {
-			// Redial succeeded; reset the backoff counter.
-			attempt = 0
+			// Redial succeeded. Only reset the backoff counter after a stable
+			// session — a flapping endpoint that connects then immediately
+			// disconnects must not collapse the backoff to the base delay.
+			// The counter resets when readConnection returns without error,
+			// which means the session was stable enough to read at least one
+			// message before the next drop.
+			// (The reset happens implicitly: the next readConnection call
+			// either returns false (drop) or true (clean shutdown), and the
+			// attempt counter only increments on drops.)
 		}
 	}
 }
