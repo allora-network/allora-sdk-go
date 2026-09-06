@@ -34,3 +34,4 @@ jobs:
       # keeping the run hermetic and free of network flakiness.
       - name: Test
         run: go test -short ./...
+
