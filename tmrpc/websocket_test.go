@@ -54,7 +54,9 @@ func TestReconnectDelayBackoffAndJitter(t *testing.T) {
 
 // brokenWebsocketConn dials a real websocket server whose handler upgrades
 // and then immediately closes, so every client read fails — the
-// broken-connection case readConnection must not spin on.
+// broken-connection case readConnection must not spin on. A short read
+// deadline bounds the test so a delayed close frame doesn't cause a spurious
+// timeout.
 func brokenWebsocketConn(t *testing.T) *websocket.Conn {
 	t.Helper()
 
@@ -71,6 +73,7 @@ func brokenWebsocketConn(t *testing.T) *websocket.Conn {
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http")
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	require.NoError(t, err)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
 	return conn
 }
 
