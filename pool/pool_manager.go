@@ -708,8 +708,10 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		// the tighter of the configured per-attempt timeout and the caller's
 		// remaining deadline, so caller cancellation still propagates.
 		attemptCtx, cancel := poolManager.attemptContext(ctx)
-		result, operationErr := operation(attemptCtx, aggregatedClient)
-		cancel()
+		result, operationErr := func() (Result, error) {
+			defer cancel()
+			return operation(attemptCtx, aggregatedClient)
+		}()
 		attemptDuration := time.Since(attemptStart)
 
 		attemptCount := attempts
