@@ -86,7 +86,6 @@ func TestReadOneBrokenConn(t *testing.T) {
 	var resp jsonrpctypes.RPCResponse
 	err := ws.readOne(&resp)
 	require.Error(t, err, "readOne must return an error on a broken connection")
-	require.ErrorIs(t, err, errBrokenConn, "readOne must wrap read failures in errBrokenConn")
 }
 
 // errLogCounter is a zerolog writer that counts error-level log events. It

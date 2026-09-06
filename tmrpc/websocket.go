@@ -1,7 +1,6 @@
 package tmrpc
 
 import (
-	"errors"
 	"math/rand"
 	"net/url"
 	"sync"
@@ -209,19 +208,14 @@ readLoop:
 	return false
 }
 
-// errBrokenConn is returned by readOne when the underlying connection read
-// fails, signalling readConnection to break its loop and reconnect.
-var errBrokenConn = errors.New("websocket connection broken")
-
 // readOne reads a single RPC response from the connection. A read failure is
-// returned as errBrokenConn (wrapping the cause) so callers can distinguish a
-// broken connection from other conditions with errors.Is.
+// returned to the caller, which breaks its loop and reconnects.
 func (ws *tmWebsocket) readOne(resp *jsonrpctypes.RPCResponse) error {
 	ws.muConn.Lock()
 	defer ws.muConn.Unlock()
 
 	if err := ws.conn.ReadJSON(resp); err != nil {
-		return errors.Join(errBrokenConn, err)
+		return err
 	}
 	return nil
 }
