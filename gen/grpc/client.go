@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,7 +96,7 @@ func NewGRPCClient(cfg config.EndpointConfig, logger zerolog.Logger) (*GRPCClien
 		grpc.WithDefaultCallOptions(grpc.ForceCodec(codec.GRPCCodec())),
 	)
 	if err != nil {
-		return nil, errors.Errorf("failed to connect to %s: %w", address, err)
+		return nil, fmt.Errorf("failed to connect to %s: %w", address, err)
 	}
 
 	client := &GRPCClient{

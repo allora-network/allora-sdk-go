@@ -100,9 +100,19 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 		Str("component", "allora_client").
 		Logger()
 
+	cosmosPool := cosmosrpc.NewClientPool(cosmosClients, logger)
+	tendermintPool := tmrpc.NewClientPool(tmRPCClients, logger)
+
+	// Honor the configured per-attempt request timeout so a slow endpoint
+	// cannot cascade across the pool (see pool.ClientPoolManager).
+	if cfg.RequestTimeout > 0 {
+		cosmosPool.SetRequestTimeout(cfg.RequestTimeout)
+		tendermintPool.SetRequestTimeout(cfg.RequestTimeout)
+	}
+
 	return &client{
-		cosmosPool:     cosmosrpc.NewClientPool(cosmosClients, logger),
-		tendermintPool: tmrpc.NewClientPool(tmRPCClients, logger),
+		cosmosPool:     cosmosPool,
+		tendermintPool: tendermintPool,
 		websocketPool:  tmrpc.NewWebsocketPool(websockets),
 		logger:         logger,
 		config:         cfg,

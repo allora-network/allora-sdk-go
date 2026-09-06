@@ -26,19 +26,19 @@ func NewFeegrantClientWrapper(poolManager *pool.ClientPoolManager[interfaces.Cos
 }
 
 func (c *FeegrantClientWrapper) Allowance(ctx context.Context, req *feegrant.QueryAllowanceRequest, opts ...config.CallOpt) (*feegrant.QueryAllowanceResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*feegrant.QueryAllowanceResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*feegrant.QueryAllowanceResponse, error) {
 		return client.Feegrant().Allowance(ctx, req, opts...)
 	})
 }
 
 func (c *FeegrantClientWrapper) Allowances(ctx context.Context, req *feegrant.QueryAllowancesRequest, opts ...config.CallOpt) (*feegrant.QueryAllowancesResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*feegrant.QueryAllowancesResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*feegrant.QueryAllowancesResponse, error) {
 		return client.Feegrant().Allowances(ctx, req, opts...)
 	})
 }
 
 func (c *FeegrantClientWrapper) AllowancesByGranter(ctx context.Context, req *feegrant.QueryAllowancesByGranterRequest, opts ...config.CallOpt) (*feegrant.QueryAllowancesByGranterResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*feegrant.QueryAllowancesByGranterResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*feegrant.QueryAllowancesByGranterResponse, error) {
 		return client.Feegrant().AllowancesByGranter(ctx, req, opts...)
 	})
 }

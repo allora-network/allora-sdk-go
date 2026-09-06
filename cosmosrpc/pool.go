@@ -5,6 +5,7 @@ import (
 	"github.com/allora-network/allora-sdk-go/gen/wrapper"
 	"github.com/allora-network/allora-sdk-go/pool"
 	"github.com/rs/zerolog"
+	"time"
 )
 
 type Client = interfaces.CosmosClient
@@ -25,7 +26,7 @@ func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
 	mgr := pool.NewClientPoolManager(clients, logger)
 	return &clientPool{
 		WrapperClient: wrapper.NewWrapperClient(mgr, logger),
-		poolManager:   pool.NewClientPoolManager(clients, logger),
+		poolManager:   mgr,
 	}
 }
 
@@ -36,4 +37,9 @@ func (p *clientPool) Close() error {
 
 func (p *clientPool) GetHealthStatus() map[string]any {
 	return p.poolManager.GetHealthStatus()
+}
+
+// SetRequestTimeout sets the per-attempt RPC timeout for the pool.
+func (p *clientPool) SetRequestTimeout(d time.Duration) {
+	p.poolManager.SetRequestTimeout(d)
 }

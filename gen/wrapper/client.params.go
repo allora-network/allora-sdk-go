@@ -26,13 +26,13 @@ func NewParamsClientWrapper(poolManager *pool.ClientPoolManager[interfaces.Cosmo
 }
 
 func (c *ParamsClientWrapper) Params(ctx context.Context, req *proposal.QueryParamsRequest, opts ...config.CallOpt) (*proposal.QueryParamsResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*proposal.QueryParamsResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*proposal.QueryParamsResponse, error) {
 		return client.Params().Params(ctx, req, opts...)
 	})
 }
 
 func (c *ParamsClientWrapper) Subspaces(ctx context.Context, req *proposal.QuerySubspacesRequest, opts ...config.CallOpt) (*proposal.QuerySubspacesResponse, error) {
-	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*proposal.QuerySubspacesResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*proposal.QuerySubspacesResponse, error) {
 		return client.Params().Subspaces(ctx, req, opts...)
 	})
 }
