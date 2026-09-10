@@ -1,9 +1,13 @@
 package allora
 
 import (
+	"context"
 	"testing"
 
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateUnsignedSendTx(t *testing.T) {
@@ -198,6 +202,79 @@ func TestTxParamsValidation(t *testing.T) {
 	}
 }
 
+// TestTxParamsValidation_FeeGranterLength pins that a non-empty FeeGranter must be a 20-byte
+// cosmos account address: a wrong-length value is rejected at Validate() rather than serializing
+// into a tx that fails on-chain with a feegrant-not-found error after a wasted broadcast.
+func TestTxParamsValidation_FeeGranterLength(t *testing.T) {
+	tests := []struct {
+		name        string
+		feeGranter  sdk.AccAddress
+		expectError bool
+	}{
+		{
+			name:        "no granter", // the signing wallet pays its own fees
+			feeGranter:  nil,
+			expectError: false,
+		},
+		{
+			name:        "20-byte granter",
+			feeGranter:  make(sdk.AccAddress, 20),
+			expectError: false,
+		},
+		{
+			name:        "10-byte granter",
+			feeGranter:  make(sdk.AccAddress, 10),
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := &TxParams{
+				ChainID:    "allora-testnet-1",
+				GasLimit:   200000,
+				FeeAmount:  sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+				FeeGranter: tt.feeGranter,
+			}
+			err := params.Validate()
+			if tt.expectError {
+				require.ErrorContains(t, err, "fee granter address must be 20 bytes")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestSignTransactionWith_AcceptsMinimalSignTimeParams pins that sign-time validation requires
+// only ChainID (synth-001): a two-phase flow can build the unsigned tx with full params, persist
+// it, then sign later with a minimal params carrying just ChainID/AccountNumber/Sequence. The
+// gas/fee already encoded in the unsigned tx are not re-required at sign time. Before this fix,
+// SignTransactionWith called the full Validate() and rejected such params with
+// "gas limit must be greater than 0", defeating the documented two-phase workflow.
+func TestSignTransactionWith_AcceptsMinimalSignTimeParams(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	buildParams := &TxParams{
+		ChainID:       "allora-testnet-1",
+		AccountNumber: 7,
+		Sequence:      3,
+		GasLimit:      200000,
+		FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	unsigned, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, buildParams)
+	require.NoError(t, err)
+
+	// Minimal sign-time params: no GasLimit / FeeAmount, mirroring a later phase that kept only
+	// the SignerData fields.
+	signParams := &TxParams{ChainID: "allora-testnet-1", AccountNumber: 7, Sequence: 3}
+	signed, err := SignTransactionWith(context.Background(), unsigned, wallet.PrivKey, signParams)
+	require.NoError(t, err)
+	require.NotEmpty(t, signed)
+}
+
 func TestDefaultTxParams(t *testing.T) {
 	params := DefaultTxParams()
 
@@ -378,4 +455,166 @@ func TestTxRoundTrip(t *testing.T) {
 	}
 
 	t.Logf("Parsed transaction with %d message(s)", len(msgs))
+}
+
+// TestSignTransactionWith_RejectsSenderMismatch pins the signer-vs-sender guard in
+// signTx: signing a MsgSend whose FromAddress is walletA with walletB's key must fail
+// before producing a tx the chain would reject opaquely.
+func TestSignTransactionWith_RejectsSenderMismatch(t *testing.T) {
+	walletA, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	walletB, err := GenerateWallet()
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	params := &TxParams{
+		ChainID:       "allora-testnet-1",
+		AccountNumber: 7,
+		Sequence:      3,
+		GasLimit:      200000,
+		FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	// Build the tx with walletA as sender, then try to sign it with walletB's key.
+	unsigned, err := CreateUnsignedSendTx(walletA.Address, walletB.Address, amount, params)
+	require.NoError(t, err)
+
+	_, err = SignTransactionWith(context.Background(), unsigned, walletB.PrivKey, params)
+	require.ErrorContains(t, err, "does not match transaction sender")
+}
+
+// nilPubKeySigner is a Signer whose PubKey() returns a literal-nil interface value. Signer is a
+// public extension point, so a buggy custom implementation must fail with an error rather than
+// panic the worker at pubKey.Address() inside signTx.
+type nilPubKeySigner struct{}
+
+func (nilPubKeySigner) PubKey() cryptotypes.PubKey    { return nil }
+func (nilPubKeySigner) Sign(_ []byte) ([]byte, error) { return nil, nil }
+
+// typedNilPubKeySigner is a Signer whose PubKey() returns a typed-nil pointer: non-nil at the
+// interface level but nil at the concrete level — the case a plain pubKey == nil check misses.
+type typedNilPubKeySigner struct{}
+
+func (typedNilPubKeySigner) PubKey() cryptotypes.PubKey    { return (*secp256k1.PubKey)(nil) }
+func (typedNilPubKeySigner) Sign(_ []byte) ([]byte, error) { return nil, nil }
+
+// TestSignTransactionWith_RejectsNilPubKey pins that a custom Signer whose PubKey() returns nil
+// fails with a clear error rather than panicking at pubKey.Address() inside signTx — for both a
+// literal-nil interface value and a typed-nil pointer (synth-006).
+func TestSignTransactionWith_RejectsNilPubKey(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	params := &TxParams{
+		ChainID:   "allora-testnet-1",
+		GasLimit:  200000,
+		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	unsigned, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, params)
+	require.NoError(t, err)
+
+	cases := []struct {
+		name   string
+		signer Signer
+	}{
+		{"literal nil", nilPubKeySigner{}},
+		{"typed nil", typedNilPubKeySigner{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Must return an error, not panic.
+			_, err := SignTransactionWith(context.Background(), unsigned, tc.signer, params)
+			require.ErrorContains(t, err, "nil public key")
+		})
+	}
+}
+
+func TestTxParams_FeeGranterIsEncoded(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	granter, err := sdk.AccAddressFromBech32(wallet.GetAddress())
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	base := &TxParams{
+		ChainID:   "allora-testnet-1",
+		GasLimit:  200000,
+		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	withGranter := *base
+	withGranter.FeeGranter = granter
+
+	unsignedNoGranter, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, base)
+	require.NoError(t, err)
+	unsignedWithGranter, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, &withGranter)
+	require.NoError(t, err)
+
+	// Setting the fee granter must change the encoded AuthInfo (the granter address is
+	// written into the tx). An empty granter leaves the tx untouched.
+	require.NotEqual(t, unsignedNoGranter, unsignedWithGranter)
+	require.Greater(t, len(unsignedWithGranter), len(unsignedNoGranter))
+}
+
+func TestFeeGranterFromEnv(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	valid := wallet.GetAddress()
+
+	// Clear the deprecated fallback so the canonical-var assertions are deterministic regardless
+	// of the ambient environment.
+	t.Setenv("FEE_GRANTER", "")
+
+	// Unset/blank → nil granter (the signing wallet pays its own fees).
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	got, err := FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Nil(t, got)
+
+	// A valid allo address is parsed into the matching AccAddress.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", valid)
+	got, err = FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, valid, got.String())
+
+	// Whitespace is trimmed.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "  "+valid+"  ")
+	got, err = FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, valid, got.String())
+
+	// A malformed value is rejected at config time rather than reaching broadcast.
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "not-a-bech32-address")
+	_, err = FeeGranterFromEnv()
+	require.Error(t, err)
+}
+
+// TestFeeGranterFromEnv_AcceptsDeprecatedFEEGRANTER pins that the pre-rename FEE_GRANTER env var is
+// still honored as a fallback (synth-007), matching allora-sdk-py, so a Python->Go migration that
+// still sets FEE_GRANTER does not silently fall through to no-granter.
+func TestFeeGranterFromEnv_AcceptsDeprecatedFEEGRANTER(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	valid := wallet.GetAddress()
+
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", "")
+	t.Setenv("FEE_GRANTER", valid)
+	got, err := FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, valid, got.String())
+}
+
+// TestFeeGranterFromEnv_CanonicalTakesPrecedence pins that FORGE_MASTER_GRANTER_ADDRESS wins over
+// the deprecated FEE_GRANTER when both are set.
+func TestFeeGranterFromEnv_CanonicalTakesPrecedence(t *testing.T) {
+	canonical, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	legacy, err := GenerateWallet()
+	require.NoError(t, err)
+
+	t.Setenv("FORGE_MASTER_GRANTER_ADDRESS", canonical.GetAddress())
+	t.Setenv("FEE_GRANTER", legacy.GetAddress())
+	got, err := FeeGranterFromEnv()
+	require.NoError(t, err)
+	require.Equal(t, canonical.GetAddress(), got.String())
 }
