@@ -83,8 +83,6 @@ func NewTendermintWebsocket(rpcURL string, logger zerolog.Logger) *tmWebsocket {
 		wgDone:      &sync.WaitGroup{},
 	}
 
-	ws.resetConnection()
-
 	ws.wgDone.Add(1)
 	go ws.connectionManager()
 
@@ -99,6 +97,14 @@ func (ws *tmWebsocket) Close() {
 func (ws *tmWebsocket) connectionManager() {
 	defer ws.wgDone.Done()
 	defer ws.terminateConnection()
+
+	// resetConnection blocks until a connection is established or Close is
+	// called. Running it here — on the manager goroutine — keeps NewTendermint
+	// Websocket non-blocking so client creation cannot wedge on an unreachable
+	// websocket endpoint.
+	if !ws.resetConnection() {
+		return
+	}
 
 	attempt := 0
 	for {
