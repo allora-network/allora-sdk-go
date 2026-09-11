@@ -34,6 +34,10 @@ type tmWebsocket struct {
 
 	conn   *websocket.Conn
 	muConn *sync.Mutex
+	// muWrite serializes WriteJSON calls on the current conn. gorilla/websocket
+	// does not permit concurrent writers on a single Conn. muConn guards the
+	// conn pointer; muWrite guards writes to whatever conn is current.
+	muWrite *sync.Mutex
 
 	subIDNonce int
 	subs       *butils.SyncMap[int, sub]
@@ -76,14 +80,13 @@ func NewTendermintWebsocket(rpcURL string, logger zerolog.Logger) *tmWebsocket {
 		url:         url,
 		logger:      cometLogger,
 		muConn:      &sync.Mutex{},
+		muWrite:     &sync.Mutex{},
 		subIDNonce:  0,
 		subs:        butils.NewSyncMap[int, sub](),
 		chResetConn: make(chan struct{}, 1),
 		chStop:      make(chan struct{}),
 		wgDone:      &sync.WaitGroup{},
 	}
-
-	ws.resetConnection()
 
 	ws.wgDone.Add(1)
 	go ws.connectionManager()
@@ -99,6 +102,14 @@ func (ws *tmWebsocket) Close() {
 func (ws *tmWebsocket) connectionManager() {
 	defer ws.wgDone.Done()
 	defer ws.terminateConnection()
+
+	// resetConnection blocks until a connection is established or Close is
+	// called. Running it here — on the manager goroutine — keeps NewTendermint
+	// Websocket non-blocking so client creation cannot wedge on an unreachable
+	// websocket endpoint.
+	if !ws.resetConnection() {
+		return
+	}
 
 	attempt := 0
 	for {
@@ -304,8 +315,9 @@ func (ws *tmWebsocket) sendSubscribeMsg(s sub) {
 
 	ws.logger.Info().Msg("subscribing to " + s.event)
 
-	// Grab the connection under the lock, then write WITHOUT holding muConn so
-	// a blocked write cannot deadlock a concurrent read/reset.
+	// Grab the connection under the lock, then write under muWrite so
+	// concurrent Subscribe / resubscribe writes are serialized. gorilla/websocket
+	// does not permit concurrent writers on a single Conn.
 	ws.muConn.Lock()
 	conn := ws.conn
 	ws.muConn.Unlock()
@@ -314,6 +326,8 @@ func (ws *tmWebsocket) sendSubscribeMsg(s sub) {
 		ws.logger.Debug().Msg("no active websocket connection; subscription will be sent on reconnect")
 		return
 	}
+	ws.muWrite.Lock()
+	defer ws.muWrite.Unlock()
 	if err := conn.WriteJSON(subMsg); err != nil {
 		ws.logger.Error().Err(err).Msg("could not write subscription message")
 	}
