@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v9.EventAddStake",
+    "attributes": [
+      {
+        "key": "amount",
+        "value": "\"32660430\"",
+        "index": true
+      },
+      {
+        "key": "delegator",
+        "value": "\"allo1aanuhulxtl2me3ygkwu8jghkjjrslhhgrluad5\"",
+        "index": true
+      },
+      {
+        "key": "reputer",
+        "value": "\"allo1aanuhulxtl2me3ygkwu8jghkjjrslhhgrluad5\"",
+        "index": true
+      },
+      {
+        "key": "topic_id",
+        "value": "\"41\"",
+        "index": true
+      },
+      {
+        "key": "mode",
+        "value": "EndBlock",
+        "index": true
+      }
+    ]
+  }
+]

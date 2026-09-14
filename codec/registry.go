@@ -1,7 +1,9 @@
 package codec
 
 import (
+	"bytes"
 	"encoding/json"
+	"reflect"
 
 	"cosmossdk.io/x/feegrant"
 	upgradetypes "cosmossdk.io/x/upgrade/types"
@@ -19,8 +21,11 @@ import (
 	govv1beta1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+	"github.com/cosmos/gogoproto/jsonpb"
 	"github.com/cosmos/gogoproto/proto"
 	"google.golang.org/grpc/encoding"
+	"google.golang.org/protobuf/encoding/protojson"
+	protov2 "google.golang.org/protobuf/proto"
 
 	// IBC modules
 	ibctransfertypes "github.com/cosmos/ibc-go/v8/modules/apps/transfer/types"
@@ -114,27 +119,94 @@ func NewCodec() *Codec {
 	return &Codec{cosmosCodec}
 }
 
-func (c *Codec) IsTypedEvent(event *abcitypes.Event) bool {
-	concreteGoType := proto.MessageType(event.Type)
-	return concreteGoType != nil
+// untypedDecodeEvents lists event types that resolve in the proto registry but
+// cannot be decoded through their proto definition. The legacy v9 network
+// inference/loss events carry `one_out_inferer_forecaster_values` as a 2-D
+// array on the wire while the pulsar-generated Go type declares it as
+// `repeated string` (the DecArray customtype is invisible to protojson), so
+// protojson rejects the nested array. Callers must treat these as untyped and
+// keep the raw attribute JSON. The v10 gogo types decode fine: the gogo jsonpb
+// path honours the DecArray customtype's UnmarshalJSON.
+var untypedDecodeEvents = map[string]struct{}{
+	"emissions.v9.EventNetworkLossSet":                    {},
+	"emissions.v9.EventNetworkInferences":                 {},
+	"emissions.v9.EventOutlierResistantNetworkInferences": {},
+	"emissions.v9.EventValueBundle":                       {},
 }
 
+// attrKeyMode is appended by the chain to every BeginBlock/EndBlock event with
+// an unquoted value ("BeginBlock"/"EndBlock"). It is never a proto field and is
+// not valid JSON, so it is excluded from the decode input wherever it appears.
+const attrKeyMode = "mode"
+
+// IsTypedEvent reports whether the event can be decoded into its registered
+// proto message. Types in untypedDecodeEvents are registered but undecodable
+// and are reported as untyped so callers fall through to raw attribute JSON.
+func (c *Codec) IsTypedEvent(event *abcitypes.Event) bool {
+	if _, undecodable := untypedDecodeEvents[event.Type]; undecodable {
+		return false
+	}
+	return proto.MessageType(event.Type) != nil
+}
+
+// ParseTypedEvent decodes an ABCI event into its registered proto message. The
+// input event is not mutated.
+//
+// It replaces cosmossdktypes.ParseTypedEvent because that path funnels every
+// message through gogoproto's jsonpb.Unmarshaler, which (gogoproto v1.7.x,
+// jsonpb/jsonpb.go ~L792) maps AllowUnknownFields onto protojson's AllowPartial
+// rather than DiscardUnknown for protov2 (pulsar) messages. The legacy
+// emissions v2–v9 events are pulsar-generated, and baseapp appends a
+// `msg_index` attribute to every event emitted while executing a tx message,
+// so every legacy typed tx event failed with `unknown field "msg_index"`.
+// Unknown attributes (msg_index and any future additions) are kept in the
+// input and ignored by the decoder on both the protov2 and gogo paths.
 func (c *Codec) ParseTypedEvent(event *abcitypes.Event) (proto.Message, error) {
 	if len(event.Attributes) == 0 {
 		return nil, errors.New("event has no attributes")
 	}
-
-	eventCopy := *event
-	if eventCopy.Attributes[len(eventCopy.Attributes)-1].Key == "mode" {
-		eventCopy.Attributes = eventCopy.Attributes[:len(eventCopy.Attributes)-1]
+	if _, undecodable := untypedDecodeEvents[event.Type]; undecodable {
+		return nil, errors.Errorf("event type %q is not typed-decodable; use ParseUntypedEvent", event.Type)
 	}
 
-	protoEvent, err := cosmossdktypes.ParseTypedEvent(eventCopy)
+	concreteGoType := proto.MessageType(event.Type)
+	if concreteGoType == nil {
+		return nil, errors.Errorf("failed to retrieve the message of type %q", event.Type)
+	}
+
+	var value reflect.Value
+	if concreteGoType.Kind() == reflect.Ptr {
+		value = reflect.New(concreteGoType.Elem())
+	} else {
+		value = reflect.Zero(concreteGoType)
+	}
+	protoMsg, ok := value.Interface().(proto.Message)
+	if !ok {
+		return nil, errors.Errorf("%q does not implement proto.Message", event.Type)
+	}
+
+	attrMap := make(map[string]json.RawMessage, len(event.Attributes))
+	for _, attr := range event.Attributes {
+		if attr.Key == attrKeyMode {
+			continue
+		}
+		attrMap[attr.Key] = json.RawMessage(attr.Value)
+	}
+	attrBytes, err := json.Marshal(attrMap)
 	if err != nil {
-		return nil, errors.WithMessage(err, "failed to parse typed event")
+		return nil, errors.WithMessage(err, "failed to marshal event attributes")
 	}
 
-	return protoEvent, nil
+	if msgV2, ok := protoMsg.(protov2.Message); ok {
+		err = protojson.UnmarshalOptions{DiscardUnknown: true}.Unmarshal(attrBytes, msgV2)
+	} else {
+		err = (&jsonpb.Unmarshaler{AllowUnknownFields: true}).Unmarshal(bytes.NewReader(attrBytes), protoMsg)
+	}
+	if err != nil {
+		return nil, errors.WithMessagef(err, "failed to parse typed event %q", event.Type)
+	}
+
+	return protoMsg, nil
 }
 
 func (c *Codec) ParseUntypedEvent(event *abcitypes.Event) (json.RawMessage, error) {

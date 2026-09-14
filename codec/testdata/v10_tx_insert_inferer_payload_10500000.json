@@ -1,0 +1,42 @@
+[
+  {
+    "type": "emissions.v10.EventInsertInfererPayload",
+    "attributes": [
+      {
+        "key": "extra_data",
+        "value": "null",
+        "index": true
+      },
+      {
+        "key": "inferer",
+        "value": "\"allo19f8ljwal8hrsfv7udvv0pzcgyd2hukd6whh550\"",
+        "index": true
+      },
+      {
+        "key": "nonce",
+        "value": "\"10499999\"",
+        "index": true
+      },
+      {
+        "key": "topic_id",
+        "value": "\"83\"",
+        "index": true
+      },
+      {
+        "key": "value",
+        "value": "\"0.126859700106903839\"",
+        "index": true
+      },
+      {
+        "key": "values",
+        "value": "[]",
+        "index": true
+      },
+      {
+        "key": "msg_index",
+        "value": "0",
+        "index": true
+      }
+    ]
+  }
+]
