@@ -14,7 +14,7 @@ import (
 	"strings"
 	"text/template"
 
-	butils "github.com/brynbellomy/go-utils"
+	bcoll "github.com/brynbellomy/go-utils/coll"
 	annotations "google.golang.org/genproto/googleapis/api/annotations"
 
 	"google.golang.org/protobuf/proto"
@@ -144,7 +144,7 @@ func generateFromProtos(args []string) {
 		log.Fatalf("failed to create files registry: %v", err)
 	}
 
-	fileSet := butils.NewSet[string]()
+	fileSet := bcoll.NewSet[string]()
 	for _, file := range files {
 		for _, include := range includes {
 			if !strings.HasPrefix(file, include) {

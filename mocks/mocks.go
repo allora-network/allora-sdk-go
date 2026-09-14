@@ -10,7 +10,7 @@ import (
 	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
 	"github.com/allora-network/allora-sdk-go/tmrpc"
-	"github.com/brynbellomy/go-utils"
+	bsync "github.com/brynbellomy/go-utils/sync"
 	"github.com/cometbft/cometbft/types"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -916,7 +916,7 @@ func (_c *MockIClient_Status_Call) RunAndReturn(run func(ctx context.Context) er
 }
 
 // Subscribe provides a mock function for the type MockIClient
-func (_mock *MockIClient) Subscribe(mb *utils.Mailbox[types.TMEventData], query string) {
+func (_mock *MockIClient) Subscribe(mb *bsync.Mailbox[types.TMEventData], query string) {
 	_mock.Called(mb, query)
 	return
 }
@@ -927,17 +927,17 @@ type MockIClient_Subscribe_Call struct {
 }
 
 // Subscribe is a helper method to define mock.On call
-//   - mb *utils.Mailbox[types.TMEventData]
+//   - mb *bsync.Mailbox[types.TMEventData]
 //   - query string
 func (_e *MockIClient_Expecter) Subscribe(mb interface{}, query interface{}) *MockIClient_Subscribe_Call {
 	return &MockIClient_Subscribe_Call{Call: _e.mock.On("Subscribe", mb, query)}
 }
 
-func (_c *MockIClient_Subscribe_Call) Run(run func(mb *utils.Mailbox[types.TMEventData], query string)) *MockIClient_Subscribe_Call {
+func (_c *MockIClient_Subscribe_Call) Run(run func(mb *bsync.Mailbox[types.TMEventData], query string)) *MockIClient_Subscribe_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 *utils.Mailbox[types.TMEventData]
+		var arg0 *bsync.Mailbox[types.TMEventData]
 		if args[0] != nil {
-			arg0 = args[0].(*utils.Mailbox[types.TMEventData])
+			arg0 = args[0].(*bsync.Mailbox[types.TMEventData])
 		}
 		var arg1 string
 		if args[1] != nil {
@@ -956,7 +956,7 @@ func (_c *MockIClient_Subscribe_Call) Return() *MockIClient_Subscribe_Call {
 	return _c
 }
 
-func (_c *MockIClient_Subscribe_Call) RunAndReturn(run func(mb *utils.Mailbox[types.TMEventData], query string)) *MockIClient_Subscribe_Call {
+func (_c *MockIClient_Subscribe_Call) RunAndReturn(run func(mb *bsync.Mailbox[types.TMEventData], query string)) *MockIClient_Subscribe_Call {
 	_c.Run(run)
 	return _c
 }
