@@ -190,6 +190,13 @@ func (c *Codec) ParseTypedEvent(event *abcitypes.Event) (proto.Message, error) {
 		if attr.Key == attrKeyMode {
 			continue
 		}
+		// EmitTypedEvent builds attributes from a JSON object, so a typed event
+		// never carries a key twice; a duplicate means the event was corrupted
+		// upstream (e.g. a caller grafting attributes) and must not be decoded
+		// last-wins.
+		if _, dup := attrMap[attr.Key]; dup {
+			return nil, errors.Errorf("event %q has duplicate attribute key %q", event.Type, attr.Key)
+		}
 		attrMap[attr.Key] = json.RawMessage(attr.Value)
 	}
 	attrBytes, err := json.Marshal(attrMap)

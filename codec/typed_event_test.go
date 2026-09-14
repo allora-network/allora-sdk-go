@@ -178,6 +178,21 @@ func TestParseTypedEvent_UnknownAttributesIgnored(t *testing.T) {
 	}
 }
 
+// A typed event never carries the same key twice (EmitTypedEvent builds the
+// attributes from a JSON object); a duplicate is upstream corruption and must
+// be refused rather than decoded last-wins.
+func TestParseTypedEvent_DuplicateAttributeKeyRejected(t *testing.T) {
+	cdc := codec.NewCodec()
+	ev := loadEventFixture(t, "v9_endblock_add_stake_9977429.json")
+	ev.Attributes = append(ev.Attributes, abcitypes.EventAttribute{Key: "amount", Value: `"1"`})
+	before := cloneEvent(ev)
+
+	_, err := cdc.ParseTypedEvent(&ev)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), `duplicate attribute key "amount"`)
+	require.Equal(t, before, ev, "input event must not be mutated")
+}
+
 func TestParseTypedEvent_NoAttributes(t *testing.T) {
 	cdc := codec.NewCodec()
 	_, err := cdc.ParseTypedEvent(&abcitypes.Event{Type: "emissions.v9.EventAddStake"})
