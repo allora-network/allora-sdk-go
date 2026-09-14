@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	abcitypes "github.com/cometbft/cometbft/abci/types"
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 
 	alloramath "github.com/allora-network/allora-chain/math"
@@ -171,15 +172,26 @@ func TestParseTypedEvent_CurrentTxEventWithMsgIndex(t *testing.T) {
 func TestParseTypedEvent_UnknownAttributesIgnored(t *testing.T) {
 	cdc := codec.NewCodec()
 
-	for name, fixture := range map[string]string{
-		"legacy protov2": "v9_tx_insert_inferer_payload_9977429.json",
-		"current gogo":   "v10_tx_insert_inferer_payload_10500000.json",
+	for name, tc := range map[string]struct {
+		fixture string
+		topicID func(proto.Message) uint64
+	}{
+		"legacy protov2": {
+			fixture: "v9_tx_insert_inferer_payload_9977429.json",
+			topicID: func(m proto.Message) uint64 { return m.(*emissionsv9.EventInsertInfererPayload).TopicId },
+		},
+		"current gogo": {
+			fixture: "v10_tx_insert_inferer_payload_10500000.json",
+			topicID: func(m proto.Message) uint64 { return m.(*emissionsv10.EventInsertInfererPayload).TopicId },
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			ev := loadEventFixture(t, fixture)
+			ev := loadEventFixture(t, tc.fixture)
 			ev.Attributes = append(ev.Attributes, abcitypes.EventAttribute{Key: "some_future_field", Value: `{"nested":[1,2]}`})
-			_, err := cdc.ParseTypedEvent(&ev)
+			msg, err := cdc.ParseTypedEvent(&ev)
 			require.NoError(t, err)
+			// Ignoring the unknown key must not cost the known ones.
+			require.NotZero(t, tc.topicID(msg))
 		})
 	}
 }
