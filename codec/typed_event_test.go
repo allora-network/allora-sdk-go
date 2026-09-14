@@ -159,6 +159,12 @@ func TestParseTypedEvent_CurrentTxEventWithMsgIndex(t *testing.T) {
 	require.Equal(t, uint64(83), payload.TopicId)
 	require.Equal(t, int64(10499999), payload.Nonce)
 	require.Equal(t, "allo19f8ljwal8hrsfv7udvv0pzcgyd2hukd6whh550", payload.Inferer)
+	// Customtype (Dec), bytes-from-null, and empty repeated fields all go
+	// through gogo jsonpb's own handling; pin them so a regression on the gogo
+	// path is caught, not just the protov2 one.
+	require.Equal(t, "0.126859700106903839", payload.Value.String())
+	require.Empty(t, payload.ExtraData)
+	require.Empty(t, payload.Values)
 }
 
 // Any unknown attribute — not just msg_index — is ignored on both decode paths.
