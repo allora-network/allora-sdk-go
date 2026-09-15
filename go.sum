@@ -96,6 +96,8 @@ github.com/bits-and-blooms/bitset v1.8.0 h1:FD+XqgOZDUxxZ8hzoBFuV9+cGWY9CslN6d5M
 github.com/bits-and-blooms/bitset v1.8.0/go.mod h1:7hO7Gc7Pp1vODcmWvKMRA9BNmbv6a/7QIWpPxHddWR8=
 github.com/brynbellomy/go-utils v0.0.0-20260826204239-6f7947940f7d h1:I2nRqLncIJ1kS5RhVp/n9Kh7sAaJLr1qJ458mM6WDu8=
 github.com/brynbellomy/go-utils v0.0.0-20260826204239-6f7947940f7d/go.mod h1:C8L35lIUHdASFFOP8i4jRjsHg7dR7WW44WjYd4eqHjA=
+github.com/brynbellomy/go-utils v0.0.0-20260915034819-9d9dd3f5b4c5 h1:Zlr9gOCwmQJjcizL7d7nxptDvkqh88oZ/2A5oeZmtzU=
+github.com/brynbellomy/go-utils v0.0.0-20260915034819-9d9dd3f5b4c5/go.mod h1:C8L35lIUHdASFFOP8i4jRjsHg7dR7WW44WjYd4eqHjA=
 github.com/btcsuite/btcd/btcec/v2 v2.3.4 h1:3EJjcN70HCu/mwqlUsGK8GcNVyLVxFDlWurTXGPFfiQ=
 github.com/btcsuite/btcd/btcec/v2 v2.3.4/go.mod h1:zYzJ8etWJQIv1Ogk7OzpWjowwOdXY1W/17j2MW85J04=
 github.com/btcsuite/btcd/btcutil v1.1.6 h1:zFL2+c3Lb9gEgqKNzowKUPQNb8jV7v5Oaodi/AYFd6c=

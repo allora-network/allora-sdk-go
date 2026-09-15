@@ -11,7 +11,7 @@ require (
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/upgrade v0.1.4
 	github.com/allora-network/allora-chain v0.17.0
-	github.com/brynbellomy/go-utils v0.0.0-20260826204239-6f7947940f7d
+	github.com/brynbellomy/go-utils v0.0.0-20260915034819-9d9dd3f5b4c5
 	github.com/cometbft/cometbft v0.38.21
 	github.com/cosmos/cosmos-sdk v0.50.14
 	github.com/cosmos/go-bip39 v1.0.0
