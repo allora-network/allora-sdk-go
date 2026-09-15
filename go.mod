@@ -1,6 +1,6 @@
 module github.com/allora-network/allora-sdk-go
 
-go 1.24.0
+go 1.27.1
 
 replace github.com/cosmos/cosmos-sdk => github.com/cosmos/cosmos-sdk v0.50.14
 
