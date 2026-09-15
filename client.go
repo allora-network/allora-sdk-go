@@ -3,7 +3,7 @@ package allora
 import (
 	"fmt"
 
-	butils "github.com/brynbellomy/go-utils"
+	bsync "github.com/brynbellomy/go-utils/sync"
 	ctypes "github.com/cometbft/cometbft/types"
 	"github.com/rs/zerolog"
 
@@ -18,7 +18,7 @@ import (
 type Client interface {
 	Cosmos() cosmosrpc.ClientPool
 	Tendermint() tmrpc.ClientPool
-	Subscribe(mb *butils.Mailbox[ctypes.TMEventData], query string)
+	Subscribe(mb *bsync.Mailbox[ctypes.TMEventData], query string)
 }
 
 // Client is the Allora Network client that provides access to all query services.
@@ -142,7 +142,7 @@ func (c *client) Tendermint() tmrpc.ClientPool {
 	return c.tendermintPool
 }
 
-func (c *client) Subscribe(mb *butils.Mailbox[ctypes.TMEventData], query string) {
+func (c *client) Subscribe(mb *bsync.Mailbox[ctypes.TMEventData], query string) {
 	c.websocketPool.Subscribe(mb, query)
 }
 

@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	butils "github.com/brynbellomy/go-utils"
+	bcoll "github.com/brynbellomy/go-utils/coll"
+	bsync "github.com/brynbellomy/go-utils/sync"
 	cmtjson "github.com/cometbft/cometbft/libs/json"
 	rpctypes "github.com/cometbft/cometbft/rpc/core/types"
 	jsonrpctypes "github.com/cometbft/cometbft/rpc/jsonrpc/types"
@@ -40,7 +41,7 @@ type tmWebsocket struct {
 	muWrite *sync.Mutex
 
 	subIDNonce int
-	subs       *butils.SyncMap[int, sub]
+	subs       *bcoll.SyncMap[int, sub]
 
 	chResetConn chan struct{}
 	chStop      chan struct{}
@@ -49,10 +50,10 @@ type tmWebsocket struct {
 
 var _ Websocket = (*tmWebsocket)(nil)
 
-type Mailbox = butils.Mailbox[ctypes.TMEventData]
+type Mailbox = bsync.Mailbox[ctypes.TMEventData]
 
 func NewMailbox(capacity uint64) *Mailbox {
-	return butils.NewMailbox[ctypes.TMEventData](capacity)
+	return bsync.NewMailbox[ctypes.TMEventData](capacity)
 }
 
 type sub struct {
@@ -82,7 +83,7 @@ func NewTendermintWebsocket(rpcURL string, logger zerolog.Logger) *tmWebsocket {
 		muConn:      &sync.Mutex{},
 		muWrite:     &sync.Mutex{},
 		subIDNonce:  0,
-		subs:        butils.NewSyncMap[int, sub](),
+		subs:        bcoll.NewSyncMap[int, sub](),
 		chResetConn: make(chan struct{}, 1),
 		chStop:      make(chan struct{}),
 		wgDone:      &sync.WaitGroup{},
