@@ -120,17 +120,20 @@ func NewCodec() *Codec {
 }
 
 // untypedDecodeEvents lists event types that resolve in the proto registry but
-// cannot be decoded through their proto definition. The legacy v9 network
-// inference/loss events carry `one_out_inferer_forecaster_values` as a 2-D
-// array on the wire while the pulsar-generated Go type declares it as
+// cannot be decoded through their proto definition. The legacy v9
+// EventValueBundle carries `one_out_inferer_forecaster_values` as a 2-D array
+// on the wire while the pulsar-generated Go type declares it as
 // `repeated string` (the DecArray customtype is invisible to protojson), so
-// protojson rejects the nested array. Callers must treat these as untyped and
-// keep the raw attribute JSON. The v10 gogo types decode fine: the gogo jsonpb
-// path honours the DecArray customtype's UnmarshalJSON.
+// protojson rejects the nested array. Every v9 event that embeds the bundle
+// fails the same way: the network loss/inference events and the reputer
+// payload. Callers must treat these as untyped and keep the raw attribute JSON.
+// The v10 gogo types decode fine: the gogo jsonpb path honours the DecArray
+// customtype's UnmarshalJSON.
 var untypedDecodeEvents = map[string]struct{}{
 	"emissions.v9.EventNetworkLossSet":                    {},
 	"emissions.v9.EventNetworkInferences":                 {},
 	"emissions.v9.EventOutlierResistantNetworkInferences": {},
+	"emissions.v9.EventInsertReputerPayload":              {},
 	"emissions.v9.EventValueBundle":                       {},
 }
 

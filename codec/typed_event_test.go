@@ -122,10 +122,39 @@ func TestIsTypedEvent_LegacyNestedArrayEventsAreUntyped(t *testing.T) {
 	for _, typ := range []string{
 		"emissions.v9.EventNetworkInferences",
 		"emissions.v9.EventOutlierResistantNetworkInferences",
+		"emissions.v9.EventInsertReputerPayload",
 		"emissions.v9.EventValueBundle",
 	} {
 		require.False(t, cdc.IsTypedEvent(&abcitypes.Event{Type: typ}), typ)
 	}
+}
+
+// The v9 reputer payload embeds the same EventValueBundle as the loss/inference
+// events, so its `bundle` attribute carries the 2-D array too. It is a tx event
+// (carries `msg_index`) and must be reported untyped with the raw JSON intact.
+func TestIsTypedEvent_LegacyReputerPayloadIsUntyped(t *testing.T) {
+	cdc := codec.NewCodec()
+	ev := loadEventFixture(t, "v9_tx_insert_reputer_payload_9977185.json")
+	require.Equal(t, "emissions.v9.EventInsertReputerPayload", ev.Type)
+
+	require.False(t, cdc.IsTypedEvent(&ev))
+	_, err := cdc.ParseTypedEvent(&ev)
+	require.Error(t, err)
+
+	raw, err := cdc.ParseUntypedEvent(&ev)
+	require.NoError(t, err)
+	var attrs map[string]string
+	require.NoError(t, json.Unmarshal(raw, &attrs))
+	require.Contains(t, attrs, "bundle")
+	require.Contains(t, attrs, "reputer")
+	require.Contains(t, attrs, "topic_id")
+
+	var bundle struct {
+		OneOutInfererForecasterValues [][]string `json:"one_out_inferer_forecaster_values"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(attrs["bundle"]), &bundle))
+	require.NotEmpty(t, bundle.OneOutInfererForecasterValues, "fixture must carry the nested array that breaks protojson")
+	require.NotEmpty(t, bundle.OneOutInfererForecasterValues[0])
 }
 
 // The current (gogo) EventNetworkLossSet decodes its nested DecArray through
