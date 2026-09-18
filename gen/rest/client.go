@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -97,6 +99,17 @@ func WithTimeout(d time.Duration) RESTClientOption {
 	}
 }
 
+// WithConnectionTimeout sets the timeout applied when dialing a new TCP
+// connection. Non-positive values leave the default in place.
+func WithConnectionTimeout(d time.Duration) RESTClientOption {
+	return func(c *RESTClientCore) {
+		if d <= 0 {
+			return
+		}
+		c.transport.DialContext = newDialer(d).DialContext
+	}
+}
+
 // Close closes the client
 func (c *RESTClient) Close() error {
 	return nil
@@ -185,9 +198,27 @@ func (c *RESTClient) HealthCheck(ctx context.Context) error {
 	return c.Status(ctx)
 }
 
+// HTTP connection pool sizing. Go's default transport keeps only two idle
+// connections per host, so a caller issuing many concurrent queries against a
+// single endpoint pays a fresh TCP (and TLS) handshake for most of them; across
+// a proxied or high-latency link that handshake dominates request time.
+const (
+	defaultMaxIdleConns        = 512
+	defaultMaxIdleConnsPerHost = 256
+	defaultIdleConnTimeout     = 90 * time.Second
+	defaultDialTimeout         = 10 * time.Second
+	defaultDialKeepAlive       = 30 * time.Second
+	defaultRequestTimeout      = 30 * time.Second
+
+	// maxDrainBytes caps how much of an unconsumed response body is read before
+	// the connection is closed instead of returned to the idle pool.
+	maxDrainBytes = 1 << 20
+)
+
 type RESTClientCore struct {
 	baseURL    string
 	httpClient *http.Client
+	transport  *http.Transport
 	logger     zerolog.Logger
 
 	marshaler   jsonpb.Marshaler
@@ -195,10 +226,13 @@ type RESTClientCore struct {
 }
 
 func NewRESTClientCore(baseURL string, logger zerolog.Logger, opts ...RESTClientOption) *RESTClientCore {
+	transport := newPooledTransport(defaultDialTimeout)
 	c := &RESTClientCore{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
+		baseURL:   strings.TrimSuffix(baseURL, "/"),
+		transport: transport,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   defaultRequestTimeout,
+			Transport: transport,
 		},
 		logger: logger.With().Str("protocol", "rest").Str("endpoint", baseURL).Logger(),
 	}
@@ -206,6 +240,33 @@ func NewRESTClientCore(baseURL string, logger zerolog.Logger, opts ...RESTClient
 		opt(c)
 	}
 	return c
+}
+
+// newPooledTransport clones http.DefaultTransport and widens its idle
+// connection pool so that concurrent requests to one endpoint reuse
+// connections rather than reconnecting.
+func newPooledTransport(dialTimeout time.Duration) *http.Transport {
+	var transport *http.Transport
+	if base, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = base.Clone()
+	} else {
+		transport = &http.Transport{Proxy: http.ProxyFromEnvironment}
+	}
+	transport.DialContext = newDialer(dialTimeout).DialContext
+	transport.MaxIdleConns = defaultMaxIdleConns
+	transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
+	transport.IdleConnTimeout = defaultIdleConnTimeout
+	return transport
+}
+
+func newDialer(timeout time.Duration) *net.Dialer {
+	if timeout <= 0 {
+		timeout = defaultDialTimeout
+	}
+	return &net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: defaultDialKeepAlive,
+	}
 }
 
 func (c *RESTClientCore) executeRequest(
@@ -279,7 +340,13 @@ func (c *RESTClientCore) executeRequest(
 	if err != nil {
 		return errors.Wrapf(err, "HTTP request failed")
 	}
-	defer resp.Body.Close()
+	// Drain whatever the caller leaves behind (error payloads, trailing bytes
+	// after the decoded message) so the connection goes back to the idle pool
+	// instead of being torn down.
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return errors.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)

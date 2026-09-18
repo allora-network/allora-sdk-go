@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	tmhttp "github.com/cometbft/cometbft/rpc/client/http"
 	coretypes "github.com/cometbft/cometbft/rpc/core/types"
+	jsonrpcclient "github.com/cometbft/cometbft/rpc/jsonrpc/client"
 	"github.com/rs/zerolog"
 
 	"github.com/allora-network/allora-sdk-go/config"
@@ -25,20 +27,24 @@ type Client interface {
 	Status(ctx context.Context) (*coretypes.ResultStatus, error)
 }
 
+// HTTP connection pool sizing. CometBFT's default client leaves the transport's
+// pool fields at zero, which caps idle connections at two per host, so every
+// additional concurrent RPC against one node pays a fresh TCP handshake.
+const (
+	maxIdleConns        = 512
+	maxIdleConnsPerHost = 256
+	idleConnTimeout     = 90 * time.Second
+)
+
 // NewHTTPClient constructs a Tendermint RPC client backed by CometBFT's HTTP implementation.
 // The remote must include the scheme, e.g. http://node:26657.
 func NewHTTPClient(remote, wsURL string, timeout time.Duration, logger zerolog.Logger) (Client, error) {
-	var (
-		tmClient *tmhttp.HTTP
-		err      error
-	)
-
-	if timeout > 0 {
-		seconds := uint((timeout + time.Second - 1) / time.Second)
-		tmClient, err = tmhttp.NewWithTimeout(remote, wsURL, seconds)
-	} else {
-		tmClient, err = tmhttp.New(remote, wsURL)
+	pooled, err := newPooledHTTPClient(remote, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("tmrpc: failed to create HTTP client for %s: %w", remote, err)
 	}
+
+	tmClient, err := tmhttp.NewWithClient(remote, wsURL, pooled)
 	if err != nil {
 		return nil, fmt.Errorf("tmrpc: failed to create HTTP client for %s: %w", remote, err)
 	}
@@ -48,6 +54,27 @@ func NewHTTPClient(remote, wsURL string, timeout time.Duration, logger zerolog.L
 		http:   tmClient,
 		logger: logger.With().Str("component", "tmrpc_client").Str("remote", remote).Logger(),
 	}, nil
+}
+
+// newPooledHTTPClient builds CometBFT's HTTP client (which knows how to dial
+// tcp://, unix:// and http(s):// remotes) and widens its idle connection pool so
+// that concurrent RPCs to one node reuse connections rather than reconnecting.
+func newPooledHTTPClient(remote string, timeout time.Duration) (*http.Client, error) {
+	client, err := jsonrpcclient.DefaultHTTPClient(remote)
+	if err != nil {
+		return nil, err
+	}
+
+	if transport, ok := client.Transport.(*http.Transport); ok {
+		transport.MaxIdleConns = maxIdleConns
+		transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
+		transport.IdleConnTimeout = idleConnTimeout
+	}
+
+	if timeout > 0 {
+		client.Timeout = timeout
+	}
+	return client, nil
 }
 
 type httpClient struct {
