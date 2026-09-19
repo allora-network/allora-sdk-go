@@ -89,15 +89,32 @@ func WithConnectionTimeout(d time.Duration) RESTClientOption {
 
 // WithTransport sends the client's requests through rt instead of the pooled
 // transport it builds for itself. The client neither tunes nor closes a
-// RoundTripper it was handed, because the caller may be sharing it. A nil rt is
-// ignored. Apply this before WithMetrics so that the metrics wrapper wraps rt.
+// RoundTripper it was handed, because the caller may be sharing it. A nil rt,
+// including a typed nil such as (*http.Transport)(nil), is ignored. Apply this
+// before WithMetrics so that the metrics wrapper wraps rt.
 func WithTransport(rt http.RoundTripper) RESTClientOption {
     return func(c *RESTClientCore) {
-        if rt == nil {
+        if isNilRoundTripper(rt) {
             return
         }
         c.transport = nil
         c.httpClient.Transport = rt
+    }
+}
+
+// isNilRoundTripper reports whether rt is nil or an interface holding a nil
+// pointer, map, slice, func, or channel. A typed nil such as (*http.Transport)(nil)
+// compares unequal to nil as an interface but panics on first use, so both
+// count as "no transport supplied".
+func isNilRoundTripper(rt http.RoundTripper) bool {
+    if rt == nil {
+        return true
+    }
+    switch v := reflect.ValueOf(rt); v.Kind() {
+    case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Interface:
+        return v.IsNil()
+    default:
+        return false
     }
 }
 

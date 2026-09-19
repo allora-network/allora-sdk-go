@@ -125,6 +125,17 @@ func TestWithTransportIgnoresNil(t *testing.T) {
 	require.Same(t, core.transport, core.httpClient.Transport)
 }
 
+// A typed nil is not equal to a nil interface, so without an explicit check it
+// would be installed as the transport and panic on the first request.
+func TestWithTransportIgnoresTypedNil(t *testing.T) {
+	var typedNil *http.Transport
+
+	core := NewRESTClientCore("http://example.invalid", zerolog.Nop(), WithTransport(typedNil))
+
+	require.NotNil(t, core.transport)
+	require.Same(t, core.transport, core.httpClient.Transport)
+}
+
 func TestWithConnectionTimeoutIgnoresNonPositiveValues(t *testing.T) {
 	core := NewRESTClientCore("http://example.invalid", zerolog.Nop())
 	dialBefore := core.transport.DialContext
