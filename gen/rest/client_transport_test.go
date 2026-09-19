@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,106 @@ func TestNewRESTClientCoreConfiguresConnectionPool(t *testing.T) {
 	require.Equal(t, defaultMaxIdleConnsPerHost, core.transport.MaxIdleConnsPerHost)
 	require.Equal(t, defaultIdleConnTimeout, core.transport.IdleConnTimeout)
 	require.Equal(t, defaultRequestTimeout, core.httpClient.Timeout)
+	require.Same(t, core.transport, core.httpClient.Transport)
+}
+
+// countingRoundTripper stands in for the instrumentation wrappers callers
+// install as http.DefaultTransport. It is deliberately not an *http.Transport,
+// so it cannot be cloned or pool-tuned.
+type countingRoundTripper struct {
+	base  http.RoundTripper
+	calls atomic.Int64
+}
+
+func (rt *countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.calls.Add(1)
+	return rt.base.RoundTrip(req)
+}
+
+// useDefaultTransport installs rt as http.DefaultTransport for the duration of
+// the test. Tests that call it must not run in parallel with anything issuing
+// HTTP requests.
+func useDefaultTransport(t *testing.T, rt http.RoundTripper) {
+	t.Helper()
+
+	previous := http.DefaultTransport
+	http.DefaultTransport = rt
+	t.Cleanup(func() { http.DefaultTransport = previous })
+}
+
+func okHandler(w http.ResponseWriter, _ *http.Request) {
+	_, _ = w.Write([]byte(`{}`))
+}
+
+// TestNewRESTClientCoreKeepsDefaultTransportItCannotClone covers the process
+// that has replaced http.DefaultTransport with a RoundTripper of its own:
+// building a bare transport instead would take that wrapper off every REST
+// request. Pool tuning is given up in exchange, so the client must also not
+// claim ownership of the borrowed round tripper.
+func TestNewRESTClientCoreKeepsDefaultTransportItCannotClone(t *testing.T) {
+	server, _ := newConnCountingServer(t, okHandler)
+
+	wrapper := &countingRoundTripper{base: http.DefaultTransport}
+	useDefaultTransport(t, wrapper)
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop(), WithConnectionTimeout(time.Second))
+	require.Nil(t, core.transport, "an uncloneable round tripper is borrowed, not owned")
+	require.Same(t, wrapper, core.httpClient.Transport)
+
+	err := core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), wrapper.calls.Load())
+}
+
+// TestWithMetricsWrapsBorrowedRoundTripper checks that metrics collection still
+// composes over a round tripper the client does not own.
+func TestWithMetricsWrapsBorrowedRoundTripper(t *testing.T) {
+	server, _ := newConnCountingServer(t, okHandler)
+
+	wrapper := &countingRoundTripper{base: http.DefaultTransport}
+	useDefaultTransport(t, wrapper)
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop(), WithMetrics())
+	require.Nil(t, core.transport)
+	require.NotSame(t, wrapper, core.httpClient.Transport, "the metrics collector should sit in front of the wrapper")
+
+	err := core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), wrapper.calls.Load())
+}
+
+// TestWithMetricsKeepsOwnedTransport checks the same composition in the usual
+// case, where the client did build and tune its own transport.
+func TestWithMetricsKeepsOwnedTransport(t *testing.T) {
+	server, _ := newConnCountingServer(t, okHandler)
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop(), WithMetrics())
+	require.NotNil(t, core.transport)
+	require.Equal(t, defaultMaxIdleConnsPerHost, core.transport.MaxIdleConnsPerHost)
+	require.NotSame(t, core.transport, core.httpClient.Transport)
+
+	err := core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+}
+
+func TestWithTransportUsesSuppliedRoundTripper(t *testing.T) {
+	server, _ := newConnCountingServer(t, okHandler)
+
+	supplied := &countingRoundTripper{base: http.DefaultTransport}
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop(), WithTransport(supplied), WithConnectionTimeout(time.Second))
+	require.Nil(t, core.transport, "a supplied round tripper is borrowed, not owned")
+	require.Same(t, supplied, core.httpClient.Transport)
+
+	err := core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), supplied.calls.Load())
+}
+
+func TestWithTransportIgnoresNil(t *testing.T) {
+	core := NewRESTClientCore("http://example.invalid", zerolog.Nop(), WithTransport(nil))
+
+	require.NotNil(t, core.transport)
 	require.Same(t, core.transport, core.httpClient.Transport)
 }
 

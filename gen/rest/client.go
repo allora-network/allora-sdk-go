@@ -100,13 +100,29 @@ func WithTimeout(d time.Duration) RESTClientOption {
 }
 
 // WithConnectionTimeout sets the timeout applied when dialing a new TCP
-// connection. Non-positive values leave the default in place.
+// connection. Non-positive values leave the default in place. It does nothing
+// when the client is borrowing a RoundTripper it did not build, since dialing is
+// then that RoundTripper's business.
 func WithConnectionTimeout(d time.Duration) RESTClientOption {
 	return func(c *RESTClientCore) {
-		if d <= 0 {
+		if d <= 0 || c.transport == nil {
 			return
 		}
 		c.transport.DialContext = newDialer(d).DialContext
+	}
+}
+
+// WithTransport sends the client's requests through rt instead of the pooled
+// transport it builds for itself. The client neither tunes nor closes a
+// RoundTripper it was handed, because the caller may be sharing it. A nil rt is
+// ignored. Apply this before WithMetrics so that the metrics wrapper wraps rt.
+func WithTransport(rt http.RoundTripper) RESTClientOption {
+	return func(c *RESTClientCore) {
+		if rt == nil {
+			return
+		}
+		c.transport = nil
+		c.httpClient.Transport = rt
 	}
 }
 
@@ -216,7 +232,12 @@ const (
 )
 
 type RESTClientCore struct {
-	baseURL    string
+	baseURL string
+	// httpClient carries every request. transport is the pooled transport this
+	// client built for itself, and is nil whenever the round tripper in use
+	// belongs to someone else — a caller-supplied one, or a process-wide
+	// replacement for http.DefaultTransport — which this client must neither
+	// reconfigure nor close.
 	httpClient *http.Client
 	transport  *http.Transport
 	logger     zerolog.Logger
@@ -227,12 +248,20 @@ type RESTClientCore struct {
 
 func NewRESTClientCore(baseURL string, logger zerolog.Logger, opts ...RESTClientOption) *RESTClientCore {
 	transport := newPooledTransport(defaultDialTimeout)
+
+	// Assigning a nil *http.Transport to the client's RoundTripper field would
+	// leave it non-nil and panic on the first request, so choose explicitly.
+	var roundTripper http.RoundTripper = http.DefaultTransport
+	if transport != nil {
+		roundTripper = transport
+	}
+
 	c := &RESTClientCore{
 		baseURL:   strings.TrimSuffix(baseURL, "/"),
 		transport: transport,
 		httpClient: &http.Client{
 			Timeout:   defaultRequestTimeout,
-			Transport: transport,
+			Transport: roundTripper,
 		},
 		logger: logger.With().Str("protocol", "rest").Str("endpoint", baseURL).Logger(),
 	}
@@ -245,13 +274,18 @@ func NewRESTClientCore(baseURL string, logger zerolog.Logger, opts ...RESTClient
 // newPooledTransport clones http.DefaultTransport and widens its idle
 // connection pool so that concurrent requests to one endpoint reuse
 // connections rather than reconnecting.
+//
+// It returns nil when http.DefaultTransport has been replaced by a RoundTripper
+// that is not an *http.Transport, such as an instrumentation wrapper. There is
+// nothing to clone or tune in that case, and the caller keeps using the
+// replacement as-is: dropping it would take that instrumentation off every REST
+// request, which costs more than the wider pool buys.
 func newPooledTransport(dialTimeout time.Duration) *http.Transport {
-	var transport *http.Transport
-	if base, ok := http.DefaultTransport.(*http.Transport); ok {
-		transport = base.Clone()
-	} else {
-		transport = &http.Transport{Proxy: http.ProxyFromEnvironment}
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return nil
 	}
+	transport := base.Clone()
 	transport.DialContext = newDialer(dialTimeout).DialContext
 	transport.MaxIdleConns = defaultMaxIdleConns
 	transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
