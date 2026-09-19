@@ -50,7 +50,7 @@ func TestNewPooledHTTPClientRejectsInvalidRemote(t *testing.T) {
 // with the standard library's default of two idle connections per host, most
 // calls would instead open a new one.
 func TestHTTPClientReusesConnections(t *testing.T) {
-	server, acceptedConns := newJSONRPCServer(t)
+	server, acceptedConns, _ := newJSONRPCServer(t)
 
 	client, err := NewHTTPClient(server.URL, server.URL+"/websocket", 5*time.Second, zerolog.Nop())
 	require.NoError(t, err)
@@ -97,13 +97,32 @@ func TestHTTPClientReusesConnections(t *testing.T) {
 	require.LessOrEqual(t, acceptedConns(), workers*3)
 }
 
+// TestHTTPClientCloseReleasesIdleConnections pins down that Close hands the
+// pooled sockets back instead of leaving them idling until the pool's idle
+// timeout expires. Stopping the websocket client alone does not touch them.
+func TestHTTPClientCloseReleasesIdleConnections(t *testing.T) {
+	server, _, closedConns := newJSONRPCServer(t)
+
+	client, err := NewHTTPClient(server.URL, server.URL+"/websocket", 5*time.Second, zerolog.Nop())
+	require.NoError(t, err)
+
+	_, err = client.Status(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, closedConns(), "the connection should be idling in the pool after a completed RPC")
+
+	// The returned error is ignored: the websocket half of the client was never
+	// started, and the pool has to be released either way.
+	_ = client.Close()
+	require.Eventually(t, func() bool { return closedConns() > 0 }, time.Second, 5*time.Millisecond)
+}
+
 // newJSONRPCServer starts a test server answering CometBFT JSON-RPC calls with
-// an empty result, and returns a function reporting how many TCP connections it
-// has accepted.
-func newJSONRPCServer(t *testing.T) (*httptest.Server, func() int) {
+// an empty result, and returns functions reporting how many TCP connections it
+// has accepted and how many it has seen closed.
+func newJSONRPCServer(t *testing.T) (*httptest.Server, func() int, func() int) {
 	t.Helper()
 
-	var conns atomic.Int64
+	var conns, closed atomic.Int64
 
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -125,12 +144,17 @@ func newJSONRPCServer(t *testing.T) (*httptest.Server, func() int) {
 		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":{}}`))
 	}))
 	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
-		if state == http.StateNew {
+		switch state {
+		case http.StateNew:
 			conns.Add(1)
+		case http.StateClosed:
+			closed.Add(1)
 		}
 	}
 	server.Start()
 	t.Cleanup(server.Close)
 
-	return server, func() int { return int(conns.Load()) }
+	return server,
+		func() int { return int(conns.Load()) },
+		func() int { return int(closed.Load()) }
 }

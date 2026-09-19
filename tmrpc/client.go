@@ -52,6 +52,7 @@ func NewHTTPClient(remote, wsURL string, timeout time.Duration, logger zerolog.L
 	return &httpClient{
 		remote: remote,
 		http:   tmClient,
+		pooled: pooled,
 		logger: logger.With().Str("component", "tmrpc_client").Str("remote", remote).Logger(),
 	}, nil
 }
@@ -80,6 +81,9 @@ func newPooledHTTPClient(remote string, timeout time.Duration) (*http.Client, er
 type httpClient struct {
 	remote string
 	http   *tmhttp.HTTP
+	// pooled is the *http.Client that carries http's RPCs, kept so that Close
+	// can drop the connections it leaves idling.
+	pooled *http.Client
 	logger zerolog.Logger
 }
 
@@ -116,7 +120,13 @@ func (c *httpClient) Status(ctx context.Context) (*coretypes.ResultStatus, error
 	return c.http.Status(ctx)
 }
 
+// Close stops the websocket client and releases the connections idling in the
+// RPC client's pool. The pool is released whatever the stop reports, since
+// otherwise a discarded client would hold up to maxIdleConnsPerHost sockets open
+// for idleConnTimeout.
 func (c *httpClient) Close() error {
+	defer c.pooled.CloseIdleConnections()
+
 	if err := c.http.Stop(); err != nil && !errors.Is(err, context.Canceled) {
 		c.logger.Debug().Err(err).Msg("error stopping tendermint rpc client")
 		return err
