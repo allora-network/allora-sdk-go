@@ -126,9 +126,11 @@ func WithTransport(rt http.RoundTripper) RESTClientOption {
 	}
 }
 
-// Close closes the client
+// Close closes the client, releasing the connections it left idling in its own
+// pool. Without this a discarded client keeps a socket per pooled connection
+// open until the idle timeout expires.
 func (c *RESTClient) Close() error {
-	return nil
+	return c.core.Close()
 }
 
 func (c *RESTClient) GetEndpointURL() string {
@@ -291,6 +293,16 @@ func newPooledTransport(dialTimeout time.Duration) *http.Transport {
 	transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
 	transport.IdleConnTimeout = defaultIdleConnTimeout
 	return transport
+}
+
+// Close drops the connections idling in the transport this client built for
+// itself. A borrowed round tripper is left alone: whoever supplied it may still
+// be using its pool.
+func (c *RESTClientCore) Close() error {
+	if c.transport != nil {
+		c.transport.CloseIdleConnections()
+	}
+	return nil
 }
 
 func newDialer(timeout time.Duration) *net.Dialer {

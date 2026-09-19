@@ -188,6 +188,63 @@ func TestRESTClientCoreReusesConnectionsOnErrorResponses(t *testing.T) {
 	require.LessOrEqual(t, acceptedConns(), workers*3)
 }
 
+// TestRESTClientCloseReleasesIdleConnections pins down that a client which owns
+// its transport hands the sockets back on Close rather than leaving them idling
+// until the pool's idle timeout expires.
+func TestRESTClientCloseReleasesIdleConnections(t *testing.T) {
+	server, closedConns := newConnClosingServer(t, okHandler)
+
+	client := NewRESTClient(server.URL, zerolog.Nop())
+	err := client.core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+	require.Zero(t, closedConns(), "the connection should be idling in the pool after a completed request")
+
+	require.NoError(t, client.Close())
+	require.Eventually(t, func() bool { return closedConns() > 0 }, time.Second, 5*time.Millisecond)
+}
+
+// TestRESTClientCloseLeavesBorrowedTransportAlone covers the other side of that
+// rule: a transport handed to the client may be shared, so closing one client
+// must not tear down connections another user still wants.
+func TestRESTClientCloseLeavesBorrowedTransportAlone(t *testing.T) {
+	server, acceptedConns := newConnCountingServer(t, okHandler)
+
+	shared := &http.Transport{}
+	t.Cleanup(shared.CloseIdleConnections)
+
+	client := NewRESTClient(server.URL, zerolog.Nop(), WithTransport(shared))
+	err := client.core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+	require.NoError(t, client.Close())
+
+	// The pooled connection survives, so the next user of the shared transport
+	// reaches the server without a second handshake.
+	other := NewRESTClient(server.URL, zerolog.Nop(), WithTransport(shared))
+	err = other.core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, acceptedConns())
+}
+
+// newConnClosingServer starts a test server and returns a function reporting how
+// many TCP connections it has seen closed.
+func newConnClosingServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, func() int) {
+	t.Helper()
+
+	var closed atomic.Int64
+
+	server := httptest.NewUnstartedServer(handler)
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			closed.Add(1)
+		}
+	}
+	server.Start()
+	t.Cleanup(server.Close)
+
+	return server, func() int { return int(closed.Load()) }
+}
+
 // newConnCountingServer starts a test server and returns a function reporting
 // how many TCP connections it has accepted.
 func newConnCountingServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, func() int) {
