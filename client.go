@@ -59,7 +59,7 @@ func NewClient(cfg *config.ClientConfig, logger zerolog.Logger) (*client, error)
 			}
 			cosmosClients = append(cosmosClients, client)
 		case config.ProtocolREST:
-			client := rest.NewRESTClient(endpoint.URL, logger)
+			client := rest.NewRESTClient(endpoint.URL, logger, rest.WithConnectionTimeout(cfg.ConnectionTimeout))
 			cosmosClients = append(cosmosClients, client)
 		case config.ProtocolTendermintRPC:
 			if endpoint.URL != "" {

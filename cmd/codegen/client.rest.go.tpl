@@ -5,6 +5,8 @@ import (
     "context"
     "encoding/json"
     "fmt"
+    "io"
+    "net"
     "net/http"
     "net/url"
     "reflect"
@@ -72,9 +74,55 @@ func WithTimeout(d time.Duration) RESTClientOption {
     }
 }
 
-// Close closes the client
+// WithConnectionTimeout sets the timeout applied when dialing a new TCP
+// connection. Non-positive values leave the default in place. It does nothing
+// when the client is borrowing a RoundTripper it did not build, since dialing is
+// then that RoundTripper's business.
+func WithConnectionTimeout(d time.Duration) RESTClientOption {
+    return func(c *RESTClientCore) {
+        if d <= 0 || c.transport == nil {
+            return
+        }
+        c.transport.DialContext = newDialer(d).DialContext
+    }
+}
+
+// WithTransport sends the client's requests through rt instead of the pooled
+// transport it builds for itself. The client neither tunes nor closes a
+// RoundTripper it was handed, because the caller may be sharing it. A nil rt,
+// including a typed nil such as (*http.Transport)(nil), is ignored. Apply this
+// before WithMetrics so that the metrics wrapper wraps rt.
+func WithTransport(rt http.RoundTripper) RESTClientOption {
+    return func(c *RESTClientCore) {
+        if isNilRoundTripper(rt) {
+            return
+        }
+        c.transport = nil
+        c.httpClient.Transport = rt
+    }
+}
+
+// isNilRoundTripper reports whether rt is nil or an interface holding a nil
+// pointer, map, slice, func, or channel. A typed nil such as (*http.Transport)(nil)
+// compares unequal to nil as an interface but panics on first use, so both
+// count as "no transport supplied".
+func isNilRoundTripper(rt http.RoundTripper) bool {
+    if rt == nil {
+        return true
+    }
+    switch v := reflect.ValueOf(rt); v.Kind() {
+    case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan, reflect.Interface:
+        return v.IsNil()
+    default:
+        return false
+    }
+}
+
+// Close closes the client, releasing the connections it left idling in its own
+// pool. Without this a discarded client keeps a socket per pooled connection
+// open until the idle timeout expires.
 func (c *RESTClient) Close() error {
-    return nil
+    return c.core.Close()
 }
 
 func (c *RESTClient) GetEndpointURL() string {
@@ -102,9 +150,38 @@ func (c *RESTClient) HealthCheck(ctx context.Context) error {
     return c.Status(ctx)
 }
 
+// HTTP connection pool sizing. Go's default transport keeps only two idle
+// connections per host, so a caller issuing many concurrent queries against a
+// single endpoint pays a fresh TCP (and TLS) handshake for most of them; across
+// a proxied or high-latency link that handshake dominates request time.
+const (
+    defaultMaxIdleConns        = 512
+    defaultMaxIdleConnsPerHost = 256
+    defaultIdleConnTimeout     = 90 * time.Second
+    defaultDialTimeout         = 10 * time.Second
+    defaultDialKeepAlive       = 30 * time.Second
+    defaultRequestTimeout      = 30 * time.Second
+
+    // maxDrainBytes caps how much of an unconsumed response body is read before
+    // the connection is closed instead of returned to the idle pool.
+    maxDrainBytes = 1 << 20
+
+    // maxDrainDuration caps how long that drain may take. An endpoint that
+    // sends response headers and then stalls mid-body would otherwise hold the
+    // call open until the client timeout, delaying the error that a pool needs
+    // before it can fail over to another endpoint.
+    maxDrainDuration = 150 * time.Millisecond
+)
+
 type RESTClientCore struct {
-    baseURL    string
+    baseURL string
+    // httpClient carries every request. transport is the pooled transport this
+    // client built for itself, and is nil whenever the round tripper in use
+    // belongs to someone else — a caller-supplied one, or a process-wide
+    // replacement for http.DefaultTransport — which this client must neither
+    // reconfigure nor close.
     httpClient *http.Client
+    transport  *http.Transport
     logger     zerolog.Logger
 
     marshaler   jsonpb.Marshaler
@@ -112,10 +189,21 @@ type RESTClientCore struct {
 }
 
 func NewRESTClientCore(baseURL string, logger zerolog.Logger, opts ...RESTClientOption) *RESTClientCore {
+    transport := newPooledTransport(defaultDialTimeout)
+
+    // Assigning a nil *http.Transport to the client's RoundTripper field would
+    // leave it non-nil and panic on the first request, so choose explicitly.
+    var roundTripper http.RoundTripper = http.DefaultTransport
+    if transport != nil {
+        roundTripper = transport
+    }
+
     c := &RESTClientCore{
-        baseURL: strings.TrimSuffix(baseURL, "/"),
+        baseURL:   strings.TrimSuffix(baseURL, "/"),
+        transport: transport,
         httpClient: &http.Client{
-            Timeout: 30 * time.Second,
+            Timeout:   defaultRequestTimeout,
+            Transport: roundTripper,
         },
         logger: logger.With().Str("protocol", "rest").Str("endpoint", baseURL).Logger(),
     }
@@ -123,6 +211,65 @@ func NewRESTClientCore(baseURL string, logger zerolog.Logger, opts ...RESTClient
         opt(c)
     }
     return c
+}
+
+// newPooledTransport clones http.DefaultTransport and widens its idle
+// connection pool so that concurrent requests to one endpoint reuse
+// connections rather than reconnecting.
+//
+// It returns nil when http.DefaultTransport has been replaced by a RoundTripper
+// that is not an *http.Transport, such as an instrumentation wrapper. There is
+// nothing to clone or tune in that case, and the caller keeps using the
+// replacement as-is: dropping it would take that instrumentation off every REST
+// request, which costs more than the wider pool buys.
+func newPooledTransport(dialTimeout time.Duration) *http.Transport {
+    base, ok := http.DefaultTransport.(*http.Transport)
+    if !ok {
+        return nil
+    }
+    transport := base.Clone()
+    transport.DialContext = newDialer(dialTimeout).DialContext
+    transport.MaxIdleConns = defaultMaxIdleConns
+    transport.MaxIdleConnsPerHost = defaultMaxIdleConnsPerHost
+    transport.IdleConnTimeout = defaultIdleConnTimeout
+    return transport
+}
+
+// Close drops the connections idling in the transport this client built for
+// itself. A borrowed round tripper is left alone: whoever supplied it may still
+// be using its pool.
+func (c *RESTClientCore) Close() error {
+    if c.transport != nil {
+        c.transport.CloseIdleConnections()
+    }
+    return nil
+}
+
+func newDialer(timeout time.Duration) *net.Dialer {
+    if timeout <= 0 {
+        timeout = defaultDialTimeout
+    }
+    return &net.Dialer{
+        Timeout:   timeout,
+        KeepAlive: defaultDialKeepAlive,
+    }
+}
+
+// drainAndClose consumes whatever the caller left behind in a response body
+// (error payloads, trailing bytes after the decoded message) so that the
+// connection goes back to the idle pool instead of being torn down, then closes
+// the body.
+//
+// The drain is bounded by bytes and by wall-clock time. Closing the body from
+// the timer unblocks a read waiting on a peer that has stopped sending; the cost
+// is that one connection, which is cheaper than making every caller wait out the
+// client timeout. A body already at EOF, the common case on the success path,
+// costs only the arming and stopping of the timer.
+func drainAndClose(body io.ReadCloser) {
+    timer := time.AfterFunc(maxDrainDuration, func() { _ = body.Close() })
+    _, _ = io.Copy(io.Discard, io.LimitReader(body, maxDrainBytes))
+    timer.Stop()
+    _ = body.Close()
 }
 
 func (c *RESTClientCore) executeRequest(
@@ -196,7 +343,7 @@ func (c *RESTClientCore) executeRequest(
     if err != nil {
         return errors.Wrapf(err, "HTTP request failed")
     }
-    defer resp.Body.Close()
+    defer drainAndClose(resp.Body)
 
     if resp.StatusCode != http.StatusOK {
         return errors.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
