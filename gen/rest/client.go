@@ -231,6 +231,12 @@ const (
 	// maxDrainBytes caps how much of an unconsumed response body is read before
 	// the connection is closed instead of returned to the idle pool.
 	maxDrainBytes = 1 << 20
+
+	// maxDrainDuration caps how long that drain may take. An endpoint that
+	// sends response headers and then stalls mid-body would otherwise hold the
+	// call open until the client timeout, delaying the error that a pool needs
+	// before it can fail over to another endpoint.
+	maxDrainDuration = 150 * time.Millisecond
 )
 
 type RESTClientCore struct {
@@ -315,6 +321,23 @@ func newDialer(timeout time.Duration) *net.Dialer {
 	}
 }
 
+// drainAndClose consumes whatever the caller left behind in a response body
+// (error payloads, trailing bytes after the decoded message) so that the
+// connection goes back to the idle pool instead of being torn down, then closes
+// the body.
+//
+// The drain is bounded by bytes and by wall-clock time. Closing the body from
+// the timer unblocks a read waiting on a peer that has stopped sending; the cost
+// is that one connection, which is cheaper than making every caller wait out the
+// client timeout. A body already at EOF, the common case on the success path,
+// costs only the arming and stopping of the timer.
+func drainAndClose(body io.ReadCloser) {
+	timer := time.AfterFunc(maxDrainDuration, func() { _ = body.Close() })
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, maxDrainBytes))
+	timer.Stop()
+	_ = body.Close()
+}
+
 func (c *RESTClientCore) executeRequest(
 	ctx context.Context,
 	httpMethod, httpPath string,
@@ -386,13 +409,7 @@ func (c *RESTClientCore) executeRequest(
 	if err != nil {
 		return errors.Wrapf(err, "HTTP request failed")
 	}
-	// Drain whatever the caller leaves behind (error payloads, trailing bytes
-	// after the decoded message) so the connection goes back to the idle pool
-	// instead of being torn down.
-	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxDrainBytes))
-		_ = resp.Body.Close()
-	}()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return errors.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)

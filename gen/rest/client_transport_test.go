@@ -226,6 +226,52 @@ func TestRESTClientCloseLeavesBorrowedTransportAlone(t *testing.T) {
 	require.Equal(t, 1, acceptedConns())
 }
 
+// TestRESTClientCoreBoundsBodyDrainOnStalledPeer covers an endpoint that answers
+// with an error, starts the body and then stops sending. Draining that body is
+// worth a moment (it buys the connection back) but not the client timeout: the
+// caller needs the error promptly so a pool can try another endpoint.
+func TestRESTClientCoreBoundsBodyDrainOnStalledPeer(t *testing.T) {
+	release := make(chan struct{})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"upstream failure`))
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	// Cleanups run last registered first, so the handler is released before the
+	// server waits for it.
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop())
+	t.Cleanup(func() { _ = core.Close() })
+
+	start := time.Now()
+	err := core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP error 500")
+	require.Less(t, elapsed, time.Second, "the drain must not wait out the client timeout")
+}
+
+// TestRESTClientCoreDrainDoesNotSlowSuccessfulRequests guards the other side of
+// the bound: a body the client has already read to EOF should cost nothing.
+func TestRESTClientCoreDrainDoesNotSlowSuccessfulRequests(t *testing.T) {
+	server, _ := newConnCountingServer(t, okHandler)
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop())
+	t.Cleanup(func() { _ = core.Close() })
+
+	start := time.Now()
+	for i := 0; i < 20; i++ {
+		err := core.executeRequest(context.Background(), http.MethodGet, "/health", nil, nil, nil, nil, 0)
+		require.NoError(t, err)
+	}
+	require.Less(t, time.Since(start), maxDrainDuration, "successful requests should not pay the drain bound")
+}
+
 // newConnClosingServer starts a test server and returns a function reporting how
 // many TCP connections it has seen closed.
 func newConnClosingServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, func() int) {
