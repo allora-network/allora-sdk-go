@@ -1,9 +1,11 @@
 package allora
 
 import (
+	"context"
 	"testing"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateUnsignedSendTx(t *testing.T) {
@@ -378,4 +380,56 @@ func TestTxRoundTrip(t *testing.T) {
 	}
 
 	t.Logf("Parsed transaction with %d message(s)", len(msgs))
+}
+
+// TestSignTransactionWith_RejectsSenderMismatch pins the signer-vs-sender guard in
+// signTx: signing a MsgSend whose FromAddress is walletA with walletB's key must fail
+// before producing a tx the chain would reject opaquely.
+func TestSignTransactionWith_RejectsSenderMismatch(t *testing.T) {
+	walletA, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+	walletB, err := GenerateWallet()
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	params := &TxParams{
+		ChainID:       "allora-testnet-1",
+		AccountNumber: 7,
+		Sequence:      3,
+		GasLimit:      200000,
+		FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	// Build the tx with walletA as sender, then try to sign it with walletB's key.
+	unsigned, err := CreateUnsignedSendTx(walletA.Address, walletB.Address, amount, params)
+	require.NoError(t, err)
+
+	_, err = SignTransactionWith(context.Background(), unsigned, walletB.PrivKey, params)
+	require.ErrorContains(t, err, "does not match transaction sender")
+}
+
+func TestTxParams_FeeGranterIsEncoded(t *testing.T) {
+	wallet, err := NewWalletFromMnemonic(testMnemonic, DefaultHDPath)
+	require.NoError(t, err)
+
+	granter, err := sdk.AccAddressFromBech32(wallet.GetAddress())
+	require.NoError(t, err)
+
+	amount := sdk.NewCoins(sdk.NewInt64Coin("uallo", 1000))
+	base := &TxParams{
+		ChainID:   "allora-testnet-1",
+		GasLimit:  200000,
+		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+	}
+	withGranter := *base
+	withGranter.FeeGranter = granter
+
+	unsignedNoGranter, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, base)
+	require.NoError(t, err)
+	unsignedWithGranter, err := CreateUnsignedSendTx(wallet.Address, wallet.Address, amount, &withGranter)
+	require.NoError(t, err)
+
+	// Setting the fee granter must change the encoded AuthInfo (the granter address is
+	// written into the tx). An empty granter leaves the tx untouched.
+	require.NotEqual(t, unsignedNoGranter, unsignedWithGranter)
+	require.Greater(t, len(unsignedWithGranter), len(unsignedNoGranter))
 }
