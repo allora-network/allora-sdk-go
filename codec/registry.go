@@ -16,6 +16,7 @@ import (
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	consensustypes "github.com/cosmos/cosmos-sdk/x/consensus/types"
 	distributiontypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	govv1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	govv1beta1types "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
@@ -34,6 +35,9 @@ import (
 	ibcchannel "github.com/cosmos/ibc-go/v8/modules/core/04-channel/types"
 
 	ibclightclient "github.com/cosmos/ibc-go/v8/modules/light-clients/07-tendermint"
+
+	// Fee market module the chain runs (skip-mev/feemarket)
+	feemarkettypes "github.com/skip-mev/feemarket/x/feemarket/types"
 
 	// OLD VERSIONS of MINT TRANSACTIONS
 	mintv1beta1 "github.com/allora-network/allora-chain/x/mint/api/mint/v1beta1"
@@ -67,6 +71,8 @@ func init() {
 	registerFuncs := []func(codectypes.InterfaceRegistry){
 		upgradetypes.RegisterInterfaces,
 		banktypes.RegisterInterfaces,
+		consensustypes.RegisterInterfaces,
+		feemarkettypes.RegisterInterfaces,
 		distributiontypes.RegisterInterfaces,
 		slashingtypes.RegisterInterfaces,
 		stakingtypes.RegisterInterfaces,
