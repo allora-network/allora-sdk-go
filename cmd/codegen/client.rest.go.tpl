@@ -3,6 +3,7 @@ package rest
 import (
     "bytes"
     "context"
+    "encoding/base64"
     "encoding/json"
     "fmt"
     "io"
@@ -436,8 +437,10 @@ func (c *RESTClientCore) formatFieldValue(v reflect.Value) string {
         return fmt.Sprintf("%t", v.Bool())
     case reflect.Slice:
         if v.Type().Elem().Kind() == reflect.Uint8 {
-            // Handle []byte
-            return string(v.Bytes())
+            // A bytes field travels in a query string as base64, the
+            // encoding grpc-gateway decodes it from (pagination.key is
+            // one). Sent raw, the key reaches the node mangled.
+            return base64.StdEncoding.EncodeToString(v.Bytes())
         }
         // For other slices, could implement comma-separated values
         return ""
