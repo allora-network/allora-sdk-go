@@ -100,6 +100,60 @@ func main() {
 }
 ```
 
+## Privy-Managed Signing (delegated)
+
+By default the SDK signs with a local key (`Wallet`). Alternatively, you can delegate
+signing to the Forge backend, which signs with a Privy-managed server wallet — the worker
+holds no private key. A local wallet's key (`wallet.PrivKey`) and the backend-backed
+`RemoteSigner` both satisfy the `Signer` interface, so `SignTransactionWith` accepts
+either. (For a local wallet you can also use the `SignTransaction(unsignedTx, wallet,
+params)` convenience wrapper.)
+
+```go
+ctx := context.Background()
+
+// The wallet ID and API key are minted in the Forge web app. The signer fetches its
+// address + public key from the backend on construction.
+signer, err := allora.NewRemoteSigner(ctx, allora.RemoteSignerConfig{
+    BackendURL: "https://forge.allora.network",
+    APIKey:     os.Getenv("FORGE_API_KEY"),
+    WalletID:   os.Getenv("FORGE_SIGNING_WALLET_ID"),
+})
+if err != nil {
+    panic(err)
+}
+
+params := &allora.TxParams{
+    ChainID:       "allora-testnet-1",
+    AccountNumber: accountNumber,
+    Sequence:      sequence,
+    GasLimit:      200000,
+    FeeAmount:     sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)),
+    // FeeGranter: masterAddr, // optional: subsidize gas from a master wallet via feegrant
+}
+
+// signer.PubKey().Address() works for any Signer (local key or RemoteSigner); a
+// *RemoteSigner additionally offers the signer.AccAddress() convenience helper.
+fromAddr := sdk.AccAddress(signer.PubKey().Address())
+unsignedTx, _ := allora.CreateUnsignedSendTx(fromAddr, toAddr, amount, params)
+signedTx, _ := allora.SignTransactionWith(ctx, unsignedTx, signer, params)
+// broadcast signedTx via client.Cosmos().Tx().BroadcastTx(...)
+```
+
+The self-managed path — `SignTransaction(unsignedTx, wallet, params)` with a local
+`Wallet` — is unchanged.
+
+### Fee granter (optional gas subsidy)
+
+Set `TxParams.FeeGranter` to have the transaction fee paid by another account via an
+on-chain feegrant, so a Privy-managed worker can hold no ALLO of its own. The granter is
+the Forge **master wallet address**: forge-v2 auto-creates a feegrant from it to each new
+signing wallet. That address is **not currently returned by any signing-wallet API
+endpoint**, so it must be supplied out-of-band today (forge-v2 configures the master
+granter via `PRIVY_MASTER_WALLET_ADDRESS`). Exposing it from the backend — so a
+master-wallet rotation does not force every SDK consumer to reconfigure — is tracked
+separately in forge-v2.
+
 ## Configuration
 
 ### Client Configuration
