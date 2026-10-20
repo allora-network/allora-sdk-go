@@ -146,7 +146,7 @@ The public SDK shapes stay compatible with the previous client:
 
 ```go
 // Defaults:
-//   gateway → https://api.developer.dev.allora.network
+//   gateway → https://api.developer.allora.network
 //   data    → https://forge-data.stage.allora.run/api
 client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"))
 if err != nil {

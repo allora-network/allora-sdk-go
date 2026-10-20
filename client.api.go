@@ -33,7 +33,7 @@ const (
 	forgeAPIKeyPrefix = "forge_sk_"
 
 	// DefaultAPIBaseURL is the Forge API Gateway origin used when WithBaseURL is omitted.
-	DefaultAPIBaseURL = "https://api.developer.dev.allora.network"
+	DefaultAPIBaseURL = "https://api.developer.allora.network"
 	// DefaultDataAPIBaseURL is the Forge Data (Atlas) root used when WithDataBaseURL is omitted.
 	DefaultDataAPIBaseURL = "https://forge-data.stage.allora.run/api"
 )
