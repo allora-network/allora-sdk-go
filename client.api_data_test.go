@@ -1,0 +1,203 @@
+package allora
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestListDatasetsUsesDataAPIKey(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/datasets/", r.URL.Path)
+		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+		require.Empty(t, r.Header.Get("Authorization"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count":    1,
+			"next":     nil,
+			"previous": nil,
+			"results": []map[string]any{
+				{
+					"id":           3,
+					"name":         "tiingo_btcusd_1min",
+					"description":  "BTC",
+					"metadata":     map[string]any{"ticker": "btcusd", "frequency": "1min"},
+					"owner_key_id": 2,
+					"created_at":   "2026-09-30T13:15:49.236047Z",
+					"updated_at":   "2026-09-30T14:28:19.955361Z",
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+
+	page, err := client.ListDatasets(context.Background(), WithDatasetLimit(10))
+	require.NoError(t, err)
+	require.Equal(t, 1, page.Count)
+	require.Len(t, page.Results, 1)
+	require.Equal(t, "tiingo_btcusd_1min", page.Results[0].Name)
+	require.Equal(t, "btcusd", page.Results[0].Metadata["ticker"])
+}
+
+func TestFindDatasetsByTicker(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/datasets/search/", r.URL.Path)
+		require.Equal(t, "btcusd", r.URL.Query().Get("ticker"))
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": 1,
+			"results": []map[string]any{
+				{"id": 3, "name": "tiingo_btcusd_1min", "metadata": map[string]any{"ticker": "btcusd"},
+					"created_at": "2026-09-30T13:15:49Z", "updated_at": "2026-09-30T14:28:19Z"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+
+	datasets, err := client.FindDatasetsByTicker(context.Background(), "BTCUSD")
+	require.NoError(t, err)
+	require.Len(t, datasets, 1)
+	require.Equal(t, 3, datasets[0].ID)
+}
+
+func TestGetCandlesParsesRawAndAggregate(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path+"?"+r.URL.RawQuery)
+		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+
+		switch {
+		case r.URL.Path == "/api/datasets/search/":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 1,
+				"results": []map[string]any{
+					{"id": 3, "name": "tiingo_btcusd_1min", "metadata": map[string]any{"ticker": "btcusd"},
+						"created_at": "2026-09-30T13:15:49Z", "updated_at": "2026-09-30T14:28:19Z"},
+				},
+			})
+		case r.URL.Query().Get("resolution") == "1h":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 1,
+				"results": []map[string]any{
+					{
+						"dataset_id": 3,
+						"timestamp":  "2024-01-01T00:00:00Z",
+						"open":       100.0,
+						"high":       110.0,
+						"low":        90.0,
+						"close":      105.0,
+						"volume":     50.0,
+						"count":      60,
+					},
+				},
+			})
+		default:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 1,
+				"next":  "/api/rows/?dataset_name=tiingo_btcusd_1min&limit=1&offset=1",
+				"results": []map[string]any{
+					{
+						"id":         1,
+						"dataset_id": 3,
+						"timestamp":  "2024-01-01T00:00:00Z",
+						"values": map[string]any{
+							"open": 42286.5, "high": 42345.2, "low": 42260.9, "close": 42298.4,
+							"volume": 58.6, "volume_notional": 2482757.8, "trades_done": 633,
+						},
+					},
+				},
+			})
+		}
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+
+	raw, err := client.GetCandles(context.Background(), CandleQuery{
+		Ticker: "btcusd",
+		Start:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		End:    time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC),
+		Limit:  1,
+	})
+	require.NoError(t, err)
+	require.Len(t, raw.Results, 1)
+	require.InDelta(t, 42298.4, raw.Results[0].Close, 0.01)
+	require.Equal(t, 633, raw.Results[0].TradesDone)
+	require.NotNil(t, raw.Next)
+
+	agg, err := client.GetCandles(context.Background(), CandleQuery{
+		DatasetName: "tiingo_btcusd_1min",
+		Resolution:  CandleResolution1h,
+		Start:       time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		End:         time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+		Limit:       1,
+	})
+	require.NoError(t, err)
+	require.Len(t, agg.Results, 1)
+	require.Equal(t, 105.0, agg.Results[0].Close)
+	require.Equal(t, 60, agg.Results[0].Count)
+
+	require.NotEmpty(t, paths)
+}
+
+func TestGetCandlesRequiresExactlyOneSelector(t *testing.T) {
+	client := testClient(t, "http://gateway.example", "http://example.invalid/api")
+
+	_, err := client.GetCandles(context.Background(), CandleQuery{})
+	require.Error(t, err)
+
+	_, err = client.GetCandles(context.Background(), CandleQuery{
+		DatasetID: 1, DatasetName: "x",
+	})
+	require.Error(t, err)
+}
+
+func TestIterCandlesFollowsNext(t *testing.T) {
+	page := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+		page++
+		if page == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"count": 2,
+				"next":  "/api/rows/?dataset_name=tiingo_btcusd_1min&limit=1&offset=1",
+				"results": []map[string]any{
+					{"dataset_id": 3, "timestamp": "2024-01-01T00:00:00Z",
+						"values": map[string]any{"open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": 2,
+			"next":  nil,
+			"results": []map[string]any{
+				{"dataset_id": 3, "timestamp": "2024-01-01T00:01:00Z",
+					"values": map[string]any{"open": 1.5, "high": 3, "low": 1, "close": 2.5, "volume": 11}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+
+	var closes []float64
+	for candles, err := range client.IterCandles(context.Background(), CandleQuery{
+		DatasetName: "tiingo_btcusd_1min",
+		Limit:       1,
+	}) {
+		require.NoError(t, err)
+		for _, c := range candles {
+			closes = append(closes, c.Close)
+		}
+	}
+	require.Equal(t, []float64{1.5, 2.5}, closes)
+	require.Equal(t, 2, page)
+}

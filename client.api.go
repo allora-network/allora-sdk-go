@@ -3,13 +3,14 @@ package allora
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"iter"
-	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	stderrors "errors"
@@ -20,6 +21,25 @@ import (
 	"github.com/allora-network/allora-sdk-go/metrics"
 )
 
+// Network is the gateway path segment (not a Cosmos chain id).
+type Network string
+
+const (
+	NetworkTestnet  Network = "testnet"
+	NetworkMainnet  Network = "mainnet"
+	NetworkOffchain Network = "offchain"
+
+	defaultAPINetwork = NetworkMainnet
+	forgeAPIKeyPrefix = "forge_sk_"
+
+	// DefaultAPIBaseURL is the Forge API Gateway origin used when WithBaseURL is omitted.
+	DefaultAPIBaseURL = "https://api.developer.dev.allora.network"
+	// DefaultDataAPIBaseURL is the Forge Data (Atlas) root used when WithDataBaseURL is omitted.
+	DefaultDataAPIBaseURL = "https://forge-data.stage.allora.run/api"
+)
+
+// APIClient is the compatible public surface from the previous SDK.
+// Extended Forge/Atlas helpers live on *apiClient but are not part of this interface.
 type APIClient interface {
 	GetTopics() iter.Seq2[*Topic, error]
 	GetTopic(topicID uint64) (*Topic, error)
@@ -27,22 +47,34 @@ type APIClient interface {
 }
 
 type apiClient struct {
-	url        string
+	url        string // API Gateway origin (defaults to DefaultAPIBaseURL)
+	dataURL    string // Forge Data / Atlas origin including /api (defaults to DefaultDataAPIBaseURL)
 	apiKey     string
+	network    Network
 	httpClient *http.Client
 	logger     zerolog.Logger
 }
 
-func NewAPIClient(apiKey string, opts ...APIClientOption) *apiClient {
+// NewAPIClient constructs a Forge API client.
+// apiKey must be a Forge secret key (forge_sk_…).
+// Gateway and data base URLs default to DefaultAPIBaseURL and DefaultDataAPIBaseURL;
+// override with WithBaseURL / WithDataBaseURL (e.g. local or alternate stage).
+func NewAPIClient(apiKey string, opts ...APIClientOption) (*apiClient, error) {
+	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
-		apiKey = "UP-8cbc632a67a84ac1b4078661"
+		return nil, errors.New("ALLORA_API_KEY is required (forge_sk_…)")
+	}
+	if !strings.HasPrefix(apiKey, forgeAPIKeyPrefix) {
+		return nil, errors.Errorf("API key must start with %s", forgeAPIKeyPrefix)
 	}
 
 	client := &apiClient{
-		url:    "https://api.allora.network/v2",
-		apiKey: apiKey,
+		url:     DefaultAPIBaseURL,
+		dataURL: DefaultDataAPIBaseURL,
+		apiKey:  apiKey,
+		network: defaultAPINetwork,
 		httpClient: &http.Client{
-			Timeout:   10 * time.Second,
+			Timeout:   30 * time.Second,
 			Transport: http.DefaultTransport,
 		},
 		logger: zerolog.Nop(),
@@ -51,10 +83,32 @@ func NewAPIClient(apiKey string, opts ...APIClientOption) *apiClient {
 	for _, opt := range opts {
 		opt(client)
 	}
-	return client
+	return client, nil
 }
 
 type APIClientOption func(*apiClient)
+
+// WithBaseURL overrides the API Gateway origin (default: DefaultAPIBaseURL).
+func WithBaseURL(baseURL string) APIClientOption {
+	return func(c *apiClient) {
+		c.url = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	}
+}
+
+// WithDataBaseURL overrides the Forge Data (Atlas) API root (default: DefaultDataAPIBaseURL).
+// Must include the /api prefix (e.g. https://host/api).
+func WithDataBaseURL(baseURL string) APIClientOption {
+	return func(c *apiClient) {
+		c.dataURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	}
+}
+
+// WithNetwork sets the gateway network path segment (testnet|mainnet|offchain).
+func WithNetwork(network Network) APIClientOption {
+	return func(c *apiClient) {
+		c.network = network
+	}
+}
 
 // WithBackoff configures roundTripper / max / jitter for exponential delays.
 func WithBackoff(baseDelay, maxDelay time.Duration, jitter float64) APIClientOption {
@@ -106,31 +160,32 @@ func WithLogger(logger zerolog.Logger) APIClientOption {
 	}
 }
 
-type APIResponse[T any] struct {
-	RequestID string `json:"request_id"`
-	Status    bool   `json:"status"`
-	Data      T      `json:"data"`
+// APIError is a non-2xx HTTP response from Forge Gateway or Atlas.
+type APIError struct {
+	StatusCode int
+	Message    string
+	Body       string
 }
 
-func (c *apiClient) getURL(path string, queryParams map[string]string) (string, error) {
-	u, err := url.Parse(c.url)
-	if err != nil {
-		return "", err
+func (e *APIError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("API error: status=%d message=%s", e.StatusCode, e.Message)
 	}
-	u.Path = path
-	query := u.Query()
-	for k, v := range queryParams {
-		query.Set(k, v)
-	}
-	u.RawQuery = query.Encode()
-	return u.String(), nil
+	return fmt.Sprintf("API error: status=%d", e.StatusCode)
 }
 
-type GetTopicsResponse struct {
-	Topics            []Topic `json:"topics"`
-	ContinuationToken *string `json:"continuation_token"`
+// ErrTopicNotFound is returned by GetTopic when the id is absent from the catalog.
+var ErrTopicNotFound = stderrors.New("topic not found")
+
+// ErrDatasetNotFound is returned when a ticker/dataset cannot be resolved in Atlas.
+var ErrDatasetNotFound = stderrors.New("dataset not found")
+
+type gatewayErrorBody struct {
+	Error string `json:"error"`
 }
 
+// Topic is the previous SDK topic shape (compat).
+// Only fields the gateway actually supplies are populated; other fields stay zero.
 type Topic struct {
 	TopicID                   int        `json:"topic_id"`
 	TopicName                 string     `json:"topic_name"`
@@ -141,8 +196,8 @@ type Topic struct {
 	WorkerSubmissionWindow    int        `json:"worker_submission_window"`
 	WorkerCount               int        `json:"worker_count"`
 	ReputerCount              int        `json:"reputer_count"`
-	TotalStakedAllo           float64    `json:"total_staked_allo"`
-	TotalEmissionsAllo        float64    `json:"total_emissions_allo"`
+	TotalStakedAllo           int        `json:"total_staked_allo"`
+	TotalEmissionsAllo        int        `json:"total_emissions_allo"`
 	IsActive                  bool       `json:"is_active"`
 	IsEndorsed                bool       `json:"is_endorsed"`
 	ForgeCompetitionID        *int       `json:"forge_competition_id"`
@@ -152,126 +207,20 @@ type Topic struct {
 	UpdatedAt                 time.Time  `json:"updated_at"`
 }
 
+// Inference is the previous SDK prediction shape (compat).
 type Inference struct {
 	CombinedValue string `json:"combined_value"`
 	NaiveValue    string `json:"naive_value"`
 	Timestamp     int64  `json:"timestamp"` // epoch millis
 }
 
-func (c *apiClient) GetTopics() iter.Seq2[*Topic, error] {
-	return func(yield func(*Topic, error) bool) {
-		var token *string
-		for {
-			topics, err := c.getTopics(token)
-			if err != nil {
-				c.logger.Error().Err(err).Msg("failed to get topics")
-			}
-
-			for _, topic := range topics.Topics {
-				if !yield(&topic, err) {
-					return
-				}
-			}
-			if topics.ContinuationToken == nil {
-				return
-			}
-			token = topics.ContinuationToken
-		}
-	}
-}
-
-func (c *apiClient) getTopics(token *string) (_ *GetTopicsResponse, err error) {
-	methodName := "GetTopics"
-	start := time.Now()
-	outcome := "success"
-	defer func() {
-		c.recordAPIMetrics(methodName, outcome, start)
-	}()
-
-	query := map[string]string{}
-	if token != nil {
-		query["continuation_token"] = *token
-	}
-
-	url, err := c.getURL("/v2/allora/allora-testnet-1/topics", query)
-	if err != nil {
-		outcome = "url_parse_error"
-		return nil, errors.WithMessage(err, "could not parse url")
-	}
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		outcome = "request_build_error"
-		return nil, errors.WithMessage(err, "failed to create request")
-	}
-
-	req.Header.Set("x-api-key", c.apiKey)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		outcome = classifyAPIError(err)
-		return nil, errors.WithMessage(err, "failed to execute request")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		outcome = "http_" + strconv.Itoa(resp.StatusCode)
-		return nil, errors.Errorf("GetTopics unexpected status code: %d", resp.StatusCode)
-	}
-
-	var topicsResp APIResponse[GetTopicsResponse]
-	if err := json.NewDecoder(resp.Body).Decode(&topicsResp); err != nil {
-		outcome = "decode_error"
-		return nil, errors.WithMessage(err, "failed to decode response")
-	}
-	return &topicsResp.Data, nil
-}
-
-func (c *apiClient) GetTopic(topicID uint64) (_ *Topic, err error) {
-	methodName := "GetTopic"
-	start := time.Now()
-	outcome := "success"
-	defer func() {
-		c.recordAPIMetrics(methodName, outcome, start)
-	}()
-
-	url, err := c.getURL("/v2/allora/allora-testnet-1/topics/"+strconv.FormatUint(topicID, 10), nil)
-	if err != nil {
-		outcome = "url_parse_error"
-		return nil, errors.WithMessage(err, "could not parse url")
-	}
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		outcome = "request_build_error"
-		return nil, errors.WithMessage(err, "failed to create request")
-	}
-
-	req.Header.Set("x-api-key", c.apiKey)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		outcome = classifyAPIError(err)
-		return nil, errors.WithMessage(err, "failed to execute request")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		outcome = "http_" + strconv.Itoa(resp.StatusCode)
-		return nil, errors.Errorf("GetTopic unexpected status code: %d", resp.StatusCode)
-	}
-
-	var topicResp APIResponse[Topic]
-	if err := json.NewDecoder(resp.Body).Decode(&topicResp); err != nil {
-		outcome = "decode_error"
-		return nil, errors.WithMessage(err, "failed to decode response")
-	}
-	return &topicResp.Data, nil
-}
-
+// OHLCResponse is the previous SDK candles page shape (compat).
 type OHLCResponse struct {
 	Data              []OHLCData `json:"data"`
 	ContinuationToken *string    `json:"continuation_token"`
 }
 
+// OHLCData is one candle in the previous SDK shape (compat).
 type OHLCData struct {
 	Ticker         string `json:"ticker"`
 	ExchangeCode   string `json:"exchange_code"`
@@ -285,83 +234,125 @@ type OHLCData struct {
 	VolumeNotional string `json:"volume_notional"`
 }
 
-func (c *apiClient) GetOHLCData(ctx context.Context, ticker string, fromDate string) iter.Seq2[*OHLCResponse, error] {
-	return func(yield func(*OHLCResponse, error) bool) {
-		var token *string
-		for {
-			ohlcData, err := c.getOHLCData(ctx, ticker, fromDate, token)
-			if err != nil {
-				c.logger.Error().Err(err).Msg("failed to get OHLC data")
-			}
+// APIResponse is the generic envelope returned by the previous SDK's Upshot
+// endpoints (request_id / status / data). It is preserved for callers that
+// reference it directly; the Forge gateway/Atlas backends do not use it.
+type APIResponse[T any] struct {
+	RequestID string `json:"request_id"`
+	Status    bool   `json:"status"`
+	Data      T      `json:"data"`
+}
 
-			if !yield(ohlcData, err) {
-				return
-			} else if ohlcData.ContinuationToken == nil {
-				return
-			}
-			token = ohlcData.ContinuationToken
-		}
+// GetTopicsResponse is the page shape returned by the previous SDK's
+// GetTopics helper. Kept for backward compatibility; the Forge gateway
+// returns a different envelope that is decoded internally.
+type GetTopicsResponse struct {
+	Topics            []Topic `json:"topics"`
+	ContinuationToken *string `json:"continuation_token"`
+}
+
+type authStyle int
+
+const (
+	authGatewayBearer authStyle = iota
+	authDataAPIKey
+)
+
+func (c *apiClient) resolveURL(base, path string, queryParams map[string]string) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	*u = *u.JoinPath(strings.TrimPrefix(path, "/"))
+	query := u.Query()
+	for k, v := range queryParams {
+		query.Set(k, v)
+	}
+	u.RawQuery = query.Encode()
+	return u.String(), nil
+}
+
+func (c *apiClient) gatewayURL(path string, queryParams map[string]string) (string, error) {
+	return c.resolveURL(c.url, path, queryParams)
+}
+
+func (c *apiClient) dataURLPath(path string, queryParams map[string]string) (string, error) {
+	return c.resolveURL(c.dataURL, path, queryParams)
+}
+
+func (c *apiClient) setAuth(req *http.Request, style authStyle) {
+	req.Header.Set("Accept", "application/json")
+	switch style {
+	case authDataAPIKey:
+		req.Header.Set("X-API-Key", c.apiKey)
+	default:
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 }
 
-func (c *apiClient) getOHLCData(ctx context.Context, ticker string, fromDate string, token *string) (_ *OHLCResponse, err error) {
-	methodName := "GetOHLCData"
+func (c *apiClient) doJSON(ctx context.Context, methodName, method, reqURL string, dest any) error {
+	return c.doJSONWithAuth(ctx, methodName, method, reqURL, c.url, dest, authGatewayBearer)
+}
+
+func (c *apiClient) doDataJSON(ctx context.Context, methodName, method, reqURL string, dest any) error {
+	return c.doJSONWithAuth(ctx, methodName, method, reqURL, c.dataURL, dest, authDataAPIKey)
+}
+
+func (c *apiClient) doJSONWithAuth(
+	ctx context.Context,
+	methodName, method, reqURL, endpoint string,
+	dest any,
+	style authStyle,
+) (err error) {
 	start := time.Now()
 	outcome := "success"
 	defer func() {
-		c.recordAPIMetrics(methodName, outcome, start)
+		c.recordAPIMetrics(endpoint, methodName, outcome, start)
 	}()
 
-	query := map[string]string{
-		"tickers":   ticker,
-		"from_date": fromDate,
-	}
-	if token != nil {
-		query["continuation_token"] = *token
-	}
-
-	url, err := c.getURL("/v2/allora/market-data/ohlc", query)
-	if err != nil {
-		outcome = "url_parse_error"
-		return nil, errors.WithMessage(err, "could not parse url")
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, nil)
 	if err != nil {
 		outcome = "request_build_error"
-		return nil, errors.WithMessage(err, "failed to create request")
+		return errors.WithMessage(err, "failed to create request")
 	}
-
-	req.Header.Set("x-api-key", c.apiKey)
+	c.setAuth(req, style)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		outcome = classifyAPIError(err)
-		return nil, errors.WithMessage(err, "failed to execute request")
+		return errors.WithMessage(err, "failed to execute request")
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		outcome = "read_error"
+		return errors.WithMessage(err, "failed to read response body")
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		outcome = "http_" + strconv.Itoa(resp.StatusCode)
-		return nil, errors.Errorf("GetOHLCData unexpected status code: %d", resp.StatusCode)
+		var ge gatewayErrorBody
+		_ = json.Unmarshal(body, &ge)
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    ge.Error,
+			Body:       string(body),
+		}
 	}
 
-	var ohlcResp APIResponse[OHLCResponse]
-	if err := json.NewDecoder(resp.Body).Decode(&ohlcResp); err != nil {
+	if dest == nil {
+		return nil
+	}
+	if err := json.Unmarshal(body, dest); err != nil {
 		outcome = "decode_error"
-		return nil, errors.WithMessage(err, "failed to decode response")
+		return errors.WithMessage(err, "failed to decode response")
 	}
-
-	// check if the response is empty
-	if len(ohlcResp.Data.Data) == 0 {
-		outcome = "empty_response"
-		return nil, errors.WithMessagef(err, "no data found for ticker %s", ticker)
-	}
-	return &ohlcResp.Data, nil
+	return nil
 }
 
-func (c *apiClient) recordAPIMetrics(method, outcome string, start time.Time) {
-	metrics.ObserveRPCRequest("http_api", c.url, "api", method, outcome, 1, time.Since(start))
+func (c *apiClient) recordAPIMetrics(endpoint, method, outcome string, start time.Time) {
+	metrics.ObserveRPCRequest("http_api", endpoint, "api", method, outcome, 1, time.Since(start))
 	metrics.ObserveRPCAttempts("http_api", "api", method, outcome, 1)
 }
 
@@ -387,222 +378,4 @@ func classifyAPIError(err error) string {
 	}
 
 	return "error"
-}
-
-type BackoffTransport struct {
-	roundTripper http.RoundTripper
-	baseDelay    time.Duration
-	maxDelay     time.Duration
-	jitterFrac   float64
-	logger       zerolog.Logger
-}
-
-const (
-	defaultBaseDelay  = 1 * time.Second
-	defaultMaxDelay   = 30 * time.Second
-	defaultJitterFrac = 0.1
-)
-
-func NewBackoffTransport(roundTripper http.RoundTripper) http.RoundTripper {
-	return &BackoffTransport{
-		roundTripper: roundTripper,
-		baseDelay:    defaultBaseDelay,
-		maxDelay:     defaultMaxDelay,
-		jitterFrac:   defaultJitterFrac,
-		logger:       zerolog.Nop(),
-	}
-}
-
-func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	base := bt.roundTripper
-	if base == nil {
-		base = http.DefaultTransport
-	}
-
-	baseDelay := bt.baseDelay
-	if baseDelay <= 0 {
-		baseDelay = defaultBaseDelay
-	}
-	maxDelay := bt.maxDelay
-	if maxDelay <= 0 {
-		maxDelay = defaultMaxDelay
-	}
-	jitterFrac := bt.jitterFrac
-	if jitterFrac < 0 {
-		jitterFrac = 0
-	}
-
-	nextDelay := baseDelay
-	attempt := 0
-
-	for {
-		// For attempts > 0, ensure body is resettable before we try again
-		if attempt > 0 {
-			if !canReplayBody(req) {
-				return nil, errors.Errorf("cannot retry non-replayable request body")
-			}
-			if err := resetBody(req); err != nil {
-				return nil, err
-			}
-		}
-
-		resp, err := base.RoundTrip(req)
-		if err == nil && (resp == nil || !isRetryableStatus(resp.StatusCode)) {
-			return resp, nil
-		}
-
-		if req.Context().Err() != nil {
-			if resp != nil && resp.Body != nil {
-				_ = resp.Body.Close()
-			}
-			if req.Context().Err() != nil {
-				return nil, req.Context().Err()
-			}
-			return resp, err
-		}
-
-		shouldRetry := false
-		var retryAfter time.Duration
-
-		if err != nil {
-			shouldRetry = isRetryableError(req, err)
-		} else if resp != nil {
-			if isRetryableStatus(resp.StatusCode) {
-				shouldRetry = true
-				// honor Retry-After if provided and parseable
-				if ra := resp.Header.Get("Retry-After"); ra != "" {
-					if secs, perr := strconv.Atoi(ra); perr == nil && secs >= 0 {
-						retryAfter = time.Duration(secs) * time.Second
-					}
-				}
-			}
-		}
-
-		// only retry for idempotent or replayable-body requests
-		if shouldRetry && !(isIdempotent(req.Method) || canReplayBody(req)) {
-			shouldRetry = false
-		}
-
-		if !shouldRetry {
-			if resp != nil && resp.Body != nil {
-				// Return the response to caller (non-retryable status)
-				return resp, nil
-			}
-			// Return the transport error
-			return nil, err
-		}
-
-		// Close response body before retrying to avoid leaks
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-
-		// Compute backoff with jitter, honoring Retry-After if specified
-		sleep := nextDelay
-		if retryAfter > 0 {
-			sleep = retryAfter
-		}
-		// Apply jitter: multiply by a factor in [1-j, 1+j]
-		if jitterFrac > 0 {
-			jf := (rand.Float64()*2 - 1) * jitterFrac // [-jitter, +jitter]
-			// guard against negative
-			factor := math.Max(0, 1+jf)
-			sleep = time.Duration(float64(sleep) * factor)
-		}
-
-		// Cap the sleep at maxDelay
-		if sleep > maxDelay {
-			sleep = maxDelay
-		}
-
-		// Log retry attempt
-		bt.logger.Warn().
-			Str("method", req.Method).
-			Str("url", req.URL.String()).
-			Int("attempt", attempt+1).
-			Dur("backoff", sleep).
-			Msg("retrying HTTP request")
-
-		// Sleep respecting context
-		timer := time.NewTimer(sleep)
-		select {
-		case <-timer.C:
-			// proceed
-		case <-req.Context().Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
-			return nil, req.Context().Err()
-		}
-
-		// Exponential growth for next iteration
-		nextDelay = nextDelay * 2
-		if nextDelay > maxDelay {
-			nextDelay = maxDelay
-		}
-		attempt++
-	}
-}
-
-func isIdempotent(method string) bool {
-	switch method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
-		return true
-	default:
-		return false
-	}
-}
-
-func canReplayBody(r *http.Request) bool {
-	if r.Body == nil {
-		return true
-	}
-	return r.GetBody != nil
-}
-
-func resetBody(r *http.Request) error {
-	if r.Body == nil {
-		return nil
-	}
-	if r.GetBody == nil {
-		return errors.Errorf("request body is not replayable for retries")
-	}
-	// Close old body before replacing
-	_ = r.Body.Close()
-	nb, err := r.GetBody()
-	if err != nil {
-		return err
-	}
-	r.Body = nb
-	return nil
-}
-
-func isRetryableStatus(code int) bool {
-	if code == http.StatusTooManyRequests || code == http.StatusRequestTimeout {
-		return true
-	}
-	return code >= 500
-}
-
-func isRetryableError(req *http.Request, err error) bool {
-	if err == nil {
-		return false
-	}
-	// Respect request context cancellation/deadline
-	if req.Context().Err() != nil {
-		return false
-	}
-	if ne, ok := err.(net.Error); ok {
-		if ne.Timeout() {
-			return true
-		}
-		// Many transient network errors implement Temporary()
-		// (Deprecated in Go 1.18+, but still implemented by some types)
-		type temporary interface{ Temporary() bool }
-		if t, ok := any(ne).(temporary); ok && t.Temporary() {
-			return true
-		}
-	}
-	// Fallback: treat other transport-level errors as retryable
-	return true
 }
