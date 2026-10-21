@@ -35,7 +35,10 @@ const (
 	// DefaultAPIBaseURL is the Forge API Gateway origin used when WithBaseURL is omitted.
 	DefaultAPIBaseURL = "https://api.developer.allora.network"
 	// DefaultDataAPIBaseURL is the Forge Data (Atlas) root used when WithDataBaseURL is omitted.
+	// Staging host by design until a production data default is published.
 	DefaultDataAPIBaseURL = "https://forge-data.stage.allora.run/api"
+
+	maxAPIResponseBytes = 32 << 20 // 32 MiB
 )
 
 // APIClient is the compatible public surface from the previous SDK.
@@ -83,6 +86,12 @@ func NewAPIClient(apiKey string, opts ...APIClientOption) (*apiClient, error) {
 	for _, opt := range opts {
 		opt(client)
 	}
+
+	switch client.network {
+	case NetworkTestnet, NetworkMainnet, NetworkOffchain:
+	default:
+		return nil, errors.Errorf("unsupported network %q (want testnet|mainnet|offchain)", client.network)
+	}
 	return client, nil
 }
 
@@ -118,6 +127,7 @@ func WithBackoff(baseDelay, maxDelay time.Duration, jitter float64) APIClientOpt
 			baseDelay:    baseDelay,
 			maxDelay:     maxDelay,
 			jitterFrac:   jitter,
+			maxAttempts:  defaultMaxAttempts,
 			logger:       c.logger,
 		}
 		c.httpClient.Transport = &t
@@ -133,6 +143,7 @@ func WithDefaultBackoff() APIClientOption {
 			baseDelay:    defaultBaseDelay,
 			maxDelay:     defaultMaxDelay,
 			jitterFrac:   defaultJitterFrac,
+			maxAttempts:  defaultMaxAttempts,
 			logger:       c.logger,
 		}
 		c.httpClient.Transport = &t
@@ -324,10 +335,14 @@ func (c *apiClient) doJSONWithAuth(
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes+1))
 	if err != nil {
 		outcome = "read_error"
 		return errors.WithMessage(err, "failed to read response body")
+	}
+	if int64(len(body)) > maxAPIResponseBytes {
+		outcome = "response_too_large"
+		return errors.Errorf("response body exceeds %d bytes", maxAPIResponseBytes)
 	}
 
 	if resp.StatusCode != http.StatusOK {

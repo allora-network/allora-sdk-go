@@ -8,14 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestListDatasetsUsesDataAPIKey(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/api/datasets/", r.URL.Path)
-		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
-		require.Empty(t, r.Header.Get("Authorization"))
+		if !assert.Equal(t, "/api/datasets/", r.URL.Path) ||
+			!assert.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key")) ||
+			!assert.Empty(t, r.Header.Get("Authorization")) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"count":    1,
 			"next":     nil,
@@ -47,8 +51,11 @@ func TestListDatasetsUsesDataAPIKey(t *testing.T) {
 
 func TestFindDatasetsByTicker(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/api/datasets/search/", r.URL.Path)
-		require.Equal(t, "btcusd", r.URL.Query().Get("ticker"))
+		if !assert.Equal(t, "/api/datasets/search/", r.URL.Path) ||
+			!assert.Equal(t, "btcusd", r.URL.Query().Get("ticker")) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"count": 1,
 			"results": []map[string]any{
@@ -71,7 +78,10 @@ func TestGetCandlesParsesRawAndAggregate(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path+"?"+r.URL.RawQuery)
-		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+		if !assert.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key")) {
+			http.Error(w, "bad key", http.StatusUnauthorized)
+			return
+		}
 
 		switch {
 		case r.URL.Path == "/api/datasets/search/":
@@ -159,12 +169,35 @@ func TestGetCandlesRequiresExactlyOneSelector(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestIterCandlesFollowsNext(t *testing.T) {
-	page := 0
+func TestGetCandlesRejectsAmbiguousTicker(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
-		page++
-		if page == 1 {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": 2,
+			"results": []map[string]any{
+				{"id": 1, "name": "tiingo_btcusd_5min", "metadata": map[string]any{"ticker": "btcusd"},
+					"created_at": "2026-09-30T13:15:49Z", "updated_at": "2026-09-30T14:28:19Z"},
+				{"id": 2, "name": "tiingo_btcusd_15min", "metadata": map[string]any{"ticker": "btcusd"},
+					"created_at": "2026-09-30T13:15:49Z", "updated_at": "2026-09-30T14:28:19Z"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+	_, err := client.GetCandles(context.Background(), CandleQuery{Ticker: "btcusd"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "matches 2 datasets")
+}
+
+func TestIterCandlesFollowsNext(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !assert.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key")) {
+			http.Error(w, "bad key", http.StatusUnauthorized)
+			return
+		}
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("offset") == "" {
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"count": 2,
 				"next":  "/api/rows/?dataset_name=tiingo_btcusd_1min&limit=1&offset=1",
@@ -173,6 +206,10 @@ func TestIterCandlesFollowsNext(t *testing.T) {
 						"values": map[string]any{"open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}},
 				},
 			})
+			return
+		}
+		if !assert.Equal(t, "1", r.URL.Query().Get("offset")) {
+			http.Error(w, "expected offset=1", http.StatusBadRequest)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -199,5 +236,21 @@ func TestIterCandlesFollowsNext(t *testing.T) {
 		}
 	}
 	require.Equal(t, []float64{1.5, 2.5}, closes)
-	require.Equal(t, 2, page)
+	require.Len(t, queries, 2)
+	require.NotContains(t, queries[0], "offset=")
+	require.Contains(t, queries[1], "offset=1")
+}
+
+func TestResolveDataNextURLRejectsForeignHost(t *testing.T) {
+	client := testClient(t, "http://gateway.example", "https://forge-data.stage.allora.run/api")
+	_, err := client.resolveDataNextURL("https://evil.example/api/rows/?offset=1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "does not match data API")
+}
+
+func TestResolveDataNextURLKeepsAPIPrefix(t *testing.T) {
+	client := testClient(t, "http://gateway.example", "https://forge-data.stage.allora.run/api")
+	got, err := client.resolveDataNextURL("rows/?offset=1")
+	require.NoError(t, err)
+	require.Equal(t, "https://forge-data.stage.allora.run/api/rows/?offset=1", got)
 }

@@ -149,19 +149,16 @@ func (c *apiClient) fetchTopics(ctx context.Context) ([]Topic, error) {
 	}
 	out := make([]Topic, 0, len(resp.Topics))
 	for _, gt := range resp.Topics {
-		out = append(out, mapGatewayTopic(gt, resp.CachedAt))
+		out = append(out, mapGatewayTopic(gt))
 	}
 	return out, nil
 }
 
-func mapGatewayTopic(gt gatewayTopic, cachedAt time.Time) Topic {
-	updated := cachedAt
-	if gt.CreatedAt != nil {
-		updated = *gt.CreatedAt
-	}
+func mapGatewayTopic(gt gatewayTopic) Topic {
 	// The gateway's free-form `metadata` string (e.g. "BTC 5min") is the closest
 	// equivalent to the previous SDK's TopicName. Other Upshot-only fields
-	// (Description, WorkerCount, IsActive, stakes, …) stay zero/unset.
+	// (Description, WorkerCount, IsActive, stakes, UpdatedAt, …) stay zero/unset —
+	// the gateway has no update timestamp, so we do not invent one from cache/created_at.
 	return Topic{
 		TopicID:                int(gt.ID),
 		TopicName:              gt.Metadata,
@@ -169,7 +166,6 @@ func mapGatewayTopic(gt gatewayTopic, cachedAt time.Time) Topic {
 		GroundTruthLag:         int(gt.GroundTruthLag),
 		LossMethod:             gt.LossMethod,
 		WorkerSubmissionWindow: int(gt.WorkerSubmissionWindow),
-		UpdatedAt:              updated,
 	}
 }
 
@@ -211,12 +207,12 @@ func mapNetworkInference(ni *NetworkInference) *Inference {
 	if ni == nil {
 		return nil
 	}
-	combined := firstLabeledValue(ni.CombinedValue)
+	// Prefer the single normalized decimal string. Avoid raw network_inference
+	// (base-unit integer, ~10^24 larger) and avoid picking an arbitrary label
+	// from multi-label combined_value bundles.
+	combined := strings.TrimSpace(ni.NetworkInferenceNormalized)
 	if combined == "" {
-		combined = ni.NetworkInferenceNormalized
-	}
-	if combined == "" {
-		combined = ni.NetworkInference
+		combined = firstLabeledValue(ni.CombinedValue)
 	}
 	naive := firstLabeledValue(ni.NaiveValue)
 	ts := ni.TimestampMs

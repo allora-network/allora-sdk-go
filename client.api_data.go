@@ -298,10 +298,11 @@ func (c *apiClient) GetCandles(ctx context.Context, q CandleQuery) (*CandlePage,
 		if err != nil {
 			return nil, err
 		}
-		if len(datasets) == 0 {
-			return nil, fmt.Errorf("%w: ticker %q", ErrDatasetNotFound, ticker)
+		picked, err := pickDatasetForTicker(ticker, datasets)
+		if err != nil {
+			return nil, err
 		}
-		datasetName = datasets[0].Name
+		datasetName = picked.Name
 		datasetID = 0
 	}
 
@@ -513,6 +514,27 @@ func decodeCandle(row atlasRowWire) (Candle, error) {
 	return c, nil
 }
 
+func pickDatasetForTicker(ticker string, datasets []Dataset) (Dataset, error) {
+	if len(datasets) == 0 {
+		return Dataset{}, fmt.Errorf("%w: ticker %q", ErrDatasetNotFound, ticker)
+	}
+	if len(datasets) == 1 {
+		return datasets[0], nil
+	}
+	// Explicit preference: unique 1-minute series when several datasets share a ticker.
+	var preferred []Dataset
+	for _, d := range datasets {
+		name := strings.ToLower(d.Name)
+		if strings.Contains(name, "1min") || strings.HasSuffix(name, "_1m") {
+			preferred = append(preferred, d)
+		}
+	}
+	if len(preferred) == 1 {
+		return preferred[0], nil
+	}
+	return Dataset{}, fmt.Errorf("ticker %q matches %d datasets; use DatasetID or DatasetName", ticker, len(datasets))
+}
+
 func (c *apiClient) resolveDataNextURL(next string) (string, error) {
 	next = strings.TrimSpace(next)
 	if next == "" {
@@ -522,12 +544,15 @@ func (c *apiClient) resolveDataNextURL(next string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if u.IsAbs() {
-		return u.String(), nil
-	}
 	base, err := url.Parse(c.dataURL)
 	if err != nil {
 		return "", err
+	}
+	if u.IsAbs() {
+		if u.Scheme != base.Scheme || u.Host != base.Host {
+			return "", errors.New("next url host does not match data API")
+		}
+		return u.String(), nil
 	}
 	if strings.HasPrefix(u.Path, "/") {
 		return (&url.URL{
@@ -538,5 +563,10 @@ func (c *apiClient) resolveDataNextURL(next string) (string, error) {
 			Fragment: u.Fragment,
 		}).String(), nil
 	}
-	return base.ResolveReference(u).String(), nil
+	// Resolve relative to dataURL with a trailing slash so "/api" is not dropped.
+	baseWithSlash, err := url.Parse(strings.TrimRight(c.dataURL, "/") + "/")
+	if err != nil {
+		return "", err
+	}
+	return baseWithSlash.ResolveReference(u).String(), nil
 }

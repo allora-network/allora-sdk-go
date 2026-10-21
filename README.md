@@ -142,12 +142,17 @@ config.Endpoints = []allora.EndpointConfig{
 1. **API Gateway** — topics + network inferences (`Authorization: Bearer …`)
 2. **Forge Data / Atlas** — datasets + OHLCV candles (`X-API-Key: …`)
 
-The public SDK shapes stay compatible with the previous client:
+Topic / inference / OHLC **response field shapes** stay compatible with the previous
+client. **Breaking constructor / auth changes** (callers must update):
+
+- `NewAPIClient` now returns `(*apiClient, error)` and requires a `forge_sk_…` key
+  (embedded `UP-` keys are rejected)
+- Defaults: gateway `https://api.developer.allora.network`, data
+  `https://forge-data.stage.allora.run/api` (staging Atlas host until prod default
+  ships), network `mainnet`
+- Override with `WithBaseURL` / `WithDataBaseURL` / `WithNetwork`
 
 ```go
-// Defaults:
-//   gateway → https://api.developer.allora.network
-//   data    → https://forge-data.stage.allora.run/api
 client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"))
 if err != nil {
     log.Fatal(err)
@@ -162,22 +167,29 @@ if err != nil {
 
 // Same as before: iterate topics
 for topic, err := range client.GetTopics() {
+    if err != nil {
+        log.Fatal(err)
+    }
     _ = topic.TopicID
 }
 
 // Same as before: topic + latest inference (CombinedValue / NaiveValue / Timestamp)
 topic, err := client.GetTopic(72)
+if err != nil {
+    log.Fatal(err)
+}
+_ = topic.LatestNetworkInference
 
 // Same as before: BTC candles
 for page, err := range client.GetOHLCData(ctx, "BTCUSD", "2024-01-01") {
+    if err != nil {
+        log.Fatal(err)
+    }
     for _, candle := range page.Data {
         _ = candle.Close // string, as before
     }
 }
 ```
-
-Defaults are `DefaultAPIBaseURL` and `DefaultDataAPIBaseURL`. Override with
-`WithBaseURL` / `WithDataBaseURL` for local or alternate stage hosts.
 
 Extended helpers on `*apiClient` (not on `APIClient`): `GetNetworkInference`,
 `GetCandles`, `ListDatasets`, `FindDatasetsByTicker`, `IterCandles`.

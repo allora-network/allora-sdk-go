@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -49,6 +50,10 @@ func TestNewAPIClientDefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, NetworkTestnet, client.network)
 	require.Equal(t, "http://gateway.example", client.url)
 	require.Equal(t, "http://data.example/api", client.dataURL)
+
+	_, err = NewAPIClient("forge_sk_test", WithNetwork(Network("bogus")))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unsupported network")
 }
 
 func TestGetTopicsCompatShape(t *testing.T) {
@@ -215,12 +220,18 @@ func TestGetInferenceMapsHTTPErrors(t *testing.T) {
 }
 
 func TestGetOHLCDataCompatShape(t *testing.T) {
-	page := 0
+	var rowQueries []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+		if !assert.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key")) {
+			http.Error(w, "bad key", http.StatusUnauthorized)
+			return
+		}
 		switch r.URL.Path {
 		case "/api/datasets/search/":
-			require.Equal(t, "btcusd", r.URL.Query().Get("ticker"))
+			if !assert.Equal(t, "btcusd", r.URL.Query().Get("ticker")) {
+				http.Error(w, "bad ticker", http.StatusBadRequest)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"count": 1,
 				"results": []map[string]any{
@@ -229,8 +240,8 @@ func TestGetOHLCDataCompatShape(t *testing.T) {
 				},
 			})
 		case "/api/rows/":
-			page++
-			if page == 1 {
+			rowQueries = append(rowQueries, r.URL.RawQuery)
+			if r.URL.Query().Get("offset") == "" {
 				_ = json.NewEncoder(w).Encode(map[string]any{
 					"count": 2,
 					"next":  "/api/rows/?dataset_name=tiingo_btcusd_1min&limit=1&offset=1",
@@ -245,6 +256,10 @@ func TestGetOHLCDataCompatShape(t *testing.T) {
 						},
 					},
 				})
+				return
+			}
+			if !assert.Equal(t, "1", r.URL.Query().Get("offset")) {
+				http.Error(w, "expected offset=1", http.StatusBadRequest)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -278,6 +293,9 @@ func TestGetOHLCDataCompatShape(t *testing.T) {
 	require.Len(t, pages, 2)
 	require.NotNil(t, pages[0].ContinuationToken)
 	require.Nil(t, pages[1].ContinuationToken)
+	require.Len(t, rowQueries, 2)
+	require.NotContains(t, rowQueries[0], "offset=")
+	require.Contains(t, rowQueries[1], "offset=1")
 
 	require.Equal(t, "BTCUSD", pages[0].Data[0].Ticker)
 	require.Equal(t, "2024-01-01T00:00:00Z", pages[0].Data[0].Date)

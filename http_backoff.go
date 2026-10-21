@@ -1,11 +1,13 @@
 package allora
 
 import (
+	stderrors "errors"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/brynbellomy/go-utils/errors"
@@ -17,13 +19,15 @@ type BackoffTransport struct {
 	baseDelay    time.Duration
 	maxDelay     time.Duration
 	jitterFrac   float64
+	maxAttempts  int
 	logger       zerolog.Logger
 }
 
 const (
-	defaultBaseDelay  = 1 * time.Second
-	defaultMaxDelay   = 30 * time.Second
-	defaultJitterFrac = 0.1
+	defaultBaseDelay   = 1 * time.Second
+	defaultMaxDelay    = 30 * time.Second
+	defaultJitterFrac  = 0.1
+	defaultMaxAttempts = 5
 )
 
 func NewBackoffTransport(roundTripper http.RoundTripper) http.RoundTripper {
@@ -32,6 +36,7 @@ func NewBackoffTransport(roundTripper http.RoundTripper) http.RoundTripper {
 		baseDelay:    defaultBaseDelay,
 		maxDelay:     defaultMaxDelay,
 		jitterFrac:   defaultJitterFrac,
+		maxAttempts:  defaultMaxAttempts,
 		logger:       zerolog.Nop(),
 	}
 }
@@ -54,21 +59,22 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	if jitterFrac < 0 {
 		jitterFrac = 0
 	}
+	maxAttempts := bt.maxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = defaultMaxAttempts
+	}
 
 	nextDelay := baseDelay
-	attempt := 0
 
-	for {
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		attemptReq := req.Clone(req.Context())
 		if attempt > 0 {
-			if !canReplayBody(req) {
-				return nil, errors.Errorf("cannot retry non-replayable request body")
-			}
-			if err := resetBody(req); err != nil {
+			if err := resetBody(attemptReq); err != nil {
 				return nil, err
 			}
 		}
 
-		resp, err := base.RoundTrip(req)
+		resp, err := base.RoundTrip(attemptReq)
 		if err == nil && (resp == nil || !isRetryableStatus(resp.StatusCode)) {
 			return resp, nil
 		}
@@ -87,19 +93,24 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			shouldRetry = isRetryableError(req, err)
 		} else if resp != nil && isRetryableStatus(resp.StatusCode) {
 			shouldRetry = true
-			if ra := resp.Header.Get("Retry-After"); ra != "" {
-				if secs, perr := strconv.Atoi(ra); perr == nil && secs >= 0 {
-					retryAfter = time.Duration(secs) * time.Second
-				}
-			}
+			retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
 		}
 
-		if shouldRetry && !(isIdempotent(req.Method) || canReplayBody(req)) {
+		// Only retry idempotent methods with a replayable body.
+		if shouldRetry && (!isIdempotent(req.Method) || !canReplayBody(req)) {
 			shouldRetry = false
 		}
 
 		if !shouldRetry {
-			if resp != nil && resp.Body != nil {
+			if resp != nil {
+				return resp, nil
+			}
+			return nil, err
+		}
+
+		// Last attempt: return the response/error so callers see status + body.
+		if attempt+1 >= maxAttempts {
+			if resp != nil {
 				return resp, nil
 			}
 			return nil, err
@@ -110,7 +121,8 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		}
 
 		sleep := nextDelay
-		if retryAfter > 0 {
+		honorServerDelay := retryAfter > 0
+		if honorServerDelay {
 			sleep = retryAfter
 		}
 		if jitterFrac > 0 {
@@ -118,7 +130,8 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			factor := math.Max(0, 1+jf)
 			sleep = time.Duration(float64(sleep) * factor)
 		}
-		if sleep > maxDelay {
+		// Cap exponential backoff; do not cap a server-requested Retry-After.
+		if !honorServerDelay && sleep > maxDelay {
 			sleep = maxDelay
 		}
 
@@ -143,8 +156,9 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		if nextDelay > maxDelay {
 			nextDelay = maxDelay
 		}
-		attempt++
 	}
+
+	return nil, errors.New("backoff: exhausted attempts")
 }
 
 func isIdempotent(method string) bool {
@@ -186,6 +200,8 @@ func isRetryableStatus(code int) bool {
 	return code >= 500
 }
 
+// isRetryableError reports only transient transport failures (timeouts / Temporary).
+// Permanent errors (TLS, bad scheme, etc.) are not retried.
 func isRetryableError(req *http.Request, err error) bool {
 	if err == nil {
 		return false
@@ -193,7 +209,8 @@ func isRetryableError(req *http.Request, err error) bool {
 	if req.Context().Err() != nil {
 		return false
 	}
-	if ne, ok := err.(net.Error); ok {
+	var ne net.Error
+	if stderrors.As(err, &ne) {
 		if ne.Timeout() {
 			return true
 		}
@@ -202,5 +219,23 @@ func isRetryableError(req *http.Request, err error) bool {
 			return true
 		}
 	}
-	return true
+	return false
+}
+
+func parseRetryAfter(ra string) time.Duration {
+	ra = strings.TrimSpace(ra)
+	if ra == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(ra); err == nil && secs >= 0 {
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(ra); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			return 0
+		}
+		return d
+	}
+	return 0
 }
