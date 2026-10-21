@@ -207,14 +207,15 @@ func mapNetworkInference(ni *NetworkInference) *Inference {
 	if ni == nil {
 		return nil
 	}
-	// Prefer the single normalized decimal string. Avoid raw network_inference
-	// (base-unit integer, ~10^24 larger) and avoid picking an arbitrary label
-	// from multi-label combined_value bundles.
+	// Prefer network_inference_normalized (decimal). Fall back to labeled
+	// combined_value/naive_value only when exactly one label is present —
+	// never invent a pick from a multi-label bundle, and never use raw
+	// network_inference (base-unit integer).
 	combined := strings.TrimSpace(ni.NetworkInferenceNormalized)
 	if combined == "" {
-		combined = firstLabeledValue(ni.CombinedValue)
+		combined = singleLabeledValue(ni.CombinedValue)
 	}
-	naive := firstLabeledValue(ni.NaiveValue)
+	naive := singleLabeledValue(ni.NaiveValue)
 	ts := ni.TimestampMs
 	if ts == 0 && ni.Timestamp > 0 {
 		ts = ni.Timestamp * 1000
@@ -226,8 +227,8 @@ func mapNetworkInference(ni *NetworkInference) *Inference {
 	}
 }
 
-func firstLabeledValue(values []LabeledValue) string {
-	if len(values) == 0 {
+func singleLabeledValue(values []LabeledValue) string {
+	if len(values) != 1 {
 		return ""
 	}
 	return values[0].Value

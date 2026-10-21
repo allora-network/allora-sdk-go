@@ -191,6 +191,10 @@ var ErrTopicNotFound = stderrors.New("topic not found")
 // ErrDatasetNotFound is returned when a ticker/dataset cannot be resolved in Atlas.
 var ErrDatasetNotFound = stderrors.New("dataset not found")
 
+// ErrAmbiguousTicker is returned when a ticker matches multiple Atlas datasets
+// and no unique 1-minute preference can be applied.
+var ErrAmbiguousTicker = stderrors.New("ambiguous ticker")
+
 type gatewayErrorBody struct {
 	Error string `json:"error"`
 }

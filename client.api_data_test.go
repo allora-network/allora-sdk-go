@@ -186,6 +186,7 @@ func TestGetCandlesRejectsAmbiguousTicker(t *testing.T) {
 	client := testClient(t, "http://gateway.example", srv.URL+"/api")
 	_, err := client.GetCandles(context.Background(), CandleQuery{Ticker: "btcusd"})
 	require.Error(t, err)
+	require.ErrorIs(t, err, ErrAmbiguousTicker)
 	require.Contains(t, err.Error(), "matches 2 datasets")
 }
 

@@ -532,7 +532,7 @@ func pickDatasetForTicker(ticker string, datasets []Dataset) (Dataset, error) {
 	if len(preferred) == 1 {
 		return preferred[0], nil
 	}
-	return Dataset{}, fmt.Errorf("ticker %q matches %d datasets; use DatasetID or DatasetName", ticker, len(datasets))
+	return Dataset{}, fmt.Errorf("%w: ticker %q matches %d datasets; use DatasetID or DatasetName", ErrAmbiguousTicker, ticker, len(datasets))
 }
 
 func (c *apiClient) resolveDataNextURL(next string) (string, error) {
