@@ -81,6 +81,10 @@ type CandleQuery struct {
 	Limit      int
 	Offset     int
 	Ordering   string
+
+	// MaxPages caps how many Atlas pages a single iteration will follow.
+	// Zero means DefaultMaxCandlePages. Exceeding the cap returns an error.
+	MaxPages int
 }
 
 // Candle is one OHLCV bar from Atlas.
@@ -206,7 +210,10 @@ func (c *apiClient) FindDatasetsByTicker(ctx context.Context, ticker string) ([]
 	return page.Results, nil
 }
 
-const maxCandlePages = 10_000
+// DefaultMaxCandlePages caps Atlas pagination for GetOHLCData / IterCandles.
+// At Limit=250 this is ~2.5M candles; raise via CandleQuery.MaxPages for longer pulls.
+// Exceeding the cap returns an error (tail is not silently truncated).
+const DefaultMaxCandlePages = 10_000
 
 // GetOHLCData keeps the previous SDK candles API, backed by Atlas rows.
 // Empty result sets yield a single "no data found" error after pagination ends
@@ -272,11 +279,19 @@ func (c *apiClient) IterCandles(ctx context.Context, q CandleQuery) iter.Seq2[[]
 }
 
 // iterCandlePages is the single pagination loop for Atlas candle queries.
-// It caps pages and aborts if a resolved next URL repeats (cycle guard).
+// It caps pages and aborts if a resolved next URL repeats (cycle guard),
+// including cycles that return to the initial request URL.
 func (c *apiClient) iterCandlePages(ctx context.Context, q CandleQuery) iter.Seq2[*CandlePage, error] {
 	return func(yield func(*CandlePage, error) bool) {
-		page, err := c.GetCandles(ctx, q)
+		pageCap := q.MaxPages
+		if pageCap <= 0 {
+			pageCap = DefaultMaxCandlePages
+		}
+		page, reqURL, err := c.fetchCandlePage(ctx, q)
 		seen := map[string]struct{}{}
+		if reqURL != "" {
+			seen[reqURL] = struct{}{}
+		}
 		pages := 0
 		for {
 			if err != nil {
@@ -287,8 +302,8 @@ func (c *apiClient) iterCandlePages(ctx context.Context, q CandleQuery) iter.Seq
 				return
 			}
 			pages++
-			if pages > maxCandlePages {
-				yield(nil, errors.Errorf("candle pagination exceeded %d pages", maxCandlePages))
+			if pages > pageCap {
+				yield(nil, errors.Errorf("candle pagination exceeded %d pages (set CandleQuery.MaxPages to raise; default %d)", pageCap, DefaultMaxCandlePages))
 				return
 			}
 			if !yield(page, nil) {
@@ -314,8 +329,13 @@ func (c *apiClient) iterCandlePages(ctx context.Context, q CandleQuery) iter.Seq
 
 // GetCandles calls GET /api/rows/ for one page of OHLCV data.
 func (c *apiClient) GetCandles(ctx context.Context, q CandleQuery) (*CandlePage, error) {
+	page, _, err := c.fetchCandlePage(ctx, q)
+	return page, err
+}
+
+func (c *apiClient) fetchCandlePage(ctx context.Context, q CandleQuery) (*CandlePage, string, error) {
 	if err := q.validateSelectors(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	datasetName := strings.TrimSpace(q.DatasetName)
@@ -323,11 +343,11 @@ func (c *apiClient) GetCandles(ctx context.Context, q CandleQuery) (*CandlePage,
 	if ticker := strings.TrimSpace(q.Ticker); ticker != "" {
 		datasets, err := c.FindDatasetsByTicker(ctx, ticker)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		picked, err := pickDatasetForTicker(ticker, datasets)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		datasetName = picked.Name
 		datasetID = 0
@@ -361,14 +381,15 @@ func (c *apiClient) GetCandles(ctx context.Context, q CandleQuery) (*CandlePage,
 
 	reqURL, err := c.dataURLPath("rows/", query)
 	if err != nil {
-		return nil, errors.WithMessage(err, "could not parse url")
+		return nil, "", errors.WithMessage(err, "could not parse url")
 	}
 
 	var wire atlasRowsPageWire
 	if err := c.doDataJSON(ctx, "GetCandles", http.MethodGet, reqURL, &wire); err != nil {
-		return nil, err
+		return nil, reqURL, err
 	}
-	return decodeCandlePage(wire)
+	page, err := decodeCandlePage(wire)
+	return page, reqURL, err
 }
 
 func (c *apiClient) getCandlesNext(ctx context.Context, next string) (*CandlePage, error) {
@@ -515,17 +536,14 @@ func decodeCandle(row atlasRowWire) (Candle, error) {
 			c.Count = *row.Count
 		}
 		// Fill volume/trades from values when aggregate omitted them.
-		if (row.Volume == nil || c.TradesDone == 0) && len(row.Values) > 0 && string(row.Values) != "null" {
+		if row.Volume == nil && len(row.Values) > 0 && string(row.Values) != "null" {
 			var v atlasCandleValues
-			if err := json.Unmarshal(row.Values, &v); err == nil {
-				if row.Volume == nil {
-					c.Volume = v.Volume
-				}
-				c.VolumeNotional = v.VolumeNotional
-				if c.TradesDone == 0 {
-					c.TradesDone = v.TradesDone
-				}
+			if err := json.Unmarshal(row.Values, &v); err != nil {
+				return c, errors.WithMessage(err, "failed to decode candle values")
 			}
+			c.Volume = v.Volume
+			c.VolumeNotional = v.VolumeNotional
+			c.TradesDone = v.TradesDone
 		}
 		return c, nil
 	}

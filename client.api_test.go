@@ -144,6 +144,7 @@ func TestGetTopicAttachesCompatInference(t *testing.T) {
 }
 
 func TestGetTopicBestEffortOnInferenceError(t *testing.T) {
+	var inferenceHit bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/testnet/topics":
@@ -151,6 +152,7 @@ func TestGetTopicBestEffortOnInferenceError(t *testing.T) {
 				"topics": []map[string]any{{"id": 72, "metadata": "BTC"}},
 			})
 		case "/testnet/inference/72":
+			inferenceHit = true
 			w.WriteHeader(http.StatusPaymentRequired)
 			_, _ = w.Write([]byte(`{"error":"insufficient balance"}`))
 		default:
@@ -162,9 +164,54 @@ func TestGetTopicBestEffortOnInferenceError(t *testing.T) {
 	client := testClient(t, srv.URL, "http://data.example/api")
 	topic, err := client.GetTopic(72)
 	require.NoError(t, err)
+	require.True(t, inferenceHit, "GetTopic must attempt inference before tolerating failure")
 	require.Equal(t, 72, topic.TopicID)
 	require.Equal(t, "BTC", topic.TopicName)
 	require.Nil(t, topic.LatestNetworkInference)
+}
+
+func TestDataAPIRefusesCrossHostRedirect(t *testing.T) {
+	var foreignHit bool
+	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		foreignHit = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"count":0,"results":[]}`))
+	}))
+	defer foreign.Close()
+
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+		http.Redirect(w, r, foreign.URL+"/api/datasets/", http.StatusFound)
+	}))
+	defer origin.Close()
+
+	client := testClient(t, "http://gateway.example", origin.URL+"/api")
+	_, err := client.ListDatasets(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cross-host redirect")
+	require.False(t, foreignHit, "X-API-Key must not be forwarded to a foreign host")
+}
+
+func TestDataAPIAllowsSameHostRedirect(t *testing.T) {
+	var finalHit bool
+	var srvURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery == "" {
+			http.Redirect(w, r, srvURL+"/api/datasets/?redirected=1", http.StatusFound)
+			return
+		}
+		finalHit = true
+		require.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key"))
+		_ = json.NewEncoder(w).Encode(map[string]any{"count": 0, "results": []any{}})
+	}))
+	defer srv.Close()
+	srvURL = srv.URL
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+	page, err := client.ListDatasets(context.Background())
+	require.NoError(t, err)
+	require.True(t, finalHit)
+	require.Equal(t, 0, page.Count)
 }
 
 func TestGetNetworkInferenceParsesFlatGatewayJSON(t *testing.T) {
