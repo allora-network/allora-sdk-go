@@ -342,7 +342,11 @@ func canonicalNextKey(raw string) (string, error) {
 		return "", err
 	}
 	u.Fragment = ""
-	u.RawQuery = u.Query().Encode() // sorted keys, canonical escaping
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return "", err
+	}
+	u.RawQuery = query.Encode() // sorted keys, canonical escaping
 	return u.String(), nil
 }
 
