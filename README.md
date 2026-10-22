@@ -135,6 +135,68 @@ config.Endpoints = []allora.EndpointConfig{
 }
 ```
 
+## Forge HTTP Client (Gateway + Market Data)
+
+`NewAPIClient` uses a Forge secret key (`forge_sk_…`) for:
+
+1. **API Gateway** — topics + network inferences (`Authorization: Bearer …`)
+2. **Forge Data / Atlas** — datasets + OHLCV candles (`X-API-Key: …`)
+
+Topic / inference / OHLC **response field shapes** stay compatible with the previous
+client. **Breaking constructor / auth changes** (callers must update):
+
+- `NewAPIClient` now returns `(*apiClient, error)` and requires a `forge_sk_…` key
+  (embedded `UP-` keys are rejected)
+- Defaults: gateway `https://api.developer.allora.network`, data
+  `https://forge-data.stage.allora.run/api` (staging Atlas host until prod default
+  ships), network `mainnet`
+- Override with `WithBaseURL` / `WithDataBaseURL` / `WithNetwork`
+
+```go
+client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"))
+if err != nil {
+    log.Fatal(err)
+}
+
+// Optional overrides for local/alternate stage:
+// client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"),
+//     allora.WithBaseURL("http://localhost:8080"),
+//     allora.WithDataBaseURL("https://forge-data.stage.allora.run/api"),
+//     allora.WithNetwork(allora.NetworkTestnet), // default is mainnet
+// )
+
+// Same as before: iterate topics
+for topic, err := range client.GetTopics() {
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = topic.TopicID
+}
+
+// Same as before: topic + latest inference (CombinedValue / NaiveValue / Timestamp)
+topic, err := client.GetTopic(72)
+if err != nil {
+    log.Fatal(err)
+}
+_ = topic.LatestNetworkInference
+
+// Same as before: BTC candles
+for page, err := range client.GetOHLCData(ctx, "BTCUSD", "2024-01-01") {
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, candle := range page.Data {
+        _ = candle.Close // string, as before
+    }
+}
+```
+
+Extended helpers on `*apiClient` (not on `APIClient`): `GetNetworkInference`,
+`GetCandles`, `ListDatasets`, `FindDatasetsByTicker`, `IterCandles`.
+
+- Upshot `/v2` is removed; `GetOHLCData` is backed by Atlas
+- Topic fields the gateway does not return stay zero (not invented)
+
 ## API Reference
 
 ### Cosmos SDK Modules
