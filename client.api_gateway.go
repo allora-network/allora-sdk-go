@@ -115,9 +115,11 @@ func (c *apiClient) GetTopics() iter.Seq2[*Topic, error] {
 	}
 }
 
-// GetTopic returns one topic from the gateway catalog and attaches latest inference.
-// The gateway has no single-topic route yet, so this scans the catalog list.
-// Missing ids return ErrTopicNotFound. Inference failures are returned to the caller.
+// GetTopic returns one topic from the gateway catalog and best-effort attaches
+// the latest inference. The gateway has no single-topic route yet, so this scans
+// the catalog list. Missing ids return ErrTopicNotFound. Inference failures leave
+// LatestNetworkInference nil so catalog metadata stays independently usable
+// (inference is a separately billed route).
 func (c *apiClient) GetTopic(topicID uint64) (*Topic, error) {
 	topics, err := c.fetchTopics(context.Background())
 	if err != nil {
@@ -130,9 +132,10 @@ func (c *apiClient) GetTopic(topicID uint64) (*Topic, error) {
 		topic := topics[i]
 		inf, err := c.GetInference(context.Background(), topicID)
 		if err != nil {
-			return nil, errors.WithMessage(err, "failed to load latest inference")
+			c.logger.Warn().Err(err).Uint64("topic_id", topicID).Msg("latest inference unavailable")
+		} else {
+			topic.LatestNetworkInference = inf
 		}
-		topic.LatestNetworkInference = inf
 		return &topic, nil
 	}
 	return nil, fmt.Errorf("%w: %d", ErrTopicNotFound, topicID)

@@ -3,7 +3,6 @@ package allora
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -144,7 +143,7 @@ func TestGetTopicAttachesCompatInference(t *testing.T) {
 	require.ErrorIs(t, err, ErrTopicNotFound)
 }
 
-func TestGetTopicFailsClosedOnInferenceError(t *testing.T) {
+func TestGetTopicBestEffortOnInferenceError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/testnet/topics":
@@ -161,10 +160,11 @@ func TestGetTopicFailsClosedOnInferenceError(t *testing.T) {
 	defer srv.Close()
 
 	client := testClient(t, srv.URL, "http://data.example/api")
-	_, err := client.GetTopic(72)
-	require.Error(t, err)
-	var apiErr *APIError
-	require.True(t, errors.As(err, &apiErr) || strings.Contains(err.Error(), "insufficient balance"))
+	topic, err := client.GetTopic(72)
+	require.NoError(t, err)
+	require.Equal(t, 72, topic.TopicID)
+	require.Equal(t, "BTC", topic.TopicName)
+	require.Nil(t, topic.LatestNetworkInference)
 }
 
 func TestGetNetworkInferenceParsesFlatGatewayJSON(t *testing.T) {

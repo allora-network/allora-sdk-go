@@ -242,6 +242,34 @@ func TestIterCandlesFollowsNext(t *testing.T) {
 	require.Contains(t, queries[1], "offset=1")
 }
 
+func TestIterCandlesDetectsNextCycle(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": 1,
+			"next":  "/api/rows/?dataset_name=tiingo_btcusd_1min&limit=1&offset=0",
+			"results": []map[string]any{
+				{"dataset_id": 3, "timestamp": "2024-01-01T00:00:00Z",
+					"values": map[string]any{"open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+	var sawErr error
+	for _, err := range client.IterCandles(context.Background(), CandleQuery{
+		DatasetName: "tiingo_btcusd_1min",
+		Limit:       1,
+	}) {
+		if err != nil {
+			sawErr = err
+			break
+		}
+	}
+	require.Error(t, sawErr)
+	require.Contains(t, sawErr.Error(), "cycle detected")
+}
+
 func TestResolveDataNextURLRejectsForeignHost(t *testing.T) {
 	client := testClient(t, "http://gateway.example", "https://forge-data.stage.allora.run/api")
 	_, err := client.resolveDataNextURL("https://evil.example/api/rows/?offset=1")

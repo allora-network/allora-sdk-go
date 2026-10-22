@@ -2,25 +2,29 @@ package allora
 
 import (
 	stderrors "errors"
+	"io"
 	"math"
 	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/brynbellomy/go-utils/errors"
 	"github.com/rs/zerolog"
 )
 
+// BackoffTransport retries idempotent requests with exponential backoff.
+// logger is a pointer so WithLogger applied after WithDefaultBackoff still works.
 type BackoffTransport struct {
 	roundTripper http.RoundTripper
 	baseDelay    time.Duration
 	maxDelay     time.Duration
 	jitterFrac   float64
 	maxAttempts  int
-	logger       zerolog.Logger
+	logger       *zerolog.Logger
 }
 
 const (
@@ -31,13 +35,14 @@ const (
 )
 
 func NewBackoffTransport(roundTripper http.RoundTripper) http.RoundTripper {
+	nop := zerolog.Nop()
 	return &BackoffTransport{
 		roundTripper: roundTripper,
 		baseDelay:    defaultBaseDelay,
 		maxDelay:     defaultMaxDelay,
 		jitterFrac:   defaultJitterFrac,
 		maxAttempts:  defaultMaxAttempts,
-		logger:       zerolog.Nop(),
+		logger:       &nop,
 	}
 }
 
@@ -135,7 +140,11 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 			sleep = maxDelay
 		}
 
-		bt.logger.Warn().
+		log := zerolog.Nop()
+		if bt.logger != nil {
+			log = *bt.logger
+		}
+		log.Warn().
 			Str("method", req.Method).
 			Str("url", req.URL.String()).
 			Int("attempt", attempt+1).
@@ -200,14 +209,22 @@ func isRetryableStatus(code int) bool {
 	return code >= 500
 }
 
-// isRetryableError reports only transient transport failures (timeouts / Temporary).
-// Permanent errors (TLS, bad scheme, etc.) are not retried.
+// isRetryableError reports transient transport failures. Permanent errors
+// (TLS handshake, bad scheme, etc.) are not retried. Connection refused/reset
+// and EOF are treated as transient (backend restarts / rolling deploys).
 func isRetryableError(req *http.Request, err error) bool {
 	if err == nil {
 		return false
 	}
 	if req.Context().Err() != nil {
 		return false
+	}
+	if stderrors.Is(err, syscall.ECONNREFUSED) ||
+		stderrors.Is(err, syscall.ECONNRESET) ||
+		stderrors.Is(err, io.EOF) ||
+		stderrors.Is(err, io.ErrUnexpectedEOF) ||
+		stderrors.Is(err, net.ErrClosed) {
+		return true
 	}
 	var ne net.Error
 	if stderrors.As(err, &ne) {

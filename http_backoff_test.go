@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -145,5 +146,7 @@ func TestIsRetryableErrorClassifies(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "http://example.invalid", nil)
 	require.NoError(t, err)
 	require.False(t, isRetryableError(req, nil))
-	require.False(t, isRetryableError(req, io.EOF))
+	require.True(t, isRetryableError(req, io.EOF))
+	require.True(t, isRetryableError(req, syscall.ECONNREFUSED))
+	require.True(t, isRetryableError(req, syscall.ECONNRESET))
 }

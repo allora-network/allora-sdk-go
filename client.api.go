@@ -92,6 +92,22 @@ func NewAPIClient(apiKey string, opts ...APIClientOption) (*apiClient, error) {
 	default:
 		return nil, errors.Errorf("unsupported network %q (want testnet|mainnet|offchain)", client.network)
 	}
+
+	// Refuse cross-host redirects so custom auth headers (esp. X-API-Key) are
+	// never forwarded to an unexpected origin. net/http only strips Authorization.
+	client.httpClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if len(via) == 0 {
+			return nil
+		}
+		origin := via[0].URL
+		if req.URL.Scheme != origin.Scheme || req.URL.Host != origin.Host {
+			return errors.Errorf("refusing cross-host redirect to %s", req.URL.Host)
+		}
+		return nil
+	}
 	return client, nil
 }
 
@@ -128,7 +144,7 @@ func WithBackoff(baseDelay, maxDelay time.Duration, jitter float64) APIClientOpt
 			maxDelay:     maxDelay,
 			jitterFrac:   jitter,
 			maxAttempts:  defaultMaxAttempts,
-			logger:       c.logger,
+			logger:       &c.logger,
 		}
 		c.httpClient.Transport = &t
 	}
@@ -144,7 +160,7 @@ func WithDefaultBackoff() APIClientOption {
 			maxDelay:     defaultMaxDelay,
 			jitterFrac:   defaultJitterFrac,
 			maxAttempts:  defaultMaxAttempts,
-			logger:       c.logger,
+			logger:       &c.logger,
 		}
 		c.httpClient.Transport = &t
 	}
@@ -164,7 +180,8 @@ func WithTimeout(d time.Duration) APIClientOption {
 	}
 }
 
-// WithLogger sets the logger
+// WithLogger sets the logger. Safe to call after WithDefaultBackoff / WithBackoff
+// because those options store a pointer to the client's logger field.
 func WithLogger(logger zerolog.Logger) APIClientOption {
 	return func(c *apiClient) {
 		c.logger = logger
@@ -211,8 +228,8 @@ type Topic struct {
 	WorkerSubmissionWindow    int        `json:"worker_submission_window"`
 	WorkerCount               int        `json:"worker_count"`
 	ReputerCount              int        `json:"reputer_count"`
-	TotalStakedAllo           int        `json:"total_staked_allo"`
-	TotalEmissionsAllo        int        `json:"total_emissions_allo"`
+	TotalStakedAllo           float64    `json:"total_staked_allo"`
+	TotalEmissionsAllo        float64    `json:"total_emissions_allo"`
 	IsActive                  bool       `json:"is_active"`
 	IsEndorsed                bool       `json:"is_endorsed"`
 	ForgeCompetitionID        *int       `json:"forge_competition_id"`
