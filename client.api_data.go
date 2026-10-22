@@ -280,7 +280,8 @@ func (c *apiClient) IterCandles(ctx context.Context, q CandleQuery) iter.Seq2[[]
 
 // iterCandlePages is the single pagination loop for Atlas candle queries.
 // It caps pages and aborts if a resolved next URL repeats (cycle guard),
-// including cycles that return to the initial request URL.
+// including cycles that return to the initial request URL. Cycle keys are
+// canonicalized so reordered/re-encoded query parameters are still detected.
 func (c *apiClient) iterCandlePages(ctx context.Context, q CandleQuery) iter.Seq2[*CandlePage, error] {
 	return func(yield func(*CandlePage, error) bool) {
 		pageCap := q.MaxPages
@@ -290,7 +291,9 @@ func (c *apiClient) iterCandlePages(ctx context.Context, q CandleQuery) iter.Seq
 		page, reqURL, err := c.fetchCandlePage(ctx, q)
 		seen := map[string]struct{}{}
 		if reqURL != "" {
-			seen[reqURL] = struct{}{}
+			if k, kerr := canonicalNextKey(reqURL); kerr == nil {
+				seen[k] = struct{}{}
+			}
 		}
 		pages := 0
 		for {
@@ -317,14 +320,30 @@ func (c *apiClient) iterCandlePages(ctx context.Context, q CandleQuery) iter.Seq
 				yield(nil, errors.WithMessage(resolveErr, "could not resolve next url"))
 				return
 			}
-			if _, dup := seen[nextURL]; dup {
+			key, kerr := canonicalNextKey(nextURL)
+			if kerr != nil {
+				key = nextURL
+			}
+			if _, dup := seen[key]; dup {
 				yield(nil, errors.Errorf("candle pagination cycle detected at %s", nextURL))
 				return
 			}
-			seen[nextURL] = struct{}{}
+			seen[key] = struct{}{}
 			page, err = c.getCandlesNext(ctx, *page.Next)
 		}
 	}
+}
+
+// canonicalNextKey normalizes a URL so that two logically identical pages with
+// reordered or differently-encoded query parameters compare equal.
+func canonicalNextKey(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	u.Fragment = ""
+	u.RawQuery = u.Query().Encode() // sorted keys, canonical escaping
+	return u.String(), nil
 }
 
 // GetCandles calls GET /api/rows/ for one page of OHLCV data.

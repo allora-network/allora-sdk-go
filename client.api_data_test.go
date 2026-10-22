@@ -278,6 +278,39 @@ func TestIterCandlesDetectsNextCycle(t *testing.T) {
 	require.Equal(t, 1, hits)
 }
 
+func TestIterCandlesDetectsReorderedQueryCycle(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		// Same logical query as the initial request but with reordered params.
+		next := "/api/rows/?limit=1&dataset_name=tiingo_btcusd_1min"
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"count": 1,
+			"next":  next,
+			"results": []map[string]any{
+				{"dataset_id": 3, "timestamp": "2024-01-01T00:00:00Z",
+					"values": map[string]any{"open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 10}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := testClient(t, "http://gateway.example", srv.URL+"/api")
+	var sawErr error
+	for _, err := range client.IterCandles(context.Background(), CandleQuery{
+		DatasetName: "tiingo_btcusd_1min",
+		Limit:       1,
+	}) {
+		if err != nil {
+			sawErr = err
+			break
+		}
+	}
+	require.Error(t, sawErr)
+	require.Contains(t, sawErr.Error(), "cycle detected")
+	require.Equal(t, 1, hits, "reordered next must be caught on the first hop")
+}
+
 func TestResolveDataNextURLRejectsForeignHost(t *testing.T) {
 	client := testClient(t, "http://gateway.example", "https://forge-data.stage.allora.run/api")
 	_, err := client.resolveDataNextURL("https://evil.example/api/rows/?offset=1")
