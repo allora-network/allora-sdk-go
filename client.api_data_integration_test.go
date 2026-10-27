@@ -68,22 +68,26 @@ func TestIntegrationForgeDataCandles(t *testing.T) {
 		c0.Open, c0.High, c0.Low, c0.Close, c0.Volume)
 
 	var iterPages int
+	var iterCandles int
 	for batch, err := range client.IterCandles(ctx, CandleQuery{
-		Ticker: "btcusd",
-		Start:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		Limit:  250,
+		Ticker:   "btcusd",
+		Start:    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		End:      time.Date(2024, 1, 1, 1, 0, 0, 0, time.UTC),
+		Limit:    2,
+		MaxPages: 5,
 	}) {
 		require.NoError(t, err)
 		require.NotEmpty(t, batch)
 		require.Greater(t, batch[0].Close, 0.0)
 		iterPages++
+		iterCandles += len(batch)
 		d0 := batch[0]
-		t.Logf("iter candles: n=%d first={ts=%s o=%.2f h=%.2f l=%.2f c=%.2f v=%.4f}",
-			len(batch), d0.Timestamp.UTC().Format(time.RFC3339),
+		t.Logf("iter candles: page=%d n=%d first={ts=%s o=%.2f h=%.2f l=%.2f c=%.2f v=%.4f}",
+			iterPages, len(batch), d0.Timestamp.UTC().Format(time.RFC3339),
 			d0.Open, d0.High, d0.Low, d0.Close, d0.Volume)
-		break
 	}
-	require.Equal(t, 1, iterPages)
+	require.GreaterOrEqual(t, iterPages, 2, "bounded 1h window with Limit=2 should span multiple pages")
+	require.GreaterOrEqual(t, iterCandles, 3)
 
 	hourly, err := client.GetCandles(ctx, CandleQuery{
 		DatasetName: datasets[0].Name,

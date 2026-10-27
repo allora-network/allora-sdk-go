@@ -62,8 +62,11 @@ func TestWithHTTPClientAndTimeout(t *testing.T) {
 	hc := &http.Client{Timeout: 5 * time.Second}
 	client, err := NewAPIClient("k", WithHTTPClient(hc), WithTimeout(2*time.Second))
 	require.NoError(t, err)
+	require.NotSame(t, hc, client.httpClient, "WithHTTPClient must copy so the caller's client is not mutated")
 	require.Equal(t, 2*time.Second, client.httpClient.Timeout)
+	require.Equal(t, 5*time.Second, hc.Timeout, "caller Timeout must stay untouched")
 	require.NotNil(t, client.httpClient.CheckRedirect)
+	require.Nil(t, hc.CheckRedirect, "caller CheckRedirect must stay untouched")
 }
 
 func TestGetTopicsNativeShape(t *testing.T) {
@@ -142,7 +145,8 @@ func TestGetTopicAttachesNetworkInference(t *testing.T) {
 	require.NotNil(t, topic.LatestNetworkInference)
 	require.Equal(t, "0.00006678", topic.LatestNetworkInference.NetworkInferenceNormalized)
 	require.Equal(t, int64(1784025644244), topic.LatestNetworkInference.TimestampMs)
-	require.Len(t, topic.LatestNetworkInference.CombinedValue, 1)
+	require.Equal(t, []LabeledValue{{LabelName: "y", Value: "0.00006678"}}, topic.LatestNetworkInference.CombinedValue)
+	require.Equal(t, []LabeledValue{{LabelName: "y", Value: "0.00006"}}, topic.LatestNetworkInference.NaiveValue)
 
 	inf, err := client.GetNetworkInference(context.Background(), 72)
 	require.NoError(t, err)

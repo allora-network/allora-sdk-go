@@ -128,13 +128,15 @@ func WithNetwork(network Network) APIClientOption {
 	}
 }
 
-// WithHTTPClient replaces the underlying *http.Client. CheckRedirect is still
-// overwritten by NewAPIClient to refuse cross-host redirects. Compose with
-// WithTimeout / WithBackoff / WithDefaultBackoff as needed (order matters).
+// WithHTTPClient replaces the underlying *http.Client with a shallow copy of
+// hc so the caller's shared client is not mutated (CheckRedirect / Transport /
+// Timeout are adjusted on the copy). Compose with WithTimeout / WithBackoff /
+// WithDefaultBackoff as needed (order matters).
 func WithHTTPClient(hc *http.Client) APIClientOption {
 	return func(c *apiClient) {
 		if hc != nil {
-			c.httpClient = hc
+			cp := *hc
+			c.httpClient = &cp
 		}
 	}
 }
@@ -313,7 +315,8 @@ func (c *apiClient) doJSONWithAuth(
 			Message:    ge.Error,
 			Body:       string(body),
 		}
-		c.logger.Error().
+		// Debug: callers / higher methods may log the returned error at Error.
+		c.logger.Debug().
 			Err(apiErr).
 			Int("status", resp.StatusCode).
 			Str("endpoint", endpoint).

@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"syscall"
@@ -224,16 +225,19 @@ func classifyTransportError(req *http.Request, err error) error {
 	if err == nil {
 		return nil
 	}
+	fault := errors.FaultUpstream
 	retry := errors.NonRetryable
 	if req.Context().Err() == nil && isTransient(err) {
 		retry = errors.Retryable
+	} else if isCallerTransportError(err) {
+		fault = errors.FaultCaller
 	}
 	host := ""
 	if req.URL != nil {
 		host = req.URL.Host
 	}
 	return errors.Wrap(err, "forge http request failed",
-		errors.FaultUpstream, retry,
+		fault, retry,
 		"method", req.Method, "host", host,
 	)
 }
@@ -245,6 +249,18 @@ func isTransient(err error) bool {
 	}
 	ne, ok := errors.AsType[net.Error](err)
 	return ok && ne.Timeout()
+}
+
+// isCallerTransportError reports config/request-construction failures (bad
+// base URL scheme, unparseable URL) rather than upstream outages.
+func isCallerTransportError(err error) bool {
+	msg := err.Error()
+	if strings.Contains(msg, "unsupported protocol scheme") ||
+		strings.Contains(msg, "invalid URL") {
+		return true
+	}
+	ue, ok := errors.AsType[*url.Error](err)
+	return ok && ue.Op == "parse"
 }
 
 func parseRetryAfter(ra string) time.Duration {
