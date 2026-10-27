@@ -137,20 +137,18 @@ config.Endpoints = []allora.EndpointConfig{
 
 ## Forge HTTP Client (Gateway + Market Data)
 
-`NewAPIClient` uses a Forge secret key (`forge_sk_…`) for:
+`NewAPIClient` talks to Forge with your API key:
 
 1. **API Gateway** — topics + network inferences (`Authorization: Bearer …`)
 2. **Forge Data / Atlas** — datasets + OHLCV candles (`X-API-Key: …`)
 
-Topic / inference / OHLC **response field shapes** stay compatible with the previous
-client. **Breaking constructor / auth changes** (callers must update):
+**Breaking vs previous SDK:** response types are the native Forge/Atlas shapes
+(no Upshot compat wrappers). Constructor also returns `(*apiClient, error)`.
 
-- `NewAPIClient` now returns `(*apiClient, error)` and requires a `forge_sk_…` key
-  (embedded `UP-` keys are rejected)
 - Defaults: gateway `https://api.developer.allora.network`, data
-  `https://forge-data.stage.allora.run/api` (staging Atlas host until prod default
-  ships), network `mainnet`
-- Override with `WithBaseURL` / `WithDataBaseURL` / `WithNetwork`
+  `https://forge-data.allora.run/api`, network `mainnet`
+- Override with `WithBaseURL` / `WithDataBaseURL` / `WithNetwork` /
+  `WithHTTPClient` / `WithTimeout`
 
 ```go
 client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"))
@@ -158,44 +156,51 @@ if err != nil {
     log.Fatal(err)
 }
 
-// Optional overrides for local/alternate stage:
+// Optional overrides for local/stage:
 // client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"),
 //     allora.WithBaseURL("http://localhost:8080"),
 //     allora.WithDataBaseURL("https://forge-data.stage.allora.run/api"),
 //     allora.WithNetwork(allora.NetworkTestnet), // default is mainnet
 // )
 
-// Same as before: iterate topics
 for topic, err := range client.GetTopics() {
     if err != nil {
         log.Fatal(err)
     }
-    _ = topic.TopicID
+    _ = topic.ID
+    _ = topic.Metadata
 }
 
-// Same as before: topic + latest inference (CombinedValue / NaiveValue / Timestamp)
 topic, err := client.GetTopic(72)
 if err != nil {
     log.Fatal(err)
 }
-_ = topic.LatestNetworkInference
+_ = topic.LatestNetworkInference // *NetworkInference, best-effort
 
-// Same as before: BTC candles
-for page, err := range client.GetOHLCData(ctx, "BTCUSD", "2024-01-01") {
+ni, err := client.GetNetworkInference(ctx, 72)
+if err != nil {
+    log.Fatal(err)
+}
+_ = ni.NetworkInferenceNormalized
+
+for candles, err := range client.IterCandles(ctx, allora.CandleQuery{
+    Ticker: "btcusd",
+    Start:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+    Limit:  250,
+}) {
     if err != nil {
         log.Fatal(err)
     }
-    for _, candle := range page.Data {
-        _ = candle.Close // string, as before
+    for _, candle := range candles {
+        _ = candle.Close // float64
     }
 }
 ```
 
-Extended helpers on `*apiClient` (not on `APIClient`): `GetNetworkInference`,
-`GetCandles`, `ListDatasets`, `FindDatasetsByTicker`, `IterCandles`.
+Also on `*apiClient`: `GetCandles`, `ListDatasets`, `FindDatasetsByTicker`.
 
-- Upshot `/v2` is removed; `GetOHLCData` is backed by Atlas
-- Topic fields the gateway does not return stay zero (not invented)
+- Upshot `/v2` is removed; candles come from Atlas
+- Topic / inference / candle fields match the Forge gateway and Atlas wire formats
 
 ## API Reference
 

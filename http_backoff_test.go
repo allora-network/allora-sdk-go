@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brynbellomy/go-utils/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -142,11 +143,18 @@ func TestBackoffReturnsLastResponseAfterMaxAttempts(t *testing.T) {
 	require.Equal(t, int32(3), hits.Load())
 }
 
-func TestIsRetryableErrorClassifies(t *testing.T) {
+func TestClassifyTransportError(t *testing.T) {
 	req, err := http.NewRequest(http.MethodGet, "http://example.invalid", nil)
 	require.NoError(t, err)
-	require.False(t, isRetryableError(req, nil))
-	require.True(t, isRetryableError(req, io.EOF))
-	require.True(t, isRetryableError(req, syscall.ECONNREFUSED))
-	require.True(t, isRetryableError(req, syscall.ECONNRESET))
+	require.Nil(t, classifyTransportError(req, nil))
+
+	classified := classifyTransportError(req, io.EOF)
+	require.True(t, errors.IsRetryable(classified))
+	require.Equal(t, errors.FaultUpstream, errors.GetFault(classified))
+
+	classified = classifyTransportError(req, syscall.ECONNREFUSED)
+	require.True(t, errors.IsRetryable(classified))
+
+	classified = classifyTransportError(req, syscall.ECONNRESET)
+	require.True(t, errors.IsRetryable(classified))
 }

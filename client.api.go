@@ -6,14 +6,11 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
-
-	stderrors "errors"
 
 	"github.com/brynbellomy/go-utils/errors"
 	"github.com/rs/zerolog"
@@ -30,23 +27,21 @@ const (
 	NetworkOffchain Network = "offchain"
 
 	defaultAPINetwork = NetworkMainnet
-	forgeAPIKeyPrefix = "forge_sk_"
 
 	// DefaultAPIBaseURL is the Forge API Gateway origin used when WithBaseURL is omitted.
 	DefaultAPIBaseURL = "https://api.developer.allora.network"
 	// DefaultDataAPIBaseURL is the Forge Data (Atlas) root used when WithDataBaseURL is omitted.
-	// Staging host by design until a production data default is published.
-	DefaultDataAPIBaseURL = "https://forge-data.stage.allora.run/api"
+	DefaultDataAPIBaseURL = "https://forge-data.allora.run/api"
 
 	maxAPIResponseBytes = 32 << 20 // 32 MiB
 )
 
-// APIClient is the compatible public surface from the previous SDK.
-// Extended Forge/Atlas helpers live on *apiClient but are not part of this interface.
+// APIClient is the public Forge HTTP surface (gateway topics/inferences + Atlas candles).
 type APIClient interface {
 	GetTopics() iter.Seq2[*Topic, error]
 	GetTopic(topicID uint64) (*Topic, error)
-	GetOHLCData(ctx context.Context, ticker string, fromDate string) iter.Seq2[*OHLCResponse, error]
+	GetNetworkInference(ctx context.Context, topicID uint64, opts ...InferenceOption) (*NetworkInference, error)
+	IterCandles(ctx context.Context, q CandleQuery) iter.Seq2[[]Candle, error]
 }
 
 type apiClient struct {
@@ -59,16 +54,13 @@ type apiClient struct {
 }
 
 // NewAPIClient constructs a Forge API client.
-// apiKey must be a Forge secret key (forge_sk_…).
+// apiKey is sent as Bearer (gateway) and X-API-Key (Atlas); the server validates it.
 // Gateway and data base URLs default to DefaultAPIBaseURL and DefaultDataAPIBaseURL;
-// override with WithBaseURL / WithDataBaseURL (e.g. local or alternate stage).
+// override with WithBaseURL / WithDataBaseURL (e.g. local or stage).
 func NewAPIClient(apiKey string, opts ...APIClientOption) (*apiClient, error) {
 	apiKey = strings.TrimSpace(apiKey)
 	if apiKey == "" {
-		return nil, errors.New("ALLORA_API_KEY is required (forge_sk_…)")
-	}
-	if !strings.HasPrefix(apiKey, forgeAPIKeyPrefix) {
-		return nil, errors.Errorf("API key must start with %s", forgeAPIKeyPrefix)
+		return nil, errors.New("ALLORA_API_KEY is required")
 	}
 
 	client := &apiClient{
@@ -129,9 +121,21 @@ func WithDataBaseURL(baseURL string) APIClientOption {
 }
 
 // WithNetwork sets the gateway network path segment (testnet|mainnet|offchain).
+// Defaults to mainnet when omitted.
 func WithNetwork(network Network) APIClientOption {
 	return func(c *apiClient) {
 		c.network = network
+	}
+}
+
+// WithHTTPClient replaces the underlying *http.Client. CheckRedirect is still
+// overwritten by NewAPIClient to refuse cross-host redirects. Compose with
+// WithTimeout / WithBackoff / WithDefaultBackoff as needed (order matters).
+func WithHTTPClient(hc *http.Client) APIClientOption {
+	return func(c *apiClient) {
+		if hc != nil {
+			c.httpClient = hc
+		}
 	}
 }
 
@@ -203,84 +207,17 @@ func (e *APIError) Error() string {
 }
 
 // ErrTopicNotFound is returned by GetTopic when the id is absent from the catalog.
-var ErrTopicNotFound = stderrors.New("topic not found")
+var ErrTopicNotFound = errors.Sentinel("topic not found", errors.ErrNotFound)
 
 // ErrDatasetNotFound is returned when a ticker/dataset cannot be resolved in Atlas.
-var ErrDatasetNotFound = stderrors.New("dataset not found")
+var ErrDatasetNotFound = errors.Sentinel("dataset not found", errors.ErrNotFound)
 
 // ErrAmbiguousTicker is returned when a ticker matches multiple Atlas datasets
 // and no unique 1-minute preference can be applied.
-var ErrAmbiguousTicker = stderrors.New("ambiguous ticker")
+var ErrAmbiguousTicker = errors.Sentinel("ambiguous ticker", errors.ErrBadRequest)
 
 type gatewayErrorBody struct {
 	Error string `json:"error"`
-}
-
-// Topic is the previous SDK topic shape (compat).
-// Only fields the gateway actually supplies are populated; other fields stay zero.
-type Topic struct {
-	TopicID                   int        `json:"topic_id"`
-	TopicName                 string     `json:"topic_name"`
-	Description               *string    `json:"description"`
-	EpochLength               int        `json:"epoch_length"`
-	GroundTruthLag            int        `json:"ground_truth_lag"`
-	LossMethod                string     `json:"loss_method"`
-	WorkerSubmissionWindow    int        `json:"worker_submission_window"`
-	WorkerCount               int        `json:"worker_count"`
-	ReputerCount              int        `json:"reputer_count"`
-	TotalStakedAllo           float64    `json:"total_staked_allo"`
-	TotalEmissionsAllo        float64    `json:"total_emissions_allo"`
-	IsActive                  bool       `json:"is_active"`
-	IsEndorsed                bool       `json:"is_endorsed"`
-	ForgeCompetitionID        *int       `json:"forge_competition_id"`
-	ForgeCompetitionStartDate *time.Time `json:"forge_competition_start_date"`
-	ForgeCompetitionEndDate   *time.Time `json:"forge_competition_end_date"`
-	LatestNetworkInference    *Inference `json:"latest_network_inference"`
-	UpdatedAt                 time.Time  `json:"updated_at"`
-}
-
-// Inference is the previous SDK prediction shape (compat).
-type Inference struct {
-	CombinedValue string `json:"combined_value"`
-	NaiveValue    string `json:"naive_value"`
-	Timestamp     int64  `json:"timestamp"` // epoch millis
-}
-
-// OHLCResponse is the previous SDK candles page shape (compat).
-type OHLCResponse struct {
-	Data              []OHLCData `json:"data"`
-	ContinuationToken *string    `json:"continuation_token"`
-}
-
-// OHLCData is one candle in the previous SDK shape (compat).
-type OHLCData struct {
-	Ticker         string `json:"ticker"`
-	ExchangeCode   string `json:"exchange_code"`
-	Date           string `json:"date"`
-	Open           string `json:"open"`
-	High           string `json:"high"`
-	Low            string `json:"low"`
-	Close          string `json:"close"`
-	TradesDone     int    `json:"trades_done"`
-	Volume         string `json:"volume"`
-	VolumeNotional string `json:"volume_notional"`
-}
-
-// APIResponse is the generic envelope returned by the previous SDK's Upshot
-// endpoints (request_id / status / data). It is preserved for callers that
-// reference it directly; the Forge gateway/Atlas backends do not use it.
-type APIResponse[T any] struct {
-	RequestID string `json:"request_id"`
-	Status    bool   `json:"status"`
-	Data      T      `json:"data"`
-}
-
-// GetTopicsResponse is the page shape returned by the previous SDK's
-// GetTopics helper. Kept for backward compatibility; the Forge gateway
-// returns a different envelope that is decoded internally.
-type GetTopicsResponse struct {
-	Topics            []Topic `json:"topics"`
-	ContinuationToken *string `json:"continuation_token"`
 }
 
 type authStyle int
@@ -351,6 +288,7 @@ func (c *apiClient) doJSONWithAuth(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		err = classifyTransportError(req, err)
 		outcome = classifyAPIError(err)
 		return errors.WithMessage(err, "failed to execute request")
 	}
@@ -370,11 +308,33 @@ func (c *apiClient) doJSONWithAuth(
 		outcome = "http_" + strconv.Itoa(resp.StatusCode)
 		var ge gatewayErrorBody
 		_ = json.Unmarshal(body, &ge)
-		return &APIError{
+		apiErr := &APIError{
 			StatusCode: resp.StatusCode,
 			Message:    ge.Error,
 			Body:       string(body),
 		}
+		c.logger.Error().
+			Err(apiErr).
+			Int("status", resp.StatusCode).
+			Str("endpoint", endpoint).
+			Str("method", methodName).
+			Str("url", reqURL).
+			Msg("forge api request failed")
+
+		retry := errors.NonRetryable
+		if isRetryableStatus(resp.StatusCode) {
+			retry = errors.Retryable
+		}
+		fault := errors.FaultUpstream
+		if resp.StatusCode < 500 {
+			fault = errors.FaultCaller
+		}
+		return errors.Wrap(
+			apiErr,
+			"forge api request failed",
+			errors.StatusCode(resp.StatusCode), fault, retry,
+			"endpoint", endpoint, "method", methodName,
+		)
 	}
 
 	if dest == nil {
@@ -396,22 +356,13 @@ func classifyAPIError(err error) string {
 	switch {
 	case err == nil:
 		return "success"
-	case stderrors.Is(err, context.Canceled):
+	case errors.Is(err, context.Canceled):
 		return "context_canceled"
-	case stderrors.Is(err, context.DeadlineExceeded):
+	case errors.Is(err, context.DeadlineExceeded):
 		return "context_deadline"
+	case errors.IsRetryable(err):
+		return "retryable_" + errors.GetFault(err).String()
+	default:
+		return "error_" + errors.GetFault(err).String()
 	}
-
-	var netErr net.Error
-	if stderrors.As(err, &netErr) {
-		if netErr.Timeout() {
-			return "network_timeout"
-		}
-		if netErr.Temporary() {
-			return "network_temporary"
-		}
-		return "network_error"
-	}
-
-	return "error"
 }

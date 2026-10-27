@@ -187,7 +187,7 @@ func TestGetCandlesRejectsAmbiguousTicker(t *testing.T) {
 	_, err := client.GetCandles(context.Background(), CandleQuery{Ticker: "btcusd"})
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrAmbiguousTicker)
-	require.Contains(t, err.Error(), "matches 2 datasets")
+	require.Contains(t, err.Error(), "DatasetID or DatasetName")
 }
 
 func TestIterCandlesFollowsNext(t *testing.T) {
@@ -312,15 +312,15 @@ func TestIterCandlesDetectsReorderedQueryCycle(t *testing.T) {
 }
 
 func TestResolveDataNextURLRejectsForeignHost(t *testing.T) {
-	client := testClient(t, "http://gateway.example", "https://forge-data.stage.allora.run/api")
+	client := testClient(t, "http://gateway.example", "https://forge-data.allora.run/api")
 	_, err := client.resolveDataNextURL("https://evil.example/api/rows/?offset=1")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match data API")
 }
 
 func TestResolveDataNextURLKeepsAPIPrefix(t *testing.T) {
-	client := testClient(t, "http://gateway.example", "https://forge-data.stage.allora.run/api")
+	client := testClient(t, "http://gateway.example", "https://forge-data.allora.run/api")
 	got, err := client.resolveDataNextURL("rows/?offset=1")
 	require.NoError(t, err)
-	require.Equal(t, "https://forge-data.stage.allora.run/api/rows/?offset=1", got)
+	require.Equal(t, "https://forge-data.allora.run/api/rows/?offset=1", got)
 }

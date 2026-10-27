@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/brynbellomy/go-utils/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -30,14 +31,16 @@ func TestNewAPIClientDefaultsAndOverrides(t *testing.T) {
 	_, err := NewAPIClient("")
 	require.Error(t, err)
 
-	_, err = NewAPIClient("UP-deadbeef")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), forgeAPIKeyPrefix)
+	// Prefix is no longer validated client-side; server decides.
+	client, err := NewAPIClient("UP-deadbeef")
+	require.NoError(t, err)
+	require.Equal(t, "UP-deadbeef", client.apiKey)
 
-	client, err := NewAPIClient("forge_sk_test")
+	client, err = NewAPIClient("forge_sk_test")
 	require.NoError(t, err)
 	require.Equal(t, DefaultAPIBaseURL, client.url)
 	require.Equal(t, DefaultDataAPIBaseURL, client.dataURL)
+	require.Equal(t, "https://forge-data.allora.run/api", DefaultDataAPIBaseURL)
 	require.Equal(t, NetworkMainnet, client.network)
 
 	client, err = NewAPIClient("forge_sk_test",
@@ -55,7 +58,15 @@ func TestNewAPIClientDefaultsAndOverrides(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported network")
 }
 
-func TestGetTopicsCompatShape(t *testing.T) {
+func TestWithHTTPClientAndTimeout(t *testing.T) {
+	hc := &http.Client{Timeout: 5 * time.Second}
+	client, err := NewAPIClient("k", WithHTTPClient(hc), WithTimeout(2*time.Second))
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Second, client.httpClient.Timeout)
+	require.NotNil(t, client.httpClient.CheckRedirect)
+}
+
+func TestGetTopicsNativeShape(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/testnet/topics", r.URL.Path)
 		require.Equal(t, "Bearer forge_sk_test", r.Header.Get("Authorization"))
@@ -88,16 +99,14 @@ func TestGetTopicsCompatShape(t *testing.T) {
 		got = append(got, topic)
 	}
 	require.Len(t, got, 1)
-	require.Equal(t, 72, got[0].TopicID)
-	require.Equal(t, "BTC 5min", got[0].TopicName)
-	require.Equal(t, 720, got[0].EpochLength)
-	require.False(t, got[0].IsActive) // not invented
-	require.Zero(t, got[0].WorkerCount)
+	require.Equal(t, int64(72), got[0].ID)
+	require.Equal(t, "BTC 5min", got[0].Metadata)
+	require.Equal(t, int64(720), got[0].EpochLength)
+	require.Equal(t, "allo1creator", got[0].Creator)
 	require.Nil(t, got[0].LatestNetworkInference)
-	require.Nil(t, got[0].Description)
 }
 
-func TestGetTopicAttachesCompatInference(t *testing.T) {
+func TestGetTopicAttachesNetworkInference(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/testnet/topics":
@@ -129,15 +138,15 @@ func TestGetTopicAttachesCompatInference(t *testing.T) {
 
 	topic, err := client.GetTopic(72)
 	require.NoError(t, err)
-	require.Equal(t, 72, topic.TopicID)
+	require.Equal(t, int64(72), topic.ID)
 	require.NotNil(t, topic.LatestNetworkInference)
-	require.Equal(t, "0.00006678", topic.LatestNetworkInference.CombinedValue)
-	require.Equal(t, "0.00006", topic.LatestNetworkInference.NaiveValue)
-	require.Equal(t, int64(1784025644244), topic.LatestNetworkInference.Timestamp)
+	require.Equal(t, "0.00006678", topic.LatestNetworkInference.NetworkInferenceNormalized)
+	require.Equal(t, int64(1784025644244), topic.LatestNetworkInference.TimestampMs)
+	require.Len(t, topic.LatestNetworkInference.CombinedValue, 1)
 
-	inf, err := client.GetInference(context.Background(), 72)
+	inf, err := client.GetNetworkInference(context.Background(), 72)
 	require.NoError(t, err)
-	require.Equal(t, "0.00006678", inf.CombinedValue)
+	require.Equal(t, "0.00006678", inf.NetworkInferenceNormalized)
 
 	_, err = client.GetTopic(999)
 	require.ErrorIs(t, err, ErrTopicNotFound)
@@ -165,8 +174,8 @@ func TestGetTopicBestEffortOnInferenceError(t *testing.T) {
 	topic, err := client.GetTopic(72)
 	require.NoError(t, err)
 	require.True(t, inferenceHit, "GetTopic must attempt inference before tolerating failure")
-	require.Equal(t, 72, topic.TopicID)
-	require.Equal(t, "BTC", topic.TopicName)
+	require.Equal(t, int64(72), topic.ID)
+	require.Equal(t, "BTC", topic.Metadata)
 	require.Nil(t, topic.LatestNetworkInference)
 }
 
@@ -249,7 +258,7 @@ func TestGetNetworkInferenceParsesFlatGatewayJSON(t *testing.T) {
 	require.WithinDuration(t, time.Date(2026, 7, 14, 10, 40, 45, 0, time.UTC), ni.CachedAt.UTC(), time.Second)
 }
 
-func TestGetInferenceMapsHTTPErrors(t *testing.T) {
+func TestGetNetworkInferenceMapsHTTPErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusPaymentRequired)
 		_, _ = w.Write([]byte(`{"error":"insufficient balance"}`))
@@ -258,15 +267,17 @@ func TestGetInferenceMapsHTTPErrors(t *testing.T) {
 
 	client := testClient(t, srv.URL, "http://data.example/api")
 
-	_, err := client.GetInference(context.Background(), 1)
+	_, err := client.GetNetworkInference(context.Background(), 1)
 	require.Error(t, err)
 	var apiErr *APIError
 	require.ErrorAs(t, err, &apiErr)
 	require.Equal(t, http.StatusPaymentRequired, apiErr.StatusCode)
 	require.True(t, strings.Contains(apiErr.Error(), "insufficient balance"))
+	require.Equal(t, errors.FaultCaller, errors.GetFault(err))
+	require.False(t, errors.IsRetryable(err))
 }
 
-func TestGetOHLCDataCompatShape(t *testing.T) {
+func TestIterCandlesNativeShape(t *testing.T) {
 	var rowQueries []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !assert.Equal(t, "forge_sk_test", r.Header.Get("X-API-Key")) {
@@ -331,22 +342,23 @@ func TestGetOHLCDataCompatShape(t *testing.T) {
 
 	client := testClient(t, "http://gateway.example", srv.URL+"/api")
 
-	var pages []*OHLCResponse
-	for resp, err := range client.GetOHLCData(context.Background(), "BTCUSD", "2024-01-01") {
+	var pages [][]Candle
+	for candles, err := range client.IterCandles(context.Background(), CandleQuery{
+		Ticker:   "btcusd",
+		Start:    time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Ordering: "timestamp",
+		Limit:    1,
+	}) {
 		require.NoError(t, err)
-		require.NotNil(t, resp)
-		pages = append(pages, resp)
+		pages = append(pages, candles)
 	}
 	require.Len(t, pages, 2)
-	require.NotNil(t, pages[0].ContinuationToken)
-	require.Nil(t, pages[1].ContinuationToken)
 	require.Len(t, rowQueries, 2)
 	require.NotContains(t, rowQueries[0], "offset=")
 	require.Contains(t, rowQueries[1], "offset=1")
 
-	require.Equal(t, "BTCUSD", pages[0].Data[0].Ticker)
-	require.Equal(t, "2024-01-01T00:00:00Z", pages[0].Data[0].Date)
-	require.Equal(t, "100.5", pages[0].Data[0].Open)
-	require.Equal(t, "105", pages[0].Data[0].Close)
-	require.Equal(t, 42, pages[0].Data[0].TradesDone)
+	require.Equal(t, 3, pages[0][0].DatasetID)
+	require.Equal(t, 100.5, pages[0][0].Open)
+	require.Equal(t, 105.0, pages[0][0].Close)
+	require.Equal(t, 42, pages[0][0].TradesDone)
 }

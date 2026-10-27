@@ -3,7 +3,6 @@ package allora
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"iter"
 	"net/http"
 	"net/url"
@@ -210,54 +209,10 @@ func (c *apiClient) FindDatasetsByTicker(ctx context.Context, ticker string) ([]
 	return page.Results, nil
 }
 
-// DefaultMaxCandlePages caps Atlas pagination for GetOHLCData / IterCandles.
+// DefaultMaxCandlePages caps Atlas pagination for IterCandles / GetCandles.
 // At Limit=250 this is ~2.5M candles; raise via CandleQuery.MaxPages for longer pulls.
 // Exceeding the cap returns an error (tail is not silently truncated).
 const DefaultMaxCandlePages = 10_000
-
-// GetOHLCData keeps the previous SDK candles API, backed by Atlas rows.
-// Empty result sets yield a single "no data found" error after pagination ends
-// with zero candles (continuation links on empty pages are still followed).
-func (c *apiClient) GetOHLCData(ctx context.Context, ticker string, fromDate string) iter.Seq2[*OHLCResponse, error] {
-	return func(yield func(*OHLCResponse, error) bool) {
-		start, err := parseOHLCFromDate(fromDate)
-		if err != nil {
-			c.logger.Error().Err(err).Str("from_date", fromDate).Msg("invalid from_date")
-			yield(nil, err)
-			return
-		}
-
-		q := CandleQuery{
-			Ticker:   strings.ToLower(strings.TrimSpace(ticker)),
-			Start:    start,
-			Ordering: "timestamp",
-			Limit:    250,
-		}
-		yielded := false
-		for page, err := range c.iterCandlePages(ctx, q) {
-			if err != nil {
-				c.logger.Error().Err(err).Msg("failed to get OHLC data")
-				yield(nil, err)
-				return
-			}
-			if len(page.Results) == 0 {
-				continue
-			}
-			yielded = true
-			resp := &OHLCResponse{Data: candlesToOHLCData(ticker, page.Results)}
-			if page.Next != nil && *page.Next != "" {
-				token := *page.Next
-				resp.ContinuationToken = &token
-			}
-			if !yield(resp, nil) {
-				return
-			}
-		}
-		if !yielded {
-			yield(nil, errors.Errorf("no data found for ticker %s", ticker))
-		}
-	}
-}
 
 // IterCandles walks every page of GetCandles, following Atlas `next` links.
 // Empty pages are skipped; an all-empty result set ends the iterator without error.
@@ -444,50 +399,6 @@ func (q CandleQuery) validateSelectors() error {
 	return nil
 }
 
-func parseOHLCFromDate(fromDate string) (time.Time, error) {
-	fromDate = strings.TrimSpace(fromDate)
-	if fromDate == "" {
-		return time.Time{}, errors.New("fromDate is required")
-	}
-	layouts := []string{
-		time.RFC3339Nano,
-		time.RFC3339,
-		"2006-01-02T15:04:05",
-		"2006-01-02",
-	}
-	var lastErr error
-	for _, layout := range layouts {
-		t, err := time.Parse(layout, fromDate)
-		if err == nil {
-			return t.UTC(), nil
-		}
-		lastErr = err
-	}
-	return time.Time{}, errors.WithMessage(lastErr, "could not parse fromDate")
-}
-
-func candlesToOHLCData(ticker string, candles []Candle) []OHLCData {
-	out := make([]OHLCData, 0, len(candles))
-	for _, c := range candles {
-		out = append(out, OHLCData{
-			Ticker:         ticker,
-			Date:           c.Timestamp.UTC().Format(time.RFC3339),
-			Open:           formatFloat(c.Open),
-			High:           formatFloat(c.High),
-			Low:            formatFloat(c.Low),
-			Close:          formatFloat(c.Close),
-			TradesDone:     c.TradesDone,
-			Volume:         formatFloat(c.Volume),
-			VolumeNotional: formatFloat(c.VolumeNotional),
-		})
-	}
-	return out
-}
-
-func formatFloat(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
 func decodeDatasetPage(wire atlasDatasetPageWire) (*DatasetPage, error) {
 	out := &DatasetPage{
 		Count:    wire.Count,
@@ -590,7 +501,7 @@ func decodeCandle(row atlasRowWire) (Candle, error) {
 
 func pickDatasetForTicker(ticker string, datasets []Dataset) (Dataset, error) {
 	if len(datasets) == 0 {
-		return Dataset{}, fmt.Errorf("%w: ticker %q", ErrDatasetNotFound, ticker)
+		return Dataset{}, errors.Wrap(ErrDatasetNotFound, "resolve ticker", "ticker", ticker)
 	}
 	if len(datasets) == 1 {
 		return datasets[0], nil
@@ -606,7 +517,8 @@ func pickDatasetForTicker(ticker string, datasets []Dataset) (Dataset, error) {
 	if len(preferred) == 1 {
 		return preferred[0], nil
 	}
-	return Dataset{}, fmt.Errorf("%w: ticker %q matches %d datasets; use DatasetID or DatasetName", ErrAmbiguousTicker, ticker, len(datasets))
+	return Dataset{}, errors.Wrap(ErrAmbiguousTicker, "resolve ticker: use DatasetID or DatasetName",
+		"ticker", ticker, "matches", len(datasets))
 }
 
 func (c *apiClient) resolveDataNextURL(next string) (string, error) {

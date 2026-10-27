@@ -67,19 +67,23 @@ func TestIntegrationForgeDataCandles(t *testing.T) {
 		len(candles.Results), c0.Timestamp.UTC().Format(time.RFC3339),
 		c0.Open, c0.High, c0.Low, c0.Close, c0.Volume)
 
-	var ohlcPages int
-	for page, err := range client.GetOHLCData(ctx, "BTCUSD", "2024-01-01") {
+	var iterPages int
+	for batch, err := range client.IterCandles(ctx, CandleQuery{
+		Ticker: "btcusd",
+		Start:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Limit:  250,
+	}) {
 		require.NoError(t, err)
-		require.NotEmpty(t, page.Data)
-		require.Equal(t, "BTCUSD", page.Data[0].Ticker)
-		require.NotEmpty(t, page.Data[0].Close)
-		ohlcPages++
-		d0 := page.Data[0]
-		t.Logf("ohlc compat: n=%d first={ticker=%s date=%s o=%s h=%s l=%s c=%s v=%s}",
-			len(page.Data), d0.Ticker, d0.Date, d0.Open, d0.High, d0.Low, d0.Close, d0.Volume)
+		require.NotEmpty(t, batch)
+		require.Greater(t, batch[0].Close, 0.0)
+		iterPages++
+		d0 := batch[0]
+		t.Logf("iter candles: n=%d first={ts=%s o=%.2f h=%.2f l=%.2f c=%.2f v=%.4f}",
+			len(batch), d0.Timestamp.UTC().Format(time.RFC3339),
+			d0.Open, d0.High, d0.Low, d0.Close, d0.Volume)
 		break
 	}
-	require.Equal(t, 1, ohlcPages)
+	require.Equal(t, 1, iterPages)
 
 	hourly, err := client.GetCandles(ctx, CandleQuery{
 		DatasetName: datasets[0].Name,

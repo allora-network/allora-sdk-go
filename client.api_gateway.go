@@ -45,7 +45,7 @@ type WorkerInference struct {
 	Values []LabeledValue `json:"values"`
 }
 
-// NetworkInference is the full Forge gateway inference payload (extended helper).
+// NetworkInference is the Forge gateway inference payload.
 type NetworkInference struct {
 	Network                                 string            `json:"network"`
 	TopicID                                 int64             `json:"topic_id"`
@@ -81,13 +81,16 @@ type NetworkInference struct {
 }
 
 type gatewayTopicsResponse struct {
-	Network  string         `json:"network"`
-	Count    int            `json:"count"`
-	CachedAt time.Time      `json:"cached_at"`
-	Topics   []gatewayTopic `json:"topics"`
+	Network  string    `json:"network"`
+	Count    int       `json:"count"`
+	CachedAt time.Time `json:"cached_at"`
+	Topics   []Topic   `json:"topics"`
 }
 
-type gatewayTopic struct {
+// Topic is a Forge gateway catalog entry (native wire shape).
+// LatestNetworkInference is attached client-side by GetTopic (best-effort) and
+// is not part of the gateway topics list payload.
+type Topic struct {
 	ID                     int64      `json:"id"`
 	Creator                string     `json:"creator"`
 	Metadata               string     `json:"metadata"`
@@ -97,6 +100,8 @@ type gatewayTopic struct {
 	GroundTruthLag         int64      `json:"ground_truth_lag"`
 	WorkerSubmissionWindow int64      `json:"worker_submission_window"`
 	CreatedAt              *time.Time `json:"created_at,omitempty"`
+
+	LatestNetworkInference *NetworkInference `json:"latest_network_inference,omitempty"`
 }
 
 func (c *apiClient) GetTopics() iter.Seq2[*Topic, error] {
@@ -116,21 +121,21 @@ func (c *apiClient) GetTopics() iter.Seq2[*Topic, error] {
 }
 
 // GetTopic returns one topic from the gateway catalog and best-effort attaches
-// the latest inference. The gateway has no single-topic route yet, so this scans
-// the catalog list. Missing ids return ErrTopicNotFound. Inference failures leave
-// LatestNetworkInference nil so catalog metadata stays independently usable
-// (inference is a separately billed route).
+// the latest network inference. The gateway has no single-topic route yet, so
+// this scans the catalog list. Missing ids return ErrTopicNotFound. Inference
+// failures leave LatestNetworkInference nil so catalog metadata stays
+// independently usable (inference is a separately billed route).
 func (c *apiClient) GetTopic(topicID uint64) (*Topic, error) {
 	topics, err := c.fetchTopics(context.Background())
 	if err != nil {
 		return nil, err
 	}
 	for i := range topics {
-		if uint64(topics[i].TopicID) != topicID {
+		if uint64(topics[i].ID) != topicID {
 			continue
 		}
 		topic := topics[i]
-		inf, err := c.GetInference(context.Background(), topicID)
+		inf, err := c.GetNetworkInference(context.Background(), topicID)
 		if err != nil {
 			c.logger.Warn().Err(err).Uint64("topic_id", topicID).Msg("latest inference unavailable")
 		} else {
@@ -138,7 +143,7 @@ func (c *apiClient) GetTopic(topicID uint64) (*Topic, error) {
 		}
 		return &topic, nil
 	}
-	return nil, fmt.Errorf("%w: %d", ErrTopicNotFound, topicID)
+	return nil, errors.Wrap(ErrTopicNotFound, "get topic", "topic_id", topicID)
 }
 
 func (c *apiClient) fetchTopics(ctx context.Context) ([]Topic, error) {
@@ -150,35 +155,7 @@ func (c *apiClient) fetchTopics(ctx context.Context) ([]Topic, error) {
 	if err := c.doJSON(ctx, "GetTopics", http.MethodGet, reqURL, &resp); err != nil {
 		return nil, err
 	}
-	out := make([]Topic, 0, len(resp.Topics))
-	for _, gt := range resp.Topics {
-		out = append(out, mapGatewayTopic(gt))
-	}
-	return out, nil
-}
-
-func mapGatewayTopic(gt gatewayTopic) Topic {
-	// The gateway's free-form `metadata` string (e.g. "BTC 5min") is the closest
-	// equivalent to the previous SDK's TopicName. Other Upshot-only fields
-	// (Description, WorkerCount, IsActive, stakes, UpdatedAt, …) stay zero/unset —
-	// the gateway has no update timestamp, so we do not invent one from cache/created_at.
-	return Topic{
-		TopicID:                int(gt.ID),
-		TopicName:              gt.Metadata,
-		EpochLength:            int(gt.EpochLength),
-		GroundTruthLag:         int(gt.GroundTruthLag),
-		LossMethod:             gt.LossMethod,
-		WorkerSubmissionWindow: int(gt.WorkerSubmissionWindow),
-	}
-}
-
-// GetInference returns the previous SDK Inference shape (combined/naive/timestamp).
-func (c *apiClient) GetInference(ctx context.Context, topicID uint64) (*Inference, error) {
-	ni, err := c.GetNetworkInference(ctx, topicID)
-	if err != nil {
-		return nil, err
-	}
-	return mapNetworkInference(ni), nil
+	return resp.Topics, nil
 }
 
 // GetNetworkInference returns the full Forge gateway inference payload.
@@ -204,35 +181,4 @@ func (c *apiClient) GetNetworkInference(ctx context.Context, topicID uint64, opt
 		return nil, err
 	}
 	return &inf, nil
-}
-
-func mapNetworkInference(ni *NetworkInference) *Inference {
-	if ni == nil {
-		return nil
-	}
-	// Prefer network_inference_normalized (decimal). Fall back to labeled
-	// combined_value/naive_value only when exactly one label is present —
-	// never invent a pick from a multi-label bundle, and never use raw
-	// network_inference (base-unit integer).
-	combined := strings.TrimSpace(ni.NetworkInferenceNormalized)
-	if combined == "" {
-		combined = singleLabeledValue(ni.CombinedValue)
-	}
-	naive := singleLabeledValue(ni.NaiveValue)
-	ts := ni.TimestampMs
-	if ts == 0 && ni.Timestamp > 0 {
-		ts = ni.Timestamp * 1000
-	}
-	return &Inference{
-		CombinedValue: combined,
-		NaiveValue:    naive,
-		Timestamp:     ts,
-	}
-}
-
-func singleLabeledValue(values []LabeledValue) string {
-	if len(values) != 1 {
-		return ""
-	}
-	return values[0].Value
 }

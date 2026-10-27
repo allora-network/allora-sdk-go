@@ -1,7 +1,6 @@
 package allora
 
 import (
-	stderrors "errors"
 	"io"
 	"math"
 	"math/rand"
@@ -80,6 +79,9 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		}
 
 		resp, err := base.RoundTrip(attemptReq)
+		if err != nil {
+			err = classifyTransportError(req, err)
+		}
 		if err == nil && (resp == nil || !isRetryableStatus(resp.StatusCode)) {
 			return resp, nil
 		}
@@ -95,15 +97,19 @@ func (bt *BackoffTransport) RoundTrip(req *http.Request) (*http.Response, error)
 		var retryAfter time.Duration
 
 		if err != nil {
-			shouldRetry = isRetryableError(req, err)
+			shouldRetry = errors.IsRetryable(err)
 		} else if resp != nil && isRetryableStatus(resp.StatusCode) {
 			shouldRetry = true
 			retryAfter = parseRetryAfter(resp.Header.Get("Retry-After"))
 		}
 
 		// Only retry idempotent methods with a replayable body.
+		// Annotate non-idempotent veto so callers are not told a POST is safe to retry.
 		if shouldRetry && (!isIdempotent(req.Method) || !canReplayBody(req)) {
 			shouldRetry = false
+			if err != nil {
+				err = errors.WithMetadata(err, errors.NonRetryable)
+			}
 		}
 
 		if !shouldRetry {
@@ -202,6 +208,8 @@ func resetBody(r *http.Request) error {
 	return nil
 }
 
+// isRetryableStatus reports HTTP statuses the transport may retry.
+// Includes 408, 429, and all 5xx (including 503).
 func isRetryableStatus(code int) bool {
 	if code == http.StatusTooManyRequests || code == http.StatusRequestTimeout {
 		return true
@@ -209,34 +217,34 @@ func isRetryableStatus(code int) bool {
 	return code >= 500
 }
 
-// isRetryableError reports transient transport failures. Permanent errors
-// (TLS handshake, bad scheme, etc.) are not retried. Connection refused/reset
-// and EOF are treated as transient (backend restarts / rolling deploys).
-func isRetryableError(req *http.Request, err error) bool {
+// classifyTransportError annotates an error returned by a round trip of req
+// with its fault and retryability so callers can use errors.IsRetryable /
+// errors.GetFault without re-deriving the answer.
+func classifyTransportError(req *http.Request, err error) error {
 	if err == nil {
-		return false
+		return nil
 	}
-	if req.Context().Err() != nil {
-		return false
+	retry := errors.NonRetryable
+	if req.Context().Err() == nil && isTransient(err) {
+		retry = errors.Retryable
 	}
-	if stderrors.Is(err, syscall.ECONNREFUSED) ||
-		stderrors.Is(err, syscall.ECONNRESET) ||
-		stderrors.Is(err, io.EOF) ||
-		stderrors.Is(err, io.ErrUnexpectedEOF) ||
-		stderrors.Is(err, net.ErrClosed) {
+	host := ""
+	if req.URL != nil {
+		host = req.URL.Host
+	}
+	return errors.Wrap(err, "forge http request failed",
+		errors.FaultUpstream, retry,
+		"method", req.Method, "host", host,
+	)
+}
+
+func isTransient(err error) bool {
+	if errors.OneOf(err, syscall.ECONNREFUSED, syscall.ECONNRESET,
+		io.EOF, io.ErrUnexpectedEOF, net.ErrClosed) {
 		return true
 	}
-	var ne net.Error
-	if stderrors.As(err, &ne) {
-		if ne.Timeout() {
-			return true
-		}
-		type temporary interface{ Temporary() bool }
-		if t, ok := any(ne).(temporary); ok && t.Temporary() {
-			return true
-		}
-	}
-	return false
+	ne, ok := errors.AsType[net.Error](err)
+	return ok && ne.Timeout()
 }
 
 func parseRetryAfter(ra string) time.Duration {
