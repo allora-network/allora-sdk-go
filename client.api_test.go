@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"syscall"
+
 	"github.com/brynbellomy/go-utils/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,6 +69,58 @@ func TestWithHTTPClientAndTimeout(t *testing.T) {
 	require.Equal(t, 5*time.Second, hc.Timeout, "caller Timeout must stay untouched")
 	require.NotNil(t, client.httpClient.CheckRedirect)
 	require.Nil(t, hc.CheckRedirect, "caller CheckRedirect must stay untouched")
+}
+
+func TestWithHTTPClientPreservesEarlierTimeoutAndBackoff(t *testing.T) {
+	// Natural order: timeout/backoff first, then a bare client with unset fields.
+	client, err := NewAPIClient("k",
+		WithTimeout(2*time.Second),
+		WithDefaultBackoff(),
+		WithHTTPClient(&http.Client{}), // Timeout=0, Transport=nil
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2*time.Second, client.httpClient.Timeout)
+	_, ok := client.httpClient.Transport.(*BackoffTransport)
+	require.True(t, ok, "earlier WithDefaultBackoff must survive a later WithHTTPClient")
+}
+
+func TestHTTP404MatchesErrNotFoundKind(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"missing"}`))
+	}))
+	defer srv.Close()
+
+	client := testClient(t, srv.URL, "http://data.example/api")
+	_, err := client.GetNetworkInference(context.Background(), 1)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errors.ErrNotFound)
+	require.Equal(t, http.StatusNotFound, errors.GetStatusCode(err))
+	require.Equal(t, errors.FaultCaller, errors.GetFault(err))
+}
+
+func TestDoJSONKeepsTransportNonRetryableVeto(t *testing.T) {
+	// Simulate a transport that already classified NonRetryable (idempotency veto).
+	inner := classifyTransportError(
+		mustRequest(t, http.MethodPost, "http://example.invalid"),
+		syscall.ECONNRESET,
+	)
+	vetoed := errors.WithMetadata(inner, errors.NonRetryable)
+	require.False(t, errors.IsRetryable(vetoed))
+
+	// doJSONWithAuth must not re-classify and flip Retryable.
+	req := mustRequest(t, http.MethodPost, "http://example.invalid")
+	if errors.GetRetryability(vetoed) == errors.UnknownRetryability {
+		vetoed = classifyTransportError(req, vetoed)
+	}
+	require.False(t, errors.IsRetryable(vetoed), "second classify must not overwrite NonRetryable veto")
+}
+
+func mustRequest(t *testing.T, method, rawURL string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, rawURL, nil)
+	require.NoError(t, err)
+	return req
 }
 
 func TestGetTopicsNativeShape(t *testing.T) {

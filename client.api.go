@@ -129,15 +129,24 @@ func WithNetwork(network Network) APIClientOption {
 }
 
 // WithHTTPClient replaces the underlying *http.Client with a shallow copy of
-// hc so the caller's shared client is not mutated (CheckRedirect / Transport /
-// Timeout are adjusted on the copy). Compose with WithTimeout / WithBackoff /
-// WithDefaultBackoff as needed (order matters).
+// hc so the caller's shared client is not mutated. CheckRedirect is still set
+// by NewAPIClient. If hc leaves Transport or Timeout unset (nil / 0), the
+// values already configured on the SDK client (default 30s timeout, or an
+// earlier WithBackoff / WithMetrics wrapper) are preserved — so option order
+// does not silently drop retries or deadlines.
 func WithHTTPClient(hc *http.Client) APIClientOption {
 	return func(c *apiClient) {
-		if hc != nil {
-			cp := *hc
-			c.httpClient = &cp
+		if hc == nil {
+			return
 		}
+		cp := *hc
+		if cp.Transport == nil {
+			cp.Transport = c.httpClient.Transport
+		}
+		if cp.Timeout == 0 {
+			cp.Timeout = c.httpClient.Timeout
+		}
+		c.httpClient = &cp
 	}
 }
 
@@ -290,7 +299,11 @@ func (c *apiClient) doJSONWithAuth(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		err = classifyTransportError(req, err)
+		// BackoffTransport may already have classified this error (including a
+		// non-idempotent retry veto). Keep that verdict; only classify once.
+		if errors.GetRetryability(err) == errors.UnknownRetryability {
+			err = classifyTransportError(req, err)
+		}
 		outcome = classifyAPIError(err)
 		return errors.WithMessage(err, "failed to execute request")
 	}
@@ -325,17 +338,19 @@ func (c *apiClient) doJSONWithAuth(
 			Msg("forge api request failed")
 
 		retry := errors.NonRetryable
-		if isRetryableStatus(resp.StatusCode) {
+		// Mirror the transport: only advertise retryable for idempotent methods.
+		if isRetryableStatus(resp.StatusCode) && isIdempotent(method) {
 			retry = errors.Retryable
 		}
 		fault := errors.FaultUpstream
 		if resp.StatusCode < 500 {
 			fault = errors.FaultCaller
 		}
+		kind := httpStatusKind(resp.StatusCode)
 		return errors.Wrap(
 			apiErr,
 			"forge api request failed",
-			errors.StatusCode(resp.StatusCode), fault, retry,
+			kind, errors.StatusCode(resp.StatusCode), fault, retry,
 			"endpoint", endpoint, "method", methodName,
 		)
 	}
@@ -367,5 +382,26 @@ func classifyAPIError(err error) string {
 		return "retryable_" + errors.GetFault(err).String()
 	default:
 		return "error_" + errors.GetFault(err).String()
+	}
+}
+
+// httpStatusKind maps an HTTP status to a go-utils Kind so category predicates
+// (errors.Is(err, errors.ErrNotFound), …) agree for HTTP errors and sentinels.
+func httpStatusKind(code int) errors.Kind {
+	switch {
+	case code == http.StatusNotFound:
+		return errors.ErrNotFound
+	case code == http.StatusTooManyRequests:
+		return errors.ErrTooManyRequests
+	case code == http.StatusUnauthorized:
+		return errors.ErrUnauthorized
+	case code == http.StatusForbidden:
+		return errors.ErrForbidden
+	case code == http.StatusServiceUnavailable:
+		return errors.ErrServiceUnavailable
+	case code >= 500:
+		return errors.ErrInternalServerError
+	default:
+		return errors.ErrBadRequest
 	}
 }

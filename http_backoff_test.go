@@ -161,4 +161,12 @@ func TestClassifyTransportError(t *testing.T) {
 	classified = classifyTransportError(req, errors.New("Get \"foo://x\": unsupported protocol scheme \"foo\""))
 	require.False(t, errors.IsRetryable(classified))
 	require.Equal(t, errors.FaultCaller, errors.GetFault(classified))
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	reqCanceled := req.Clone(canceled)
+	classified = classifyTransportError(reqCanceled, context.Canceled)
+	require.False(t, errors.IsRetryable(classified))
+	require.Equal(t, errors.FaultCaller, errors.GetFault(classified),
+		"caller cancel must not be attributed FaultUpstream")
 }

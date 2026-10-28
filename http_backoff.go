@@ -227,9 +227,13 @@ func classifyTransportError(req *http.Request, err error) error {
 	}
 	fault := errors.FaultUpstream
 	retry := errors.NonRetryable
-	if req.Context().Err() == nil && isTransient(err) {
+	switch {
+	case req.Context().Err() != nil:
+		// Caller aborted (cancel or request-context deadline): not upstream.
+		fault = errors.FaultCaller
+	case isTransient(err):
 		retry = errors.Retryable
-	} else if isCallerTransportError(err) {
+	case isCallerTransportError(err):
 		fault = errors.FaultCaller
 	}
 	host := ""
