@@ -146,7 +146,7 @@ config.Endpoints = []allora.EndpointConfig{
 (no Upshot compat wrappers). Constructor also returns `(*apiClient, error)`.
 
 - Defaults: gateway `https://api.developer.allora.network`, data
-  `https://forge-data.allora.run/api`, network `mainnet`
+  `https://forge-data.allora.network/api`, network `mainnet`
 - Override with `WithBaseURL` / `WithDataBaseURL` / `WithNetwork` /
   `WithHTTPClient` / `WithTimeout`
 

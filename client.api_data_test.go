@@ -312,15 +312,15 @@ func TestIterCandlesDetectsReorderedQueryCycle(t *testing.T) {
 }
 
 func TestResolveDataNextURLRejectsForeignHost(t *testing.T) {
-	client := testClient(t, "http://gateway.example", "https://forge-data.allora.run/api")
+	client := testClient(t, "http://gateway.example", "https://forge-data.allora.network/api")
 	_, err := client.resolveDataNextURL("https://evil.example/api/rows/?offset=1")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "does not match data API")
 }
 
 func TestResolveDataNextURLKeepsAPIPrefix(t *testing.T) {
-	client := testClient(t, "http://gateway.example", "https://forge-data.allora.run/api")
+	client := testClient(t, "http://gateway.example", "https://forge-data.allora.network/api")
 	got, err := client.resolveDataNextURL("rows/?offset=1")
 	require.NoError(t, err)
-	require.Equal(t, "https://forge-data.allora.run/api/rows/?offset=1", got)
+	require.Equal(t, "https://forge-data.allora.network/api/rows/?offset=1", got)
 }

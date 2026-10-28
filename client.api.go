@@ -31,7 +31,7 @@ const (
 	// DefaultAPIBaseURL is the Forge API Gateway origin used when WithBaseURL is omitted.
 	DefaultAPIBaseURL = "https://api.developer.allora.network"
 	// DefaultDataAPIBaseURL is the Forge Data (Atlas) root used when WithDataBaseURL is omitted.
-	DefaultDataAPIBaseURL = "https://forge-data.allora.run/api"
+	DefaultDataAPIBaseURL = "https://forge-data.allora.network/api"
 
 	maxAPIResponseBytes = 32 << 20 // 32 MiB
 )

@@ -42,7 +42,7 @@ func TestNewAPIClientDefaultsAndOverrides(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, DefaultAPIBaseURL, client.url)
 	require.Equal(t, DefaultDataAPIBaseURL, client.dataURL)
-	require.Equal(t, "https://forge-data.allora.run/api", DefaultDataAPIBaseURL)
+	require.Equal(t, "https://forge-data.allora.network/api", DefaultDataAPIBaseURL)
 	require.Equal(t, NetworkMainnet, client.network)
 
 	client, err = NewAPIClient("forge_sk_test",
