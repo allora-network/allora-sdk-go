@@ -135,6 +135,73 @@ config.Endpoints = []allora.EndpointConfig{
 }
 ```
 
+## Forge HTTP Client (Gateway + Market Data)
+
+`NewAPIClient` talks to Forge with your API key:
+
+1. **API Gateway** — topics + network inferences (`Authorization: Bearer …`)
+2. **Forge Data / Atlas** — datasets + OHLCV candles (`X-API-Key: …`)
+
+**Breaking vs previous SDK:** response types are the native Forge/Atlas shapes
+(no Upshot compat wrappers). Constructor also returns `(*apiClient, error)`.
+
+- Defaults: gateway `https://api.developer.allora.network`, data
+  `https://forge-data.allora.network/api`, network `mainnet`
+- Override with `WithBaseURL` / `WithDataBaseURL` / `WithNetwork` /
+  `WithHTTPClient` / `WithTimeout`
+
+```go
+client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"))
+if err != nil {
+    log.Fatal(err)
+}
+
+// Optional overrides for local/stage:
+// client, err := allora.NewAPIClient(os.Getenv("ALLORA_API_KEY"),
+//     allora.WithBaseURL("http://localhost:8080"),
+//     allora.WithDataBaseURL("https://forge-data.stage.allora.run/api"),
+//     allora.WithNetwork(allora.NetworkTestnet), // default is mainnet
+// )
+
+for topic, err := range client.GetTopics() {
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = topic.ID
+    _ = topic.Metadata
+}
+
+topic, err := client.GetTopic(72)
+if err != nil {
+    log.Fatal(err)
+}
+_ = topic.LatestNetworkInference // *NetworkInference, best-effort
+
+ni, err := client.GetNetworkInference(ctx, 72)
+if err != nil {
+    log.Fatal(err)
+}
+_ = ni.NetworkInferenceNormalized
+
+for candles, err := range client.IterCandles(ctx, allora.CandleQuery{
+    Ticker: "btcusd",
+    Start:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+    Limit:  250,
+}) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, candle := range candles {
+        _ = candle.Close // float64
+    }
+}
+```
+
+Also on `*apiClient`: `GetCandles`, `ListDatasets`, `FindDatasetsByTicker`.
+
+- Upshot `/v2` is removed; candles come from Atlas
+- Topic / inference / candle fields match the Forge gateway and Atlas wire formats
+
 ## API Reference
 
 ### Cosmos SDK Modules
