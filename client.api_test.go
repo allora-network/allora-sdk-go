@@ -81,7 +81,28 @@ func TestWithHTTPClientPreservesEarlierTimeoutAndBackoff(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2*time.Second, client.httpClient.Timeout)
 	_, ok := client.httpClient.Transport.(*BackoffTransport)
-	require.True(t, ok, "earlier WithDefaultBackoff must survive a later WithHTTPClient")
+	require.True(t, ok, "earlier WithDefaultBackoff must survive a later WithHTTPClient with nil Transport")
+}
+
+func TestWithHTTPClientCustomTransportReplacesEarlierBackoff(t *testing.T) {
+	mine := http.DefaultTransport
+	client, err := NewAPIClient("k",
+		WithDefaultBackoff(),
+		WithHTTPClient(&http.Client{Transport: mine}),
+	)
+	require.NoError(t, err)
+	require.Same(t, mine, client.httpClient.Transport,
+		"caller-supplied Transport replaces the SDK stack (backoff discarded)")
+
+	// Prefer WithHTTPClient before WithDefaultBackoff when both are needed.
+	client, err = NewAPIClient("k",
+		WithHTTPClient(&http.Client{Transport: mine}),
+		WithDefaultBackoff(),
+	)
+	require.NoError(t, err)
+	bt, ok := client.httpClient.Transport.(*BackoffTransport)
+	require.True(t, ok)
+	require.Same(t, mine, bt.roundTripper)
 }
 
 func TestHTTP404MatchesErrNotFoundKind(t *testing.T) {

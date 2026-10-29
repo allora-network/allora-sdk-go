@@ -130,10 +130,18 @@ func WithNetwork(network Network) APIClientOption {
 
 // WithHTTPClient replaces the underlying *http.Client with a shallow copy of
 // hc so the caller's shared client is not mutated. CheckRedirect is still set
-// by NewAPIClient. If hc leaves Transport or Timeout unset (nil / 0), the
-// values already configured on the SDK client (default 30s timeout, or an
-// earlier WithBackoff / WithMetrics wrapper) are preserved — so option order
-// does not silently drop retries or deadlines.
+// by NewAPIClient.
+//
+// Timeout: if hc leaves Timeout unset (0), the value already configured on the
+// SDK client is inherited.
+//
+// Transport: if hc leaves Transport unset (nil), the transport already
+// configured on the SDK client (default transport, or an earlier
+// WithBackoff/WithMetrics wrapper) is inherited. If hc DOES supply a
+// Transport, the caller replaces the SDK's transport stack entirely: any
+// WithBackoff/WithDefaultBackoff/WithMetrics wrapper configured earlier is
+// discarded, regardless of option order. Prefer WithHTTPClient before
+// WithDefaultBackoff when both a custom Transport and retries are needed.
 func WithHTTPClient(hc *http.Client) APIClientOption {
 	return func(c *apiClient) {
 		if hc == nil {
