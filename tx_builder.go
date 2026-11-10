@@ -6,7 +6,6 @@ import (
 
 	sdkclient "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
-	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	signingtypes "github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
@@ -56,6 +55,12 @@ func (b *txBuilder) buildUnsignedSendTx(
 	txBuilder.SetFeeAmount(params.FeeAmount)
 	txBuilder.SetMemo(params.Memo)
 
+	// Set the fee granter so a master/subsidy wallet pays the gas (feegrant). Empty
+	// means the signer pays its own fees.
+	if !params.FeeGranter.Empty() {
+		txBuilder.SetFeeGranter(params.FeeGranter)
+	}
+
 	if params.TimeoutHeight > 0 {
 		txBuilder.SetTimeoutHeight(params.TimeoutHeight)
 	}
@@ -69,10 +74,13 @@ func (b *txBuilder) buildUnsignedSendTx(
 	return txBytes, nil
 }
 
-// signTx signs a transaction with the provided private key
+// signTx signs a transaction with the provided signer (a local key or a remote signer).
+// ctx is honored by signers that perform I/O (e.g. RemoteSigner) and during sign-bytes
+// assembly.
 func (b *txBuilder) signTx(
+	ctx context.Context,
 	txBytes []byte,
-	privKey cryptotypes.PrivKey,
+	signer Signer,
 	params *TxParams,
 ) ([]byte, error) {
 	// Decode the unsigned transaction
@@ -89,7 +97,23 @@ func (b *txBuilder) signTx(
 	}
 
 	// Get public key
-	pubKey := privKey.PubKey()
+	pubKey := signer.PubKey()
+	signerAddr := sdk.AccAddress(pubKey.Address()).String()
+
+	// Guard against signing a transaction whose message sender is not the signer; such a
+	// tx is rejected on-chain ("signature verification failed") far from the cause.
+	//
+	// NOTE: this only checks *banktypes.MsgSend, the single message type the SDK's only
+	// builder (CreateUnsignedSendTx) emits. It is defense-in-depth, not a security
+	// boundary: a caller who hand-assembles another message type (MsgDelegate, MsgExec, an
+	// IBC transfer, an emissions message, ...) and passes the bytes to SignTransactionWith
+	// bypasses this guard. When a second message-builder is added, generalize this to
+	// msg.GetSigners() (or codec GetMsgV1Signers) so the check becomes type-agnostic.
+	for _, msg := range decodedTx.GetMsgs() {
+		if send, ok := msg.(*banktypes.MsgSend); ok && send.FromAddress != signerAddr {
+			return nil, fmt.Errorf("signer address %s does not match transaction sender %s", signerAddr, send.FromAddress)
+		}
+	}
 
 	// Convert API sign mode to internal
 	apiSignMode := b.txConfig.SignModeHandler().DefaultMode()
@@ -120,13 +144,13 @@ func (b *txBuilder) signTx(
 		ChainID:       params.ChainID,
 		AccountNumber: params.AccountNumber,
 		Sequence:      params.Sequence,
-		Address:       sdk.AccAddress(pubKey.Address()).String(),
+		Address:       signerAddr,
 		PubKey:        pubKey,
 	}
 
 	// Get the bytes to sign
 	bytesToSign, err := authsigning.GetSignBytesAdapter(
-		context.Background(),
+		ctx,
 		b.txConfig.SignModeHandler(),
 		signMode,
 		signerData,
@@ -137,7 +161,7 @@ func (b *txBuilder) signTx(
 	}
 
 	// Sign the bytes
-	signature, err := privKey.Sign(bytesToSign)
+	signature, err := signWithContext(ctx, signer, bytesToSign)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
