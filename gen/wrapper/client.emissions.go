@@ -589,6 +589,12 @@ func (c *EmissionsClientWrapper) IsTopicActive(ctx context.Context, req *emissio
 	})
 }
 
+func (c *EmissionsClientWrapper) IsTopicForecasterWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicForecasterWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicForecasterWhitelistEnabledResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.IsTopicForecasterWhitelistEnabledResponse, error) {
+		return client.Emissions().IsTopicForecasterWhitelistEnabled(ctx, req, opts...)
+	})
+}
+
 func (c *EmissionsClientWrapper) IsTopicReputerWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicReputerWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicReputerWhitelistEnabledResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.IsTopicReputerWhitelistEnabledResponse, error) {
 		return client.Emissions().IsTopicReputerWhitelistEnabled(ctx, req, opts...)

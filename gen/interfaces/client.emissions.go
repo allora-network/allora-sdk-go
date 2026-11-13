@@ -103,6 +103,7 @@ type EmissionsClient interface {
 	IsReputerNonceUnfulfilled(ctx context.Context, req *emissionstypes.IsReputerNonceUnfulfilledRequest, opts ...config.CallOpt) (*emissionstypes.IsReputerNonceUnfulfilledResponse, error)
 	IsReputerRegisteredInTopicId(ctx context.Context, req *emissionstypes.IsReputerRegisteredInTopicIdRequest, opts ...config.CallOpt) (*emissionstypes.IsReputerRegisteredInTopicIdResponse, error)
 	IsTopicActive(ctx context.Context, req *emissionstypes.IsTopicActiveRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicActiveResponse, error)
+	IsTopicForecasterWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicForecasterWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicForecasterWhitelistEnabledResponse, error)
 	IsTopicReputerWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicReputerWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicReputerWhitelistEnabledResponse, error)
 	IsTopicWorkerWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicWorkerWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicWorkerWhitelistEnabledResponse, error)
 	IsWhitelistAdmin(ctx context.Context, req *emissionstypes.IsWhitelistAdminRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistAdminResponse, error)
