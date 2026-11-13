@@ -1529,6 +1529,22 @@ func (c *EmissionsRESTClient) IsTopicActive(ctx context.Context, req *emissionst
 	return resp, nil
 }
 
+func (c *EmissionsRESTClient) IsTopicForecasterWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicForecasterWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicForecasterWhitelistEnabledResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.IsTopicForecasterWhitelistEnabledResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/is_topic_forecaster_whitelist_enabled/{topic_id}",
+		[]string{"topic_id"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.IsTopicForecasterWhitelistEnabled")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsRESTClient) IsTopicReputerWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicReputerWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicReputerWhitelistEnabledResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)

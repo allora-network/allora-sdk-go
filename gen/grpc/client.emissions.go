@@ -1063,6 +1063,17 @@ func (c *EmissionsGRPCClient) IsTopicActive(ctx context.Context, req *emissionst
 	return resp, nil
 }
 
+func (c *EmissionsGRPCClient) IsTopicForecasterWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicForecasterWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicForecasterWhitelistEnabledResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.IsTopicForecasterWhitelistEnabled, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.IsTopicForecasterWhitelistEnabled")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsGRPCClient) IsTopicReputerWhitelistEnabled(ctx context.Context, req *emissionstypes.IsTopicReputerWhitelistEnabledRequest, opts ...config.CallOpt) (*emissionstypes.IsTopicReputerWhitelistEnabledResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
