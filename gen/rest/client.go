@@ -20,6 +20,8 @@ import (
 	cmtservice "github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 	"github.com/rs/zerolog"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cosmos/gogoproto/jsonpb"
 	"github.com/cosmos/gogoproto/proto"
@@ -356,6 +358,26 @@ func drainAndClose(body io.ReadCloser) {
 	_ = body.Close()
 }
 
+// httpStatusError converts a non-200 response into an error that carries the
+// gRPC status code the node meant. A grpc-gateway node reports an unimplemented
+// method as HTTP 501 with a body of {"code":12,...}, where 12 is
+// codes.Unimplemented; without the translation the caller sees an opaque string
+// and cannot tell "this node does not serve this method" from "this node is
+// broken".
+//
+// Only 501 is translated. A 404 is ambiguous: grpc-gateway also uses it for
+// codes.NotFound, which is an ordinary answer to a query about a resource that
+// does not exist, and a node whose REST routes are mounted under a different
+// prefix answers 404 to everything. Neither is a statement that the method is
+// unimplemented, so 404 keeps its plain-error shape.
+func httpStatusError(resp *http.Response) error {
+	msg := fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status)
+	if resp.StatusCode == http.StatusNotImplemented {
+		return status.Error(codes.Unimplemented, msg)
+	}
+	return errors.New(msg)
+}
+
 func (c *RESTClientCore) executeRequest(
 	ctx context.Context,
 	httpMethod, httpPath string,
@@ -430,7 +452,7 @@ func (c *RESTClientCore) executeRequest(
 	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		return errors.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
+		return httpStatusError(resp)
 	}
 
 	if response != nil {
