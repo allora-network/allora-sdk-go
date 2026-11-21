@@ -329,6 +329,12 @@ if validators.Pagination.NextKey != nil {
 }
 ```
 
+## Chain compatibility
+
+The generated clients and the Go types track the allora-chain revision set by `ALLORA_CHAIN_VERSION` in the [Makefile](Makefile). The versioned `go.mod` dependency also records this revision.
+
+A node returns gRPC status `Unimplemented` when a query is not available in the node's gRPC service. For an HTTP query without a registered route, gRPC-Gateway returns HTTP 501 or 404, depending on its routing mode.
+
 ## Development
 
 ### Building
