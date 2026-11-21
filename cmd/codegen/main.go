@@ -10,7 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-    "slices"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -99,6 +99,9 @@ func generateFromProtos(args []string) {
 	if len(files) == 0 {
 		log.Fatal("no proto files provided; pass at least one -f <file>")
 	}
+	if err := requireGoimports(exec.LookPath); err != nil {
+		log.Fatal(err)
+	}
 
 	// Build descriptor set from all provided files
 	fds, err := buildFileDescriptorSetForFiles(files, includes)
@@ -181,9 +184,9 @@ func generateFromProtos(args []string) {
 				continue
 			}
 
-            slices.SortFunc(methods, func(a, b ClientMethod) int {
-                return strings.Compare(a.Name, b.Name)
-            })
+			slices.SortFunc(methods, func(a, b ClientMethod) int {
+				return strings.Compare(a.Name, b.Name)
+			})
 
 			modules = append(modules, ModuleInfo{
 				ModuleName:  moduleName,
@@ -196,9 +199,9 @@ func generateFromProtos(args []string) {
 		return true
 	})
 
-    slices.SortFunc(modules, func(a, b ModuleInfo) int {
-        return strings.Compare(a.ImportPath, b.ImportPath)
-    })
+	slices.SortFunc(modules, func(a, b ModuleInfo) int {
+		return strings.Compare(a.ImportPath, b.ImportPath)
+	})
 
 	if len(modules) == 0 {
 		log.Println("No modules discovered in provided protos")
@@ -481,8 +484,15 @@ func executeTemplate(this any, outfile string, tmpl string) error {
 	return nil
 }
 
+// requireGoimports checks that generation can produce compile-ready imports.
+func requireGoimports(lookPath func(string) (string, error)) error {
+	if _, err := lookPath("goimports"); err != nil {
+		return fmt.Errorf("goimports is required in PATH; install it with: go install golang.org/x/tools/cmd/goimports@latest")
+	}
+	return nil
+}
+
 // formatGeneratedFiles runs gofmt and goimports over the provided files.
-// If goimports is not installed, it is skipped with a warning.
 func formatGeneratedFiles(files []string) error {
 	if len(files) == 0 {
 		return nil
@@ -490,20 +500,14 @@ func formatGeneratedFiles(files []string) error {
 
 	fmt.Printf("Formatting %d generated files...\n", len(files))
 
-	// Run: gofmt -w <files...>
 	gofmtArgs := append([]string{"-w"}, files...)
 	if out, err := exec.Command("gofmt", gofmtArgs...).CombinedOutput(); err != nil {
 		return fmt.Errorf("gofmt failed: %v, output: %s", err, string(out))
 	}
 
-	// Run: goimports -w <files...> (if available)
-	if _, err := exec.LookPath("goimports"); err == nil {
-		goimportsArgs := append([]string{"-w"}, files...)
-		if out, err := exec.Command("goimports", goimportsArgs...).CombinedOutput(); err != nil {
-			return fmt.Errorf("goimports failed: %v, output: %s", err, string(out))
-		}
-	} else {
-		log.Printf("goimports not found in PATH; skipping goimports. Install with: go install golang.org/x/tools/cmd/goimports@latest")
+	goimportsArgs := append([]string{"-w"}, files...)
+	if out, err := exec.Command("goimports", goimportsArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("goimports failed: %v, output: %s", err, string(out))
 	}
 
 	return nil
