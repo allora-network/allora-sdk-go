@@ -43,49 +43,76 @@ CODEGEN_FILES := \
   $(ALLORA_CHAIN_DIR)/x/mint/proto/mint/v5/query.proto
 
 
-# --- Git dependencies
-$(GOGOPROTO_DIR)/.git:
-	rm -rf "$(GOGOPROTO_DIR)"
-	git clone --depth 1 --single-branch --branch $(GOGOPROTO_VERSION) \
-	  https://github.com/cosmos/gogoproto "$(GOGOPROTO_DIR)"
+# Each stamp records one version. A different version refetches only that checkout.
+.PHONY: proto-deps-update-gogoproto proto-deps-update-cosmos-proto proto-deps-update-cosmos-sdk proto-deps-update-googleapis proto-deps-update-allora-chain
 
-$(COSMOS_PROTO_DIR)/.git:
-	rm -rf "$(COSMOS_PROTO_DIR)"
-	git clone --depth 1 --single-branch --branch $(COSMOS_PROTO_VERSION) \
-	  https://github.com/cosmos/cosmos-proto "$(COSMOS_PROTO_DIR)"
+proto-deps-update-gogoproto:
+	rm -f "$(GOGOPROTO_DIR)"/.git/codegen.version.*
+	$(MAKE) --no-print-directory "$(GOGOPROTO_DIR)/.git/codegen.version.$(GOGOPROTO_VERSION)"
 
-$(COSMOS_SDK_DIR)/.git:
-	rm -rf "$(COSMOS_SDK_DIR)"
-	git clone --depth 1 --single-branch --branch $(COSMOS_SDK_VERSION) \
-	  https://github.com/cosmos/cosmos-sdk "$(COSMOS_SDK_DIR)"
+proto-deps-update-cosmos-proto:
+	rm -f "$(COSMOS_PROTO_DIR)"/.git/codegen.version.*
+	$(MAKE) --no-print-directory "$(COSMOS_PROTO_DIR)/.git/codegen.version.$(COSMOS_PROTO_VERSION)"
 
-$(GOOGLEAPIS_DIR)/.git:
-	rm -rf "$(GOOGLEAPIS_DIR)"
-	git clone --depth 1 --single-branch --branch $(GOOGLEAPIS_VERSION) \
-	  https://github.com/googleapis/googleapis "$(GOOGLEAPIS_DIR)"
+proto-deps-update-cosmos-sdk:
+	rm -f "$(COSMOS_SDK_DIR)"/.git/codegen.version.*
+	$(MAKE) --no-print-directory "$(COSMOS_SDK_DIR)/.git/codegen.version.$(COSMOS_SDK_VERSION)"
 
-$(ALLORA_CHAIN_DIR)/.git:
-	rm -rf "$(ALLORA_CHAIN_DIR)"
-	git init "$(ALLORA_CHAIN_DIR)"
-	git -C "$(ALLORA_CHAIN_DIR)" remote add origin https://github.com/allora-network/allora-chain
-	git -C "$(ALLORA_CHAIN_DIR)" fetch --depth 1 origin $(ALLORA_CHAIN_VERSION)
-	git -C "$(ALLORA_CHAIN_DIR)" checkout --detach FETCH_HEAD
+proto-deps-update-googleapis:
+	rm -f "$(GOOGLEAPIS_DIR)"/.git/codegen.version.*
+	$(MAKE) --no-print-directory "$(GOOGLEAPIS_DIR)/.git/codegen.version.$(GOOGLEAPIS_VERSION)"
+
+proto-deps-update-allora-chain:
+	rm -f "$(ALLORA_CHAIN_DIR)"/.git/codegen.version.*
+	$(MAKE) --no-print-directory "$(ALLORA_CHAIN_DIR)/.git/codegen.version.$(ALLORA_CHAIN_VERSION)"
+
+define fetch_proto_dep
+	@mkdir -p "$(dir $(1))"
+	@if ! git -C "$(1)" rev-parse --git-dir >/dev/null 2>&1; then \
+		rm -rf "$(1)"; \
+		git init "$(1)"; \
+	fi
+	@if ! git -C "$(1)" remote get-url origin >/dev/null 2>&1; then \
+		git -C "$(1)" remote add origin "$(2)"; \
+	fi
+	git -C "$(1)" remote set-url origin "$(2)"
+	git -C "$(1)" fetch --depth 1 origin "$(3)"
+	git -C "$(1)" checkout --detach FETCH_HEAD
+	git -C "$(1)" reset --hard FETCH_HEAD
+	rm -f "$(4)"/codegen.version.*
+	touch "$@"
+endef
+
+$(GOGOPROTO_DIR)/.git/codegen.version.$(GOGOPROTO_VERSION):
+	$(call fetch_proto_dep,$(GOGOPROTO_DIR),https://github.com/cosmos/gogoproto,$(GOGOPROTO_VERSION),$(GOGOPROTO_DIR)/.git)
+
+$(COSMOS_PROTO_DIR)/.git/codegen.version.$(COSMOS_PROTO_VERSION):
+	$(call fetch_proto_dep,$(COSMOS_PROTO_DIR),https://github.com/cosmos/cosmos-proto,$(COSMOS_PROTO_VERSION),$(COSMOS_PROTO_DIR)/.git)
+
+$(COSMOS_SDK_DIR)/.git/codegen.version.$(COSMOS_SDK_VERSION):
+	$(call fetch_proto_dep,$(COSMOS_SDK_DIR),https://github.com/cosmos/cosmos-sdk,$(COSMOS_SDK_VERSION),$(COSMOS_SDK_DIR)/.git)
+
+$(GOOGLEAPIS_DIR)/.git/codegen.version.$(GOOGLEAPIS_VERSION):
+	$(call fetch_proto_dep,$(GOOGLEAPIS_DIR),https://github.com/googleapis/googleapis,$(GOOGLEAPIS_VERSION),$(GOOGLEAPIS_DIR)/.git)
+
+$(ALLORA_CHAIN_DIR)/.git/codegen.version.$(ALLORA_CHAIN_VERSION):
+	$(call fetch_proto_dep,$(ALLORA_CHAIN_DIR),https://github.com/allora-network/allora-chain,$(ALLORA_CHAIN_VERSION),$(ALLORA_CHAIN_DIR)/.git)
 
 .PHONY: proto-deps
 proto-deps: \
-  $(GOGOPROTO_DIR)/.git \
-  $(COSMOS_PROTO_DIR)/.git \
-  $(COSMOS_SDK_DIR)/.git \
-  $(GOOGLEAPIS_DIR)/.git \
-  $(ALLORA_CHAIN_DIR)/.git
+  $(GOGOPROTO_DIR)/.git/codegen.version.$(GOGOPROTO_VERSION) \
+  $(COSMOS_PROTO_DIR)/.git/codegen.version.$(COSMOS_PROTO_VERSION) \
+  $(COSMOS_SDK_DIR)/.git/codegen.version.$(COSMOS_SDK_VERSION) \
+  $(GOOGLEAPIS_DIR)/.git/codegen.version.$(GOOGLEAPIS_VERSION) \
+  $(ALLORA_CHAIN_DIR)/.git/codegen.version.$(ALLORA_CHAIN_VERSION)
 
 .PHONY: proto-deps-update
-proto-deps-update:
-	git -C "$(GOGOPROTO_DIR)" fetch --depth 1 origin $(GOGOPROTO_VERSION) && git -C "$(GOGOPROTO_DIR)" reset --hard FETCH_HEAD
-	git -C "$(COSMOS_PROTO_DIR)" fetch --depth 1 origin $(COSMOS_PROTO_VERSION) && git -C "$(COSMOS_PROTO_DIR)" reset --hard FETCH_HEAD
-	git -C "$(COSMOS_SDK_DIR)" fetch --depth 1 origin $(COSMOS_SDK_VERSION) && git -C "$(COSMOS_SDK_DIR)" reset --hard FETCH_HEAD
-	git -C "$(GOOGLEAPIS_DIR)" fetch --depth 1 origin $(GOOGLEAPIS_VERSION) && git -C "$(GOOGLEAPIS_DIR)" reset --hard FETCH_HEAD
-	git -C "$(ALLORA_CHAIN_DIR)" fetch --depth 1 origin $(ALLORA_CHAIN_VERSION) && git -C "$(ALLORA_CHAIN_DIR)" reset --hard FETCH_HEAD
+proto-deps-update: \
+  proto-deps-update-gogoproto \
+  proto-deps-update-cosmos-proto \
+  proto-deps-update-cosmos-sdk \
+  proto-deps-update-googleapis \
+  proto-deps-update-allora-chain
 
 
 

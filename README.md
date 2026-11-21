@@ -351,15 +351,44 @@ make lint
 
 ### Protocol Buffer Generation
 
+Install the protobuf compiler and `goimports` before generating clients:
+
 ```bash
-make codegen
+go install golang.org/x/tools/cmd/goimports@latest
+export PATH="$(go env GOBIN):$PATH"
 ```
 
-To fetch proto dependencies and regenerate clients in one step:
+If `go env GOBIN` is empty, use `$(go env GOPATH)/bin` instead. Run
+`goimports -h` to check that the executable is on `PATH`. The generator stops
+before writing files if it cannot find `goimports`.
+
+Fetch the pinned proto dependencies and regenerate all clients:
 
 ```bash
 make dev
 ```
+
+Each dependency has a stamp file named after its configured version. Changing
+a `*_VERSION` value refetches that dependency; an unchanged version does
+nothing on the next `make dev`. To fetch a fresh checkout without editing the
+Makefile, pass the version explicitly:
+
+```bash
+make ALLORA_CHAIN_VERSION=v0.17.0 dev
+```
+
+To regenerate from checkouts that are already present, run `make codegen`.
+
+To force every dependency to fetch its configured revision again, run:
+
+```bash
+make proto-deps-update
+make codegen
+```
+
+This target also creates missing checkouts on a fresh clone. It is the way to
+fetch a newer commit from `GOOGLEAPIS_VERSION=master`: ordinary `make dev`
+keeps an existing `master` stamp so an unrelated regeneration is reproducible.
 
 ## Roadmap
 
