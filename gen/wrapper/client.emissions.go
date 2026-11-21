@@ -31,6 +31,18 @@ func (c *EmissionsClientWrapper) CanCreateTopic(ctx context.Context, req *emissi
 	})
 }
 
+func (c *EmissionsClientWrapper) CanSubmitForecasterPayload(ctx context.Context, req *emissionstypes.CanSubmitForecasterPayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitForecasterPayloadResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.CanSubmitForecasterPayloadResponse, error) {
+		return client.Emissions().CanSubmitForecasterPayload(ctx, req, opts...)
+	})
+}
+
+func (c *EmissionsClientWrapper) CanSubmitInferencePayload(ctx context.Context, req *emissionstypes.CanSubmitInferencePayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitInferencePayloadResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.CanSubmitInferencePayloadResponse, error) {
+		return client.Emissions().CanSubmitInferencePayload(ctx, req, opts...)
+	})
+}
+
 func (c *EmissionsClientWrapper) CanSubmitReputerPayload(ctx context.Context, req *emissionstypes.CanSubmitReputerPayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitReputerPayloadResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.CanSubmitReputerPayloadResponse, error) {
 		return client.Emissions().CanSubmitReputerPayload(ctx, req, opts...)
@@ -46,6 +58,12 @@ func (c *EmissionsClientWrapper) CanSubmitWorkerPayload(ctx context.Context, req
 func (c *EmissionsClientWrapper) CanUpdateAllGlobalWhitelists(ctx context.Context, req *emissionstypes.CanUpdateAllGlobalWhitelistsRequest, opts ...config.CallOpt) (*emissionstypes.CanUpdateAllGlobalWhitelistsResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.CanUpdateAllGlobalWhitelistsResponse, error) {
 		return client.Emissions().CanUpdateAllGlobalWhitelists(ctx, req, opts...)
+	})
+}
+
+func (c *EmissionsClientWrapper) CanUpdateGlobalForecasterWhitelist(ctx context.Context, req *emissionstypes.CanUpdateGlobalForecasterWhitelistRequest, opts ...config.CallOpt) (*emissionstypes.CanUpdateGlobalForecasterWhitelistResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.CanUpdateGlobalForecasterWhitelistResponse, error) {
+		return client.Emissions().CanUpdateGlobalForecasterWhitelist(ctx, req, opts...)
 	})
 }
 
@@ -625,6 +643,12 @@ func (c *EmissionsClientWrapper) IsWhitelistedGlobalAdmin(ctx context.Context, r
 	})
 }
 
+func (c *EmissionsClientWrapper) IsWhitelistedGlobalForecaster(ctx context.Context, req *emissionstypes.IsWhitelistedGlobalForecasterRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedGlobalForecasterResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.IsWhitelistedGlobalForecasterResponse, error) {
+		return client.Emissions().IsWhitelistedGlobalForecaster(ctx, req, opts...)
+	})
+}
+
 func (c *EmissionsClientWrapper) IsWhitelistedGlobalReputer(ctx context.Context, req *emissionstypes.IsWhitelistedGlobalReputerRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedGlobalReputerResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.IsWhitelistedGlobalReputerResponse, error) {
 		return client.Emissions().IsWhitelistedGlobalReputer(ctx, req, opts...)
@@ -640,6 +664,12 @@ func (c *EmissionsClientWrapper) IsWhitelistedGlobalWorker(ctx context.Context, 
 func (c *EmissionsClientWrapper) IsWhitelistedTopicCreator(ctx context.Context, req *emissionstypes.IsWhitelistedTopicCreatorRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedTopicCreatorResponse, error) {
 	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.IsWhitelistedTopicCreatorResponse, error) {
 		return client.Emissions().IsWhitelistedTopicCreator(ctx, req, opts...)
+	})
+}
+
+func (c *EmissionsClientWrapper) IsWhitelistedTopicForecaster(ctx context.Context, req *emissionstypes.IsWhitelistedTopicForecasterRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedTopicForecasterResponse, error) {
+	return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*emissionstypes.IsWhitelistedTopicForecasterResponse, error) {
+		return client.Emissions().IsWhitelistedTopicForecaster(ctx, req, opts...)
 	})
 }
 

@@ -40,6 +40,28 @@ func (c *EmissionsGRPCClient) CanCreateTopic(ctx context.Context, req *emissions
 	return resp, nil
 }
 
+func (c *EmissionsGRPCClient) CanSubmitForecasterPayload(ctx context.Context, req *emissionstypes.CanSubmitForecasterPayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitForecasterPayloadResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.CanSubmitForecasterPayload, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.CanSubmitForecasterPayload")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsGRPCClient) CanSubmitInferencePayload(ctx context.Context, req *emissionstypes.CanSubmitInferencePayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitInferencePayloadResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.CanSubmitInferencePayload, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.CanSubmitInferencePayload")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsGRPCClient) CanSubmitReputerPayload(ctx context.Context, req *emissionstypes.CanSubmitReputerPayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitReputerPayloadResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -69,6 +91,17 @@ func (c *EmissionsGRPCClient) CanUpdateAllGlobalWhitelists(ctx context.Context, 
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.CanUpdateAllGlobalWhitelists, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.CanUpdateAllGlobalWhitelists")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsGRPCClient) CanUpdateGlobalForecasterWhitelist(ctx context.Context, req *emissionstypes.CanUpdateGlobalForecasterWhitelistRequest, opts ...config.CallOpt) (*emissionstypes.CanUpdateGlobalForecasterWhitelistResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.CanUpdateGlobalForecasterWhitelist, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.CanUpdateGlobalForecasterWhitelist")
 	}
 	return resp, nil
 }
@@ -1129,6 +1162,17 @@ func (c *EmissionsGRPCClient) IsWhitelistedGlobalAdmin(ctx context.Context, req 
 	return resp, nil
 }
 
+func (c *EmissionsGRPCClient) IsWhitelistedGlobalForecaster(ctx context.Context, req *emissionstypes.IsWhitelistedGlobalForecasterRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedGlobalForecasterResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.IsWhitelistedGlobalForecaster, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.IsWhitelistedGlobalForecaster")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsGRPCClient) IsWhitelistedGlobalReputer(ctx context.Context, req *emissionstypes.IsWhitelistedGlobalReputerRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedGlobalReputerResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -1158,6 +1202,17 @@ func (c *EmissionsGRPCClient) IsWhitelistedTopicCreator(ctx context.Context, req
 	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.IsWhitelistedTopicCreator, req)
 	if err != nil {
 		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.IsWhitelistedTopicCreator")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsGRPCClient) IsWhitelistedTopicForecaster(ctx context.Context, req *emissionstypes.IsWhitelistedTopicForecasterRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedTopicForecasterResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp, err := queryWithHeight(ctx, callOpts.Height, c.client.IsWhitelistedTopicForecaster, req)
+	if err != nil {
+		return resp, errors.Wrap(err, "while calling EmissionsGRPCClient.IsWhitelistedTopicForecaster")
 	}
 	return resp, nil
 }

@@ -41,6 +41,38 @@ func (c *EmissionsRESTClient) CanCreateTopic(ctx context.Context, req *emissions
 	return resp, nil
 }
 
+func (c *EmissionsRESTClient) CanSubmitForecasterPayload(ctx context.Context, req *emissionstypes.CanSubmitForecasterPayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitForecasterPayloadResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.CanSubmitForecasterPayloadResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/can_submit_forecaster_payload/{topic_id}/{address}",
+		[]string{"topic_id", "address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.CanSubmitForecasterPayload")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsRESTClient) CanSubmitInferencePayload(ctx context.Context, req *emissionstypes.CanSubmitInferencePayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitInferencePayloadResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.CanSubmitInferencePayloadResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/can_submit_inference_payload/{topic_id}/{address}",
+		[]string{"topic_id", "address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.CanSubmitInferencePayload")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsRESTClient) CanSubmitReputerPayload(ctx context.Context, req *emissionstypes.CanSubmitReputerPayloadRequest, opts ...config.CallOpt) (*emissionstypes.CanSubmitReputerPayloadResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -85,6 +117,22 @@ func (c *EmissionsRESTClient) CanUpdateAllGlobalWhitelists(ctx context.Context, 
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.CanUpdateAllGlobalWhitelists")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsRESTClient) CanUpdateGlobalForecasterWhitelist(ctx context.Context, req *emissionstypes.CanUpdateGlobalForecasterWhitelistRequest, opts ...config.CallOpt) (*emissionstypes.CanUpdateGlobalForecasterWhitelistResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.CanUpdateGlobalForecasterWhitelistResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/can_update_global_forecaster_whitelist/{address}",
+		[]string{"address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.CanUpdateGlobalForecasterWhitelist")
 	}
 	return resp, nil
 }
@@ -1625,6 +1673,22 @@ func (c *EmissionsRESTClient) IsWhitelistedGlobalAdmin(ctx context.Context, req 
 	return resp, nil
 }
 
+func (c *EmissionsRESTClient) IsWhitelistedGlobalForecaster(ctx context.Context, req *emissionstypes.IsWhitelistedGlobalForecasterRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedGlobalForecasterResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.IsWhitelistedGlobalForecasterResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/is_whitelisted_global_forecaster/{address}",
+		[]string{"address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.IsWhitelistedGlobalForecaster")
+	}
+	return resp, nil
+}
+
 func (c *EmissionsRESTClient) IsWhitelistedGlobalReputer(ctx context.Context, req *emissionstypes.IsWhitelistedGlobalReputerRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedGlobalReputerResponse, error) {
 	callOpts := config.DefaultCallOpts()
 	callOpts.Apply(opts...)
@@ -1669,6 +1733,22 @@ func (c *EmissionsRESTClient) IsWhitelistedTopicCreator(ctx context.Context, req
 	)
 	if err != nil {
 		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.IsWhitelistedTopicCreator")
+	}
+	return resp, nil
+}
+
+func (c *EmissionsRESTClient) IsWhitelistedTopicForecaster(ctx context.Context, req *emissionstypes.IsWhitelistedTopicForecasterRequest, opts ...config.CallOpt) (*emissionstypes.IsWhitelistedTopicForecasterResponse, error) {
+	callOpts := config.DefaultCallOpts()
+	callOpts.Apply(opts...)
+
+	resp := &emissionstypes.IsWhitelistedTopicForecasterResponse{}
+	err := c.RESTClientCore.executeRequest(ctx,
+		"GET", "/emissions/v10/is_whitelisted_topic_forecaster/{topic_id}/{address}",
+		[]string{"topic_id", "address"}, nil,
+		req, resp, callOpts.Height,
+	)
+	if err != nil {
+		return nil, errors.Wrap(err, "while calling EmissionsRESTClient.IsWhitelistedTopicForecaster")
 	}
 	return resp, nil
 }
