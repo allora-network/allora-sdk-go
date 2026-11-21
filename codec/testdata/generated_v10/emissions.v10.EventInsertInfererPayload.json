@@ -1,0 +1,42 @@
+[
+  {
+    "type": "emissions.v10.EventInsertInfererPayload",
+    "attributes": [
+      {
+        "key": "admission_outcome",
+        "value": "\"PAYLOAD_ADMISSION_OUTCOME_NOT_ADMITTED\"",
+        "index": false
+      },
+      {
+        "key": "extra_data",
+        "value": "\"AQJ/gA==\"",
+        "index": false
+      },
+      {
+        "key": "inferer",
+        "value": "\"inferer-payload\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"103\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"19\"",
+        "index": false
+      },
+      {
+        "key": "value",
+        "value": "\"31.1234\"",
+        "index": false
+      },
+      {
+        "key": "values",
+        "value": "[{\"label\":\"label-a\",\"value\":\"41.2345\"}]",
+        "index": false
+      }
+    ]
+  }
+]

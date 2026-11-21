@@ -1,0 +1,22 @@
+[
+  {
+    "type": "emissions.v10.EventTopicRewardForfeitedNoRewardNonce",
+    "attributes": [
+      {
+        "key": "amount",
+        "value": "\"31001\"",
+        "index": false
+      },
+      {
+        "key": "epoch",
+        "value": "\"111\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"31\"",
+        "index": false
+      }
+    ]
+  }
+]

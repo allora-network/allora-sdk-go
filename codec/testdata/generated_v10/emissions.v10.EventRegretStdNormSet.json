@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventRegretStdNormSet",
+    "attributes": [
+      {
+        "key": "block_height",
+        "value": "\"138\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"138\"",
+        "index": false
+      },
+      {
+        "key": "stdnorm",
+        "value": "\"5.000000000000000007\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"60\"",
+        "index": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventInsertReputerPayload",
+    "attributes": [
+      {
+        "key": "admission_outcome",
+        "value": "\"PAYLOAD_ADMISSION_OUTCOME_ADMITTED\"",
+        "index": false
+      },
+      {
+        "key": "bundle",
+        "value": "{\"extra_data\":\"BQaDhA==\",\"combined_value\":\"61.123456789012345678\",\"naive_value\":\"62.123456789012345678\",\"inferer_addresses\":[\"loss-inferer-a\"],\"forecaster_addresses\":[\"loss-forecaster-a\"],\"inferer_values\":[\"63.123456789012345678\"],\"forecaster_values\":[\"64.123456789012345678\"],\"one_out_inferer_values\":[\"65.123456789012345678\"],\"one_out_forecaster_values\":[\"66.123456789012345678\"],\"one_in_forecaster_values\":[\"67.123456789012345678\"],\"one_out_inferer_forecaster_values\":[[\"68.123456789012345678\"]]}",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"105\"",
+        "index": false
+      },
+      {
+        "key": "reputer",
+        "value": "\"reputer-payload\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"21\"",
+        "index": false
+      }
+    ]
+  }
+]

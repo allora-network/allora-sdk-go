@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventTopicInitialRegretSet",
+    "attributes": [
+      {
+        "key": "block_height",
+        "value": "\"136\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"136\"",
+        "index": false
+      },
+      {
+        "key": "regret",
+        "value": "\"5.000000000000000005\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"58\"",
+        "index": false
+      }
+    ]
+  }
+]

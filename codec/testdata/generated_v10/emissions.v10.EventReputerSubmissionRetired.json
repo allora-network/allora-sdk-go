@@ -1,0 +1,22 @@
+[
+  {
+    "type": "emissions.v10.EventReputerSubmissionRetired",
+    "attributes": [
+      {
+        "key": "nonce",
+        "value": "\"109\"",
+        "index": false
+      },
+      {
+        "key": "reputer",
+        "value": "\"retired-reputer\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"25\"",
+        "index": false
+      }
+    ]
+  }
+]
