@@ -1,12 +1,25 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// testProto is a minimal proto file the generator can parse. The fake protoc
+// ignores its contents and emits a descriptor set describing the same package.
+const testProto = `syntax = "proto3";
+package test.v1;
+option go_package = "example.com/test/v1";
+service Query {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+message PingRequest {}
+message PingResponse {}
+`
 
 func TestRequireGoimports(t *testing.T) {
 	t.Run("missing", func(t *testing.T) {
@@ -48,18 +61,6 @@ func TestRequireGoimports(t *testing.T) {
 // before any file is written: the run reports the missing tool and leaves the
 // output directory untouched.
 func TestGenerateFromProtosFailsWhenGoimportsIsMissing(t *testing.T) {
-	dir := t.TempDir()
-	proto := filepath.Join(dir, "query.proto")
-	writeFile(t, proto, `syntax = "proto3";
-package test.v1;
-option go_package = "example.com/test/v1";
-service Query {
-  rpc Ping(PingRequest) returns (PingResponse);
-}
-message PingRequest {}
-message PingResponse {}
-`)
-
 	work := t.TempDir()
 	restore := chdir(t, work)
 	defer restore()
@@ -68,12 +69,12 @@ message PingResponse {}
 	// goimports is missing. A run that writes gen/ therefore proves the
 	// preflight did not run first.
 	bin := t.TempDir()
-	linkTool(t, bin, "protoc")
-	linkTool(t, bin, "gofmt")
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
 	restorePath := setPath(t, bin)
 	defer restorePath()
 
-	err := generateFromProtos([]string{"-I", dir, "-f", proto})
+	err := generateFromProtos(testGenerateArgs(t))
 	if err == nil {
 		t.Fatal("expected generation to fail without goimports")
 	}
@@ -88,34 +89,18 @@ message PingResponse {}
 // TestGenerateFromProtosFailsWhenGoimportsFails proves a goimports runtime
 // failure is fatal rather than a warning.
 func TestGenerateFromProtosFailsWhenGoimportsFails(t *testing.T) {
-	dir := t.TempDir()
-	proto := filepath.Join(dir, "query.proto")
-	writeFile(t, proto, `syntax = "proto3";
-package test.v1;
-option go_package = "example.com/test/v1";
-service Query {
-  rpc Ping(PingRequest) returns (PingResponse);
-}
-message PingRequest {}
-message PingResponse {}
-`)
-
-	bin := t.TempDir()
-	writeFile(t, filepath.Join(bin, "goimports"), "#!/bin/sh\necho 'goimports exploded' >&2\nexit 1\n")
-	if err := os.Chmod(filepath.Join(bin, "goimports"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	linkTool(t, bin, "protoc")
-	linkTool(t, bin, "gofmt")
-
 	work := t.TempDir()
 	restore := chdir(t, work)
 	defer restore()
 
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\necho 'goimports exploded' >&2\nexit 1\n")
 	restorePath := setPath(t, bin)
 	defer restorePath()
 
-	err := generateFromProtos([]string{"-I", dir, "-f", proto})
+	err := generateFromProtos(testGenerateArgs(t))
 	if err == nil {
 		t.Fatal("expected a goimports runtime failure to fail generation")
 	}
@@ -124,23 +109,86 @@ message PingResponse {}
 	}
 }
 
-// linkTool symlinks a tool from the ambient PATH into dir so a test can build a
-// PATH that contains exactly the tools it wants.
-func linkTool(t *testing.T, dir, name string) {
-	t.Helper()
+// TestGenerateFromProtosSucceedsWithFakeTools proves the whole pipeline runs
+// end to end against the fake tools, so the failure tests above are not passing
+// only because generation stops early for an unrelated reason.
+func TestGenerateFromProtosSucceedsWithFakeTools(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
 
-	path, err := exec.LookPath(name)
-	if err != nil {
-		t.Skipf("%s is not installed: %v", name, err)
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	if err := generateFromProtos(testGenerateArgs(t)); err != nil {
+		t.Fatalf("generation failed: %v", err)
 	}
-	if err := os.Symlink(path, filepath.Join(dir, name)); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{
+		"gen/wrapper/client.test.go",
+		"gen/rest/client.test.go",
+		"gen/grpc/client.test.go",
+		"gen/interfaces/client.test.go",
+		"gen/interfaces/client.go",
+		"gen/rest/client.go",
+		"gen/grpc/client.go",
+		"gen/wrapper/client.go",
+	} {
+		if _, err := os.Stat(filepath.Join(work, name)); err != nil {
+			t.Errorf("expected %s: %v", name, err)
+		}
 	}
 }
 
-func writeFile(t *testing.T, path, contents string) {
+// TestGenerateFromProtosReturnsParseError proves an unparseable flag is
+// reported to the caller instead of exiting the process.
+func TestGenerateFromProtosReturnsParseError(t *testing.T) {
+	err := generateFromProtos([]string{"-not-a-flag"})
+	if err == nil {
+		t.Fatal("expected an unknown flag to return an error")
+	}
+	if !strings.Contains(err.Error(), "parsing generate flags") {
+		t.Fatalf("error %q does not mention flag parsing", err)
+	}
+}
+
+// TestGenerateFromProtosReturnsHelp proves -h is reported as flag.ErrHelp so
+// main can print usage and exit zero.
+func TestGenerateFromProtosReturnsHelp(t *testing.T) {
+	err := generateFromProtos([]string{"-h"})
+	if !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("error = %v, want flag.ErrHelp", err)
+	}
+}
+
+// testGenerateArgs writes the test proto into a fresh include directory and
+// returns the flags the generator needs to process it.
+func testGenerateArgs(t *testing.T) []string {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+
+	include := t.TempDir()
+	proto := filepath.Join(include, "query.proto")
+	if err := os.WriteFile(proto, []byte(testProto), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return []string{"-I", include, "-f", proto}
+}
+
+// writeFakeGofmt installs a gofmt that accepts the arguments the generator
+// passes and leaves the files alone.
+func writeFakeGofmt(t *testing.T, dir string) {
+	t.Helper()
+
+	writeExecutable(t, filepath.Join(dir, "gofmt"), "#!/bin/sh\nexit 0\n")
+}
+
+func writeExecutable(t *testing.T, path, contents string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(contents), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -162,22 +210,32 @@ func chdir(t *testing.T, dir string) func() {
 	}
 }
 
-// setPath replaces PATH with dir plus the directories holding the tools the
-// generator shells out to, so a test can control which goimports is found.
+// setPath replaces PATH with dir, so a test controls exactly which tools the
+// generator can find. The fake protoc is the test binary re-executed, so it
+// needs the marker variable in its environment.
 func setPath(t *testing.T, dir string) func() {
 	t.Helper()
 
-	previous, had := os.LookupEnv("PATH")
+	previousPath, hadPath := os.LookupEnv("PATH")
+	previousMarker, hadMarker := os.LookupEnv(fakeProtocEnv)
 	if err := os.Setenv("PATH", dir); err != nil {
 		t.Fatal(err)
 	}
-	return func() {
-		if had {
-			_ = os.Setenv("PATH", previous)
-			return
-		}
-		_ = os.Unsetenv("PATH")
+	if err := os.Setenv(fakeProtocEnv, "1"); err != nil {
+		t.Fatal(err)
 	}
+	return func() {
+		restoreEnv("PATH", previousPath, hadPath)
+		restoreEnv(fakeProtocEnv, previousMarker, hadMarker)
+	}
+}
+
+func restoreEnv(key, value string, had bool) {
+	if had {
+		_ = os.Setenv(key, value)
+		return
+	}
+	_ = os.Unsetenv(key)
 }
 
 type execError struct {

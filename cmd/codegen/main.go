@@ -2,8 +2,10 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -69,15 +71,15 @@ type ModuleInfo struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("Usage: go run cmd/codegen/main.go <command> [args...]\n" +
-			"Commands:\n" +
-			"  generate [flags]       Generate wrappers from .proto files\n\n" +
-			"Flags for generate:\n" +
-			"  -I <path>   Include directory (repeatable)\n" +
-			"  -f <file>   Proto file to process (repeatable)\n")
+		log.Fatal(usage)
 	}
 
-	if err := generateFromProtos(os.Args[1:]); err != nil {
+	err := generateFromProtos(os.Args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		fmt.Print(usage)
+		return
+	}
+	if err != nil {
 		log.Fatal(err)
 	}
 }
@@ -91,16 +93,28 @@ func (s *stringSlice) Set(v string) error {
 	return nil
 }
 
+// usage is the text main prints when it is called without arguments.
+const usage = "Usage: go run cmd/codegen/main.go <command> [args...]\n" +
+	"Commands:\n" +
+	"  generate [flags]       Generate wrappers from .proto files\n\n" +
+	"Flags for generate:\n" +
+	"  -I <path>   Include directory (repeatable)\n" +
+	"  -f <file>   Proto file to process (repeatable)\n"
+
 // generateFromProtos writes client wrappers for the proto files named by args.
 // It returns an error instead of exiting so callers can report a non-zero
-// status after partial work, and so tests can observe failures.
+// status after partial work, and so tests can observe failures. A -h request
+// returns flag.ErrHelp with no output, leaving usage printing to the caller.
 func generateFromProtos(args []string) error {
-	fs := flag.NewFlagSet("generate", flag.ExitOnError)
+	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	var includes stringSlice
 	var files stringSlice
 	fs.Var(&includes, "I", "include path")
 	fs.Var(&files, "f", "proto file")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing generate flags: %w", err)
+	}
 	if len(files) == 0 {
 		return fmt.Errorf("no proto files provided; pass at least one -f <file>")
 	}
