@@ -9,9 +9,9 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/allora-network/allora-sdk-go/httpstatus"
-	"google.golang.org/grpc/status"
 )
 
 // TestExecuteRequestMapsUnambiguousStatuses pins the HTTP-to-gRPC translation
