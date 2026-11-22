@@ -361,6 +361,14 @@ To fetch proto dependencies and regenerate clients in one step:
 make dev
 ```
 
+### Mock Generation
+
+```bash
+make mocks
+```
+
+`make mocks` runs the mockery version pinned in `.mise.toml` through [mise](https://mise.jdx.dev), so `mise` must be on `PATH`. CI regenerates the mocks and fails if `mocks/` differs from the committed code.
+
 ## Roadmap
 
 - [ ] Complete protobuf type generation for Allora modules
