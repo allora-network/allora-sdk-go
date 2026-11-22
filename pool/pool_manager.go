@@ -720,20 +720,34 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			lastOutcome = outcome
 			metrics.ObserveRPCRequest(protocol, endpoint, service, method, outcome, attemptCount, attemptDuration)
 
-			if isTerminalError(operationErr) {
-				// The endpoint answered. It does not serve this method, which
-				// says nothing about its health, so the pool neither cools it
-				// nor backs it off. Asking the remaining endpoints the same
-				// question only multiplies the wait before the caller learns
-				// the method is unavailable.
+			switch classifyRetry(operationErr, ctx) {
+			case returnToCaller:
+				// The endpoint answered definitively, or the caller asked us to
+				// stop. Neither is a statement about endpoint health, and no
+				// other endpoint can answer differently, so the pool neither
+				// cools this one nor backs it off.
 				metrics.ObserveRPCAttempts(protocol, service, method, outcome, attemptCount)
 				logger.Debug().
 					Err(operationErr).
 					Str("endpoint", endpoint).
 					Int("attempt", attemptCount).
 					Dur("duration", attemptDuration).
-					Msg("operation is not implemented by this endpoint, not retrying")
-				return zero, fmt.Errorf("%s is not implemented by %s: %w", method, endpoint, operationErr)
+					Msg("definitive answer from endpoint, not retrying")
+				return zero, fmt.Errorf("%s failed on %s: %w", method, endpoint, operationErr)
+
+			case failOverOnly:
+				// The endpoint is healthy but may not be able to answer this
+				// request: it pruned the state, it lags the head, its gateway
+				// refuses us, or it does not serve the method. Another endpoint
+				// may, so try one, but do not hold this one at fault.
+				logger.Debug().
+					Err(operationErr).
+					Str("endpoint", endpoint).
+					Int("attempt", attemptCount).
+					Dur("duration", attemptDuration).
+					Msg("endpoint could not answer this request, trying next client without a health penalty")
+				lastErr = operationErr
+				continue
 			}
 
 			logger.Debug().
@@ -817,16 +831,6 @@ func deriveRPCOperation() (service, method string) {
 		method = "unknown"
 	}
 	return service, method
-}
-
-// isTerminalError reports whether err is a definitive answer from a reachable
-// endpoint rather than a sign that the endpoint is failing. A node that does
-// not serve a method answers codes.Unimplemented (gRPC) or HTTP 501 (REST,
-// translated to the same code by the REST client); the endpoint is healthy, so
-// retrying the same question elsewhere cannot help and must not cost the
-// endpoint its health score.
-func isTerminalError(err error) bool {
-	return status.Code(err) == codes.Unimplemented
 }
 
 func classifyAttemptError(err error) string {

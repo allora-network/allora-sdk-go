@@ -276,23 +276,67 @@ func drainAndClose(body io.ReadCloser) {
 }
 
 // httpStatusError converts a non-200 response into an error that carries the
-// gRPC status code the node meant. A grpc-gateway node reports an unimplemented
-// method as HTTP 501 with a body of {"code":12,...}, where 12 is
-// codes.Unimplemented; without the translation the caller sees an opaque string
-// and cannot tell "this node does not serve this method" from "this node is
-// broken".
+// gRPC status code the node meant. A grpc-gateway node reports a gRPC error as
+// the HTTP status grpc-gateway derives from that code, with a body of
+// {"code":N,...} where N is the gRPC code. Without the translation the caller
+// sees an opaque string and cannot tell a definitive answer from a broken
+// endpoint.
 //
-// Only 501 is translated. A 404 is ambiguous: grpc-gateway also uses it for
-// codes.NotFound, which is an ordinary answer to a query about a resource that
-// does not exist, and a node whose REST routes are mounted under a different
-// prefix answers 404 to everything. Neither is a statement that the method is
-// unimplemented, so 404 keeps its plain-error shape.
+// Only statuses that grpc-gateway derives from exactly one gRPC code are
+// translated. The rest are ambiguous and keep their plain-error shape, which
+// the pool treats as an endpoint failure:
+//
+//	HTTP  gRPC code           why it is unambiguous
+//	401   Unauthenticated     only Unauthenticated maps to 401
+//	403   PermissionDenied    only PermissionDenied maps to 403
+//	429   ResourceExhausted   only ResourceExhausted maps to 429
+//	501   Unimplemented       only Unimplemented maps to 501
+//	503   Unavailable         only Unavailable maps to 503
+//	504   DeadlineExceeded    only DeadlineExceeded maps to 504
+//
+//	400   InvalidArgument, FailedPrecondition, or OutOfRange
+//	404   NotFound, or a node whose REST routes sit under another prefix
+//	408   Canceled, or a proxy whose request timed out
+//	409   AlreadyExists or Aborted
+//	500   Unknown, Internal, or DataLoss
+//	502   no gRPC code; a proxy that could not reach the node
+//
+// 500 is deliberately not translated to Unknown. A cosmos-sdk application error
+// such as a pruned height does reach the caller as Unknown over gRPC, but a 500
+// is far more often a proxy or a node fault, and treating it as Unknown would
+// stop the pool penalising a broken endpoint.
+//
+// 408 is deliberately not translated to Canceled. grpc-gateway derives 408 from
+// Canceled alone, but a proxy also answers 408 when the request timed out, and
+// that is a real endpoint failure the pool must penalise.
 func httpStatusError(resp *http.Response) error {
     msg := fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status)
-    if resp.StatusCode == http.StatusNotImplemented {
-        return status.Error(codes.Unimplemented, msg)
+    if code, ok := grpcCodeForHTTPStatus(resp.StatusCode); ok {
+        return status.Error(code, msg)
     }
     return errors.New(msg)
+}
+
+// grpcCodeForHTTPStatus returns the gRPC code grpc-gateway derives the given
+// HTTP status from, when exactly one code maps to it and no proxy reuses the
+// status for a different meaning.
+func grpcCodeForHTTPStatus(httpStatus int) (codes.Code, bool) {
+    switch httpStatus {
+    case http.StatusUnauthorized:
+        return codes.Unauthenticated, true
+    case http.StatusForbidden:
+        return codes.PermissionDenied, true
+    case http.StatusTooManyRequests:
+        return codes.ResourceExhausted, true
+    case http.StatusNotImplemented:
+        return codes.Unimplemented, true
+    case http.StatusServiceUnavailable:
+        return codes.Unavailable, true
+    case http.StatusGatewayTimeout:
+        return codes.DeadlineExceeded, true
+    default:
+        return codes.Unknown, false
+    }
 }
 
 func (c *RESTClientCore) executeRequest(
