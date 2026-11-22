@@ -20,14 +20,13 @@ import (
     cmtservice "github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
     grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
     "github.com/rs/zerolog"
-    "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
 
     "github.com/cosmos/gogoproto/proto"
     "github.com/cosmos/gogoproto/jsonpb"
 
     "github.com/allora-network/allora-sdk-go/config"
     "github.com/allora-network/allora-sdk-go/gen/interfaces"
+    "github.com/allora-network/allora-sdk-go/httpstatus"
     "github.com/allora-network/allora-sdk-go/metrics"
 )
 
@@ -275,68 +274,15 @@ func drainAndClose(body io.ReadCloser) {
     _ = body.Close()
 }
 
-// httpStatusError converts a non-200 response into an error that carries the
-// gRPC status code the node meant. A grpc-gateway node reports a gRPC error as
-// the HTTP status grpc-gateway derives from that code, with a body of
-// {"code":N,...} where N is the gRPC code. Without the translation the caller
-// sees an opaque string and cannot tell a definitive answer from a broken
-// endpoint.
+// httpStatusError uses the gateway's gRPC status body when it contains a valid
+// code. It restores the bytes for drainAndClose so the connection drain has the
+// same byte and time bounds whether or not the body carried a status.
 //
-// Only statuses that grpc-gateway derives from exactly one gRPC code are
-// translated. The rest are ambiguous and keep their plain-error shape, which
-// the pool treats as an endpoint failure:
-//
-//	HTTP  gRPC code           why it is unambiguous
-//	401   Unauthenticated     only Unauthenticated maps to 401
-//	403   PermissionDenied    only PermissionDenied maps to 403
-//	429   ResourceExhausted   only ResourceExhausted maps to 429
-//	501   Unimplemented       only Unimplemented maps to 501
-//	503   Unavailable         only Unavailable maps to 503
-//	504   DeadlineExceeded    only DeadlineExceeded maps to 504
-//
-//	400   InvalidArgument, FailedPrecondition, or OutOfRange
-//	404   NotFound, or a node whose REST routes sit under another prefix
-//	408   Canceled, or a proxy whose request timed out
-//	409   AlreadyExists or Aborted
-//	500   Unknown, Internal, or DataLoss
-//	502   no gRPC code; a proxy that could not reach the node
-//
-// 500 is deliberately not translated to Unknown. A cosmos-sdk application error
-// such as a pruned height does reach the caller as Unknown over gRPC, but a 500
-// is far more often a proxy or a node fault, and treating it as Unknown would
-// stop the pool penalising a broken endpoint.
-//
-// 408 is deliberately not translated to Canceled. grpc-gateway derives 408 from
-// Canceled alone, but a proxy also answers 408 when the request timed out, and
-// that is a real endpoint failure the pool must penalise.
+// Without a status body, only unambiguous HTTP statuses translate. Statuses
+// 400, 404, 408, 409, 500 and 502 can mean different gRPC codes or a proxy
+// failure, so they remain plain errors that the pool penalises.
 func httpStatusError(resp *http.Response) error {
-    msg := fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status)
-    if code, ok := grpcCodeForHTTPStatus(resp.StatusCode); ok {
-        return status.Error(code, msg)
-    }
-    return errors.New(msg)
-}
-
-// grpcCodeForHTTPStatus returns the gRPC code grpc-gateway derives the given
-// HTTP status from, when exactly one code maps to it and no proxy reuses the
-// status for a different meaning.
-func grpcCodeForHTTPStatus(httpStatus int) (codes.Code, bool) {
-    switch httpStatus {
-    case http.StatusUnauthorized:
-        return codes.Unauthenticated, true
-    case http.StatusForbidden:
-        return codes.PermissionDenied, true
-    case http.StatusTooManyRequests:
-        return codes.ResourceExhausted, true
-    case http.StatusNotImplemented:
-        return codes.Unimplemented, true
-    case http.StatusServiceUnavailable:
-        return codes.Unavailable, true
-    case http.StatusGatewayTimeout:
-        return codes.DeadlineExceeded, true
-    default:
-        return codes.Unknown, false
-    }
+    return httpstatus.Error(resp, maxDrainBytes, maxDrainDuration)
 }
 
 func (c *RESTClientCore) executeRequest(

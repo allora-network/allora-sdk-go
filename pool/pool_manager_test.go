@@ -134,9 +134,6 @@ func TestExecuteWithRetryUnimplementedIsTerminal(t *testing.T) {
 	}
 }
 
-// TestExecuteWithRetryOtherCodesStillFailOver guards the other side of that
-// rule: every other error class keeps its current behaviour, so a failing
-// endpoint is still penalised and the next one is tried.
 // TestExecuteWithRetryEndpointFaultsStillFailOver pins the endpoint-fault
 // class: a node that is down, panicking, or too slow is penalised and the next
 // endpoint is tried. The per-code table in retry_policy_test.go covers the

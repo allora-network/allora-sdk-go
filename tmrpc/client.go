@@ -72,6 +72,9 @@ func newPooledHTTPClient(remote string, timeout time.Duration) (*http.Client, er
 		transport.IdleConnTimeout = idleConnTimeout
 	}
 
+	if transport, ok := client.Transport.(*http.Transport); ok {
+		client.Transport = &httpStatusTransport{next: transport}
+	}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
@@ -101,23 +104,33 @@ func (c *httpClient) GetProtocol() config.Protocol {
 }
 
 func (c *httpClient) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
-	return c.http.BlockResults(ctx, height)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.BlockResults(ctx, height)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error) {
-	return c.http.Block(ctx, height)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.Block(ctx, height)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
-	return c.http.Commit(ctx, height)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.Commit(ctx, height)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error) {
-	return c.http.ABCIQuery(ctx, path, data)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.ABCIQuery(ctx, path, data)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) Status(ctx context.Context) (*coretypes.ResultStatus, error) {
-	return c.http.Status(ctx)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.Status(ctx)
+	return result, recorder.error(err)
 }
 
 // Close stops the websocket client and releases the connections idling in the

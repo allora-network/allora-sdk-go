@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -33,12 +34,12 @@ type retryCase struct {
 // fails here.
 func TestClassifyRetryTable(t *testing.T) {
 	cases := []retryCase{
-		// Definitive answers: the endpoint is healthy and no other endpoint
-		// can answer differently.
-		{"InvalidArgument", status.Error(codes.InvalidArgument, "empty request"), returnToCaller, 1, 0, false},
-		{"NotFound", status.Error(codes.NotFound, "topic 5 not found"), returnToCaller, 1, 0, false},
-		{"AlreadyExists", status.Error(codes.AlreadyExists, "exists"), returnToCaller, 1, 0, false},
-		{"OutOfRange", status.Error(codes.OutOfRange, "out of range"), returnToCaller, 1, 0, false},
+		// State-dependent answers: another healthy endpoint may hold the answer.
+		{"InvalidArgument", status.Error(codes.InvalidArgument, "vote not found in this state"), failOverOnly, 2, 0, false},
+		{"NotFound", status.Error(codes.NotFound, "topic 5 not found"), failOverOnly, 2, 0, false},
+		{"AlreadyExists", status.Error(codes.AlreadyExists, "exists"), failOverOnly, 2, 0, false},
+		{"OutOfRange", status.Error(codes.OutOfRange, "out of range"), failOverOnly, 2, 0, false},
+		// Chain upgrades are coordinated, so unsupported methods are terminal.
 		{"Unimplemented", status.Error(codes.Unimplemented, "unknown method"), returnToCaller, 1, 0, false},
 
 		// Healthy endpoint that may not be able to answer this request.
@@ -74,6 +75,7 @@ func TestClassifyRetryTable(t *testing.T) {
 			clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
 			mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
 			defer mgr.Close()
+			mgr.currentIndex = 0
 
 			var calls int
 			_, err := ExecuteWithRetry(context.Background(), mgr, &logger,
@@ -147,26 +149,34 @@ func TestExecuteWithRetryCallerCancelDoesNotCoolEndpoint(t *testing.T) {
 		})
 
 	require.Error(t, err)
-	require.Equal(t, 1, calls, "a cancelled caller must not be retried")
+	require.Equal(t, 0, calls, "a cancelled caller must not start an RPC")
 	require.Equal(t, 2, mgr.GetHealthStatus()["active_clients"],
 		"a cancelled caller must not cool a healthy endpoint")
 }
 
-// TestExecuteWithRetryFailOverOnlyKeepsEndpointActive pins that an endpoint
-// which could not answer this request stays in the active pool, so the next
-// request can use it.
-func TestExecuteWithRetryFailOverOnlyKeepsEndpointActive(t *testing.T) {
+// TestExecuteWithRetryFailOverOnlyKeepsEndpointsActive runs both start orders.
+// The first endpoint cannot serve the pruned height; the second can. Both stay
+// active because the failure carries no health penalty.
+func TestExecuteWithRetryFailOverOnlyKeepsEndpointsActive(t *testing.T) {
+	for _, first := range []int{0, 1} {
+		t.Run(fmt.Sprintf("start_%d", first), func(t *testing.T) {
+			testFailOverOnlyKeepsEndpointsActive(t, first)
+		})
+	}
+}
+
+func testFailOverOnlyKeepsEndpointsActive(t *testing.T, first int) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
 	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
 	defer mgr.Close()
+	mgr.currentIndex = first
 
-	// First endpoint cannot serve the pruned height; the second can.
 	var calls int
 	result, err := ExecuteWithRetry(context.Background(), mgr, &logger,
 		func(_ context.Context, c *fakeParticipant) (string, error) {
 			calls++
-			if c.url == "grpc://a:1" {
+			if calls == 1 {
 				return "", status.Error(codes.Unknown,
 					"codespace sdk code 18: invalid request: failed to load state at height 5")
 			}

@@ -85,19 +85,21 @@ const (
 //	                                        endpoint its health for a
 //	                                        legitimate request, which is the
 //	                                        defect this policy fixes.
-//	InvalidArgument    returnToCaller       the request is malformed. Every node
-//	                                        rejects it identically.
+//	InvalidArgument    failOverOnly         a request can be invalid for one
+//	                                        node's state and valid for another's.
+//	                                        Cosmos gov Vote reports this when a
+//	                                        vote is absent from local state. No
+//	                                        endpoint penalty.
 //	DeadlineExceeded   failOverAndPenalise  callerCtx is alive, so the
 //	                                        per-attempt deadline fired: this
 //	                                        node did not answer in time. With
 //	                                        callerCtx done: returnToCaller.
-//	NotFound           returnToCaller       the resource does not exist and every
-//	                                        node agrees. A node behind the head
-//	                                        answers NotFound for a resource that
-//	                                        exists; pin a height with
-//	                                        config.Height to make the answer
-//	                                        authoritative.
-//	AlreadyExists      returnToCaller       definitive.
+//	NotFound           failOverOnly         a node behind the head can lack
+//	                                        state that another node holds. Allora
+//	                                        GetStakeRemovalInfo reports this for
+//	                                        missing state. No endpoint penalty.
+//	AlreadyExists      failOverOnly         the answer can depend on the node's
+//	                                        state; every endpoint stays active.
 //	PermissionDenied   failOverAndPenalise  a gateway rejected our credentials.
 //	                                        It does so on every call until
 //	                                        someone fixes the config, so the
@@ -123,15 +125,14 @@ const (
 //	                                        mismatch.
 //	Aborted            failOverAndPenalise  a concurrency conflict on the node;
 //	                                        another endpoint is the fix.
-//	OutOfRange         returnToCaller       the request is outside the valid
-//	                                        range. Definitive.
+//	OutOfRange         failOverOnly         the valid range can differ between
+//	                                        nodes at different heights. Every
+//	                                        endpoint stays active.
 //	Unimplemented      returnToCaller       this node's binary does not register
-//	                                        the method. During a rolling upgrade
-//	                                        another endpoint may serve it, but a
-//	                                        pool normally holds one chain
-//	                                        version and the caller needs the
-//	                                        diagnosis more than the extra round
-//	                                        trips.
+//	                                        the method. Chain upgrades activate
+//	                                        query methods at a coordinated
+//	                                        height, so endpoints in one pool
+//	                                        serve the same query set.
 //	Internal           failOverAndPenalise  the node's own bug, panic, or storage
 //	                                        error.
 //	Unavailable        failOverAndPenalise  the node is down or the transport
@@ -167,8 +168,9 @@ func classifyRetry(err error, callerCtx context.Context) retryDecision {
 		return returnToCaller
 	case codes.Unknown:
 		return failOverOnly
-	case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists,
-		codes.OutOfRange, codes.Unimplemented:
+	case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists, codes.OutOfRange:
+		return failOverOnly
+	case codes.Unimplemented:
 		return returnToCaller
 	case codes.PermissionDenied, codes.Unauthenticated:
 		return failOverAndPenalise

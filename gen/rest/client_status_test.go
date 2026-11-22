@@ -9,6 +9,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+
+	"github.com/allora-network/allora-sdk-go/httpstatus"
 	"google.golang.org/grpc/status"
 )
 
@@ -85,9 +87,9 @@ func TestExecuteRequestLeavesAmbiguousStatusesUncoded(t *testing.T) {
 	}
 }
 
-// TestGrpcCodeForHTTPStatusCoversEveryStatus pins the mapping table itself, so
-// a status added to or removed from it is a visible change.
-func TestGrpcCodeForHTTPStatusCoversEveryStatus(t *testing.T) {
+// TestHTTPStatusGRPCCodeCoversEveryStatus pins the shared mapping table, so a
+// status added to or removed from it affects REST and CometBFT consistently.
+func TestHTTPStatusGRPCCodeCoversEveryStatus(t *testing.T) {
 	mapped := map[int]codes.Code{
 		http.StatusUnauthorized:       codes.Unauthenticated,
 		http.StatusForbidden:          codes.PermissionDenied,
@@ -97,7 +99,7 @@ func TestGrpcCodeForHTTPStatusCoversEveryStatus(t *testing.T) {
 		http.StatusGatewayTimeout:     codes.DeadlineExceeded,
 	}
 	for httpStatus, wantCode := range mapped {
-		code, ok := grpcCodeForHTTPStatus(httpStatus)
+		code, ok := httpstatus.GRPCCode(httpStatus)
 		require.True(t, ok, "HTTP %d must be mapped", httpStatus)
 		require.Equal(t, wantCode, code, "HTTP %d", httpStatus)
 	}
@@ -111,7 +113,7 @@ func TestGrpcCodeForHTTPStatusCoversEveryStatus(t *testing.T) {
 		http.StatusInternalServerError,
 		http.StatusBadGateway,
 	} {
-		_, ok := grpcCodeForHTTPStatus(httpStatus)
+		_, ok := httpstatus.GRPCCode(httpStatus)
 		require.False(t, ok, "HTTP %d must stay unmapped", httpStatus)
 	}
 }

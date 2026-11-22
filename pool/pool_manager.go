@@ -657,17 +657,24 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 	if maxAttempts == 0 {
 		metrics.ObserveRPCRequest("unknown", "none", service, method, "no_client_available", 0, 0)
 		metrics.ObserveRPCAttempts("unknown", service, method, "no_client_available", 0)
-		return zero, fmt.Errorf("no clients available")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
+		return zero, fmt.Errorf("%s: no clients available", method)
 	}
 
 	var (
 		attempts     int
 		lastErr      error
+		lastEndpoint string
 		lastOutcome  = "no_client_available"
 		lastProtocol string
 	)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
 		aggregatedClient, available := poolManager.GetClientWithBackoff()
 		if !available {
 			if backoffDuration := poolManager.GetShortestBackoff(); backoffDuration > 0 {
@@ -701,6 +708,7 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		lastProtocol = string(aggregatedClient.GetProtocol())
 		protocol := lastProtocol
 		endpoint := aggregatedClient.GetEndpointURL()
+		lastEndpoint = endpoint
 		attemptStart := time.Now()
 
 		// Give each attempt its own deadline so a slow endpoint cannot burn the
@@ -720,12 +728,14 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			lastOutcome = outcome
 			metrics.ObserveRPCRequest(protocol, endpoint, service, method, outcome, attemptCount, attemptDuration)
 
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return zero, ctxErr
+			}
 			switch classifyRetry(operationErr, ctx) {
 			case returnToCaller:
-				// The endpoint answered definitively, or the caller asked us to
-				// stop. Neither is a statement about endpoint health, and no
-				// other endpoint can answer differently, so the pool neither
-				// cools this one nor backs it off.
+				// Unimplemented is terminal: endpoints in one pool serve the
+				// same coordinated chain upgrade. The failure says nothing about
+				// endpoint health, so the pool applies no penalty.
 				metrics.ObserveRPCAttempts(protocol, service, method, outcome, attemptCount)
 				logger.Debug().
 					Err(operationErr).
@@ -736,10 +746,8 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 				return zero, fmt.Errorf("%s failed on %s: %w", method, endpoint, operationErr)
 
 			case failOverOnly:
-				// The endpoint is healthy but may not be able to answer this
-				// request: it pruned the state, it lags the head, its gateway
-				// refuses us, or it does not serve the method. Another endpoint
-				// may, so try one, but do not hold this one at fault.
+				// Pruned or lagging state and peer cancellation can differ
+				// between healthy endpoints. Try another without a penalty.
 				logger.Debug().
 					Err(operationErr).
 					Str("endpoint", endpoint).
@@ -760,9 +768,15 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			poolManager.ReportHealth(aggregatedClient, attemptCount, float64(attemptDuration.Milliseconds()), false)
 			poolManager.ApplyBackoffPenalty(aggregatedClient, poolManager.ExpDelay(attempt))
 			lastErr = operationErr
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return zero, ctxErr
+			}
 			continue
 		}
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
 		lastOutcome = "success"
 		metrics.ObserveRPCRequest(protocol, endpoint, service, method, lastOutcome, attemptCount, attemptDuration)
 		metrics.ObserveRPCAttempts(protocol, service, method, lastOutcome, attemptCount)
@@ -778,20 +792,29 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		return result, nil
 	}
 
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return zero, ctxErr
+	}
 	if attempts == 0 {
 		metrics.ObserveRPCRequest("unknown", "none", service, method, lastOutcome, 0, time.Since(overallStart))
 		metrics.ObserveRPCAttempts("unknown", service, method, lastOutcome, 0)
-		return zero, fmt.Errorf("no clients available")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
+		return zero, fmt.Errorf("%s: no clients available", method)
 	}
 
 	protocol := lastProtocol
 	metrics.ObserveRPCAttempts(protocol, service, method, lastOutcome, attempts)
 
 	if lastErr != nil {
-		return zero, fmt.Errorf("all clients failed, last error: %w", lastErr)
+		return zero, fmt.Errorf("%s failed on %s: %w", method, lastEndpoint, lastErr)
 	}
 
-	return zero, fmt.Errorf("no clients available")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return zero, ctxErr
+	}
+	return zero, fmt.Errorf("%s: no clients available", method)
 }
 
 func deriveRPCOperation() (service, method string) {
