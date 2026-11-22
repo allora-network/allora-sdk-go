@@ -98,6 +98,11 @@ codegen:
 	@echo "🤖 Generating clients into ./gen"
 	@go run cmd/codegen/main.go $(CODEGEN_INCLUDES) $(foreach f,$(CODEGEN_FILES),-f $(f))
 
+.PHONY: mocks
+mocks:
+	@echo "🤖 Generating mocks into ./mocks"
+	@mise exec -- mockery
+
 .PHONY: clean
 clean:
 	@rm -rf gen/

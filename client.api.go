@@ -53,6 +53,8 @@ type apiClient struct {
 	logger     zerolog.Logger
 }
 
+var _ APIClient = (*apiClient)(nil)
+
 // NewAPIClient constructs a Forge API client.
 // apiKey is sent as Bearer (gateway) and X-API-Key (Atlas); the server validates it.
 // Gateway and data base URLs default to DefaultAPIBaseURL and DefaultDataAPIBaseURL;
