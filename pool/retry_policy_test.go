@@ -43,12 +43,12 @@ func TestClassifyRetryTable(t *testing.T) {
 
 		// Healthy endpoint that may not be able to answer this request.
 		{"Unknown", status.Error(codes.Unknown, "codespace sdk code 18: invalid request: failed to load state at height 5"), failOverOnly, 2, 0, false},
-		{"PermissionDenied", status.Error(codes.PermissionDenied, "forbidden"), failOverOnly, 2, 0, false},
-		{"Unauthenticated", status.Error(codes.Unauthenticated, "unauthorized"), failOverOnly, 2, 0, false},
 		{"Canceled", status.Error(codes.Canceled, "canceled by peer"), failOverOnly, 2, 0, false},
 
 		// Endpoint at fault.
 		{"DeadlineExceeded", status.Error(codes.DeadlineExceeded, "timeout"), failOverAndPenalise, 2, 2, true},
+		{"PermissionDenied", status.Error(codes.PermissionDenied, "forbidden"), failOverAndPenalise, 2, 2, true},
+		{"Unauthenticated", status.Error(codes.Unauthenticated, "unauthorized"), failOverAndPenalise, 2, 2, true},
 		{"ResourceExhausted", status.Error(codes.ResourceExhausted, "rate limit exceeded"), failOverAndPenalise, 2, 2, true},
 		{"FailedPrecondition", status.Error(codes.FailedPrecondition, "not ready"), failOverAndPenalise, 2, 2, true},
 		{"Aborted", status.Error(codes.Aborted, "conflict"), failOverAndPenalise, 2, 2, true},

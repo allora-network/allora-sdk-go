@@ -98,10 +98,18 @@ const (
 //	                                        config.Height to make the answer
 //	                                        authoritative.
 //	AlreadyExists      returnToCaller       definitive.
-//	PermissionDenied   failOverOnly         auth is per-endpoint: a provider's
-//	                                        gateway refuses us while another
-//	                                        endpoint would serve us.
-//	Unauthenticated    failOverOnly         same.
+//	PermissionDenied   failOverAndPenalise  a gateway rejected our credentials.
+//	                                        It does so on every call until
+//	                                        someone fixes the config, so the
+//	                                        endpoint is persistently unusable
+//	                                        to us. Without a penalty the pool
+//	                                        keeps choosing it first and pays a
+//	                                        wasted round trip on every request.
+//	                                        Cosmos query handlers do not return
+//	                                        this code for a legitimate request,
+//	                                        so the penalty only lands on a
+//	                                        misconfigured gateway.
+//	Unauthenticated    failOverAndPenalise  same.
 //	ResourceExhausted  failOverAndPenalise  the node or its proxy is rate
 //	                                        limiting us, so back off from this
 //	                                        endpoint and try another. When the
@@ -162,7 +170,9 @@ func classifyRetry(err error, callerCtx context.Context) retryDecision {
 	case codes.InvalidArgument, codes.NotFound, codes.AlreadyExists,
 		codes.OutOfRange, codes.Unimplemented:
 		return returnToCaller
-	case codes.PermissionDenied, codes.Unauthenticated, codes.Canceled:
+	case codes.PermissionDenied, codes.Unauthenticated:
+		return failOverAndPenalise
+	case codes.Canceled:
 		return failOverOnly
 	case codes.ResourceExhausted:
 		if isMessageTooLarge(st.Message()) {

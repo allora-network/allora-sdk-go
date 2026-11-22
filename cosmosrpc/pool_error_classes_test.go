@@ -49,9 +49,10 @@ func TestPoolRESTStatusClasses(t *testing.T) {
 		// Definitive answers: the node is healthy and no other node can
 		// answer differently.
 		{"501 unimplemented", http.StatusNotImplemented, 1, 0},
-		// A provider's gateway refuses us; another endpoint may not.
-		{"401 unauthenticated", http.StatusUnauthorized, 2, 0},
-		{"403 permission denied", http.StatusForbidden, 2, 0},
+		// A provider's gateway rejects our credentials on every call until the
+		// config is fixed, so the endpoint is persistently unusable to us.
+		{"401 unauthenticated", http.StatusUnauthorized, 2, 2},
+		{"403 permission denied", http.StatusForbidden, 2, 2},
 		// The node or its proxy is rate limiting us.
 		{"429 rate limited", http.StatusTooManyRequests, 2, 2},
 		// The node is down or too slow.
