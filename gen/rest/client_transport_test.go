@@ -151,6 +151,7 @@ func TestWithConnectionTimeoutIgnoresNonPositiveValues(t *testing.T) {
 func TestRESTClientCoreReusesConnections(t *testing.T) {
 	server, _ := newConnCountingServer(t, okHandler)
 	core := NewRESTClientCore(server.URL, zerolog.Nop())
+	t.Cleanup(func() { _ = core.Close() })
 
 	const requests = 20
 
@@ -168,9 +169,19 @@ func TestRESTClientCoreReusesConnections(t *testing.T) {
 // TestRESTClientCoreReusesConnectionsOnErrorResponses covers the path that
 // returns before the response body is decoded: unless the body is drained, the
 // transport discards the connection and every error costs a new handshake.
+//
+// The reuse assertions assume the server delivers the whole body within
+// maxDrainDuration and that the body fits in maxDrainBytes. A peer that stalls
+// longer loses the connection, which is the behaviour
+// TestRESTClientCoreBoundsBodyDrainOnStalledPeer pins down. httptest writes the
+// body in one call, so the drain always reaches EOF here.
 func TestRESTClientCoreReusesConnectionsOnErrorResponses(t *testing.T) {
-	// An error page that has not arrived in full cannot be discarded while
-	// keeping the connection live, so this fixture makes draining mandatory.
+	// net/http recovers a connection whose body the caller closed early only by
+	// draining it itself, and it gives up past maxPostCloseReadBytes (256 KiB)
+	// or maxPostCloseReadTime (50 ms). A body over that limit costs the
+	// connection unless the caller reads it to EOF, which is what drainAndClose
+	// does. httptest sends this body chunked, so ContentLength is -1 and the
+	// byte limit, not the length check, is what applies.
 	errorBody := []byte(`{"code":2,"message":"` + strings.Repeat("upstream failure ", 32768) + `"}`)
 
 	server, _ := newConnCountingServer(t, func(w http.ResponseWriter, _ *http.Request) {
@@ -178,6 +189,7 @@ func TestRESTClientCoreReusesConnectionsOnErrorResponses(t *testing.T) {
 		_, _ = w.Write(errorBody)
 	})
 	core := NewRESTClientCore(server.URL, zerolog.Nop())
+	t.Cleanup(func() { _ = core.Close() })
 
 	const requests = 20
 
@@ -189,6 +201,53 @@ func TestRESTClientCoreReusesConnectionsOnErrorResponses(t *testing.T) {
 		result = executeTracedRequest(context.Background(), core)
 		require.Error(t, result.err)
 		require.True(t, result.reused, "error response body did not return the connection to the pool")
+	}
+}
+
+// TestRESTClientCoreReusesConnectionsUnderConcurrency checks that a burst of
+// concurrent requests leaves the pool holding a connection for each of them, so
+// that a second burst reuses all of them instead of dialing again.
+//
+// The server holds each burst until all N requests are in flight, so the N
+// connections exist at the same time and none can be handed to a later request
+// in the same burst. Every connection is therefore idle in the pool when the
+// burst ends, and the second burst reuses all N only if the pool can hold N of
+// them: MaxIdleConnsPerHost must be at least N. Below that the transport evicts
+// the surplus (tryPutIdleConn returns errTooManyIdleHost) and those requests
+// dial again. With the standard library's default of two, six of the eight
+// connections are dropped between bursts.
+func TestRESTClientCoreReusesConnectionsUnderConcurrency(t *testing.T) {
+	const burst = 8
+
+	first := newBurstBarrier(burst)
+	second := newBurstBarrier(burst)
+
+	var current atomic.Pointer[burstBarrier]
+	current.Store(first)
+
+	server, _ := newConnCountingServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		current.Load().wait()
+		_, _ = w.Write([]byte(`{}`))
+	})
+	// Cleanups run last registered first, so this runs after the client is
+	// closed and before the server is, unblocking any handler still waiting on
+	// a barrier that never filled.
+	t.Cleanup(func() {
+		first.release()
+		second.release()
+	})
+
+	core := NewRESTClientCore(server.URL, zerolog.Nop())
+	t.Cleanup(func() { _ = core.Close() })
+
+	// The pool starts empty, so the first burst dials every connection it holds.
+	for i, info := range runBurst(t, core, burst, first) {
+		require.Falsef(t, info.Reused, "request %d in the first burst reused a connection from an empty pool", i)
+	}
+
+	current.Store(second)
+	for i, info := range runBurst(t, core, burst, second) {
+		require.Truef(t, info.Reused, "request %d in the second burst dialed a new connection", i)
 	}
 }
 
@@ -327,6 +386,90 @@ func newConnCountingServer(t *testing.T, handler http.HandlerFunc) (*httptest.Se
 type requestResult struct {
 	err    error
 	reused bool
+}
+
+// burstBarrier holds a burst of requests at the server until all of them have
+// arrived, then releases them together. Holding the whole burst in flight at
+// once is what forces the connection pool to hold one connection per request.
+type burstBarrier struct {
+	size     int
+	mu       sync.Mutex
+	arrived  int
+	closed   bool
+	released chan struct{}
+}
+
+func newBurstBarrier(size int) *burstBarrier {
+	return &burstBarrier{size: size, released: make(chan struct{})}
+}
+
+// wait blocks until size requests have called it, then releases all of them.
+func (b *burstBarrier) wait() {
+	b.mu.Lock()
+	b.arrived++
+	if b.arrived == b.size {
+		b.closeLocked()
+	}
+	b.mu.Unlock()
+
+	<-b.released
+}
+
+// release unblocks every waiter without waiting for the burst to fill, so a
+// request that never arrives cannot leave the server's handlers stuck.
+func (b *burstBarrier) release() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closeLocked()
+}
+
+func (b *burstBarrier) closeLocked() {
+	if !b.closed {
+		b.closed = true
+		close(b.released)
+	}
+}
+
+// runBurst issues size concurrent requests through core and returns the
+// connection info each request received. The requests are held at the server
+// until all of them are in flight, so the pool must hold size connections at
+// once. A request that fails releases the barrier, so the failure is reported
+// instead of the rest of the burst waiting out the context deadline.
+func runBurst(t *testing.T, core *RESTClientCore, size int, barrier *burstBarrier) []httptrace.GotConnInfo {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	var (
+		wg    sync.WaitGroup
+		infos = make([]httptrace.GotConnInfo, size)
+		errs  = make([]error, size)
+	)
+
+	wg.Add(size)
+	for i := 0; i < size; i++ {
+		go func() {
+			defer wg.Done()
+
+			trace := &httptrace.ClientTrace{
+				GotConn: func(info httptrace.GotConnInfo) { infos[i] = info },
+			}
+			errs[i] = core.executeRequest(
+				httptrace.WithClientTrace(ctx, trace),
+				http.MethodGet, "/health", nil, nil, nil, nil, 0,
+			)
+			if errs[i] != nil {
+				barrier.release()
+			}
+		}()
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		require.NoErrorf(t, err, "request %d in the burst failed", i)
+	}
+	return infos
 }
 
 func executeTracedRequest(ctx context.Context, core *RESTClientCore) requestResult {
