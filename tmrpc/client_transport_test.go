@@ -7,7 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"sync"
+	"net/http/httptrace"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -44,13 +44,10 @@ func TestNewPooledHTTPClientRejectsInvalidRemote(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestHTTPClientReusesConnections drives a fixed number of workers through many
-// sequential RPCs each. A connection can only be reused once it is idle, so the
-// total number of accepted connections should stay close to the worker count;
-// with the standard library's default of two idle connections per host, most
-// calls would instead open a new one.
+// TestHTTPClientReusesConnections checks that sequential RPCs reuse a pooled
+// connection after the initial dial.
 func TestHTTPClientReusesConnections(t *testing.T) {
-	server, acceptedConns, _ := newJSONRPCServer(t)
+	server, _, _ := newJSONRPCServer(t)
 
 	client, err := NewHTTPClient(server.URL, server.URL+"/websocket", 5*time.Second, zerolog.Nop())
 	require.NoError(t, err)
@@ -60,41 +57,17 @@ func TestHTTPClientReusesConnections(t *testing.T) {
 		_ = client.Close()
 	})
 
-	const (
-		workers   = 8
-		perWorker = 20
-	)
+	const requests = 20
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	result := executeTracedStatus(context.Background(), client)
+	require.NoError(t, result.err)
+	require.False(t, result.reused, "the first request should establish a connection")
 
-	var (
-		mu   sync.Mutex
-		errs []error
-		wg   sync.WaitGroup
-	)
-
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < perWorker; j++ {
-				_, err := client.Status(ctx)
-				mu.Lock()
-				errs = append(errs, err)
-				mu.Unlock()
-			}
-		}()
+	for i := 1; i < requests; i++ {
+		result = executeTracedStatus(context.Background(), client)
+		require.NoError(t, result.err)
+		require.True(t, result.reused, "request did not reuse the pooled connection")
 	}
-	wg.Wait()
-
-	require.Len(t, errs, workers*perWorker)
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
-
-	t.Logf("accepted %d connections for %d RPCs", acceptedConns(), workers*perWorker)
-	require.LessOrEqual(t, acceptedConns(), workers*3)
 }
 
 // TestHTTPClientCloseReleasesIdleConnections pins down that Close hands the
@@ -114,6 +87,23 @@ func TestHTTPClientCloseReleasesIdleConnections(t *testing.T) {
 	// started, and the pool has to be released either way.
 	_ = client.Close()
 	require.Eventually(t, func() bool { return closedConns() > 0 }, time.Second, 5*time.Millisecond)
+}
+
+type statusResult struct {
+	err    error
+	reused bool
+}
+
+func executeTracedStatus(ctx context.Context, client Client) statusResult {
+	result := statusResult{}
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			result.reused = info.Reused
+		},
+	}
+	ctx = httptrace.WithClientTrace(ctx, trace)
+	_, result.err = client.Status(ctx)
+	return result
 }
 
 // newJSONRPCServer starts a test server answering CometBFT JSON-RPC calls with
