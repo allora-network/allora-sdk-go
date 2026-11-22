@@ -354,13 +354,24 @@ make lint
 Install the protobuf compiler and `goimports` before generating clients:
 
 ```bash
+# protoc: pick one of
+brew install protobuf                 # macOS
+sudo apt-get install -y protobuf-compiler   # Debian/Ubuntu
+# or download a release from https://github.com/protocolbuffers/protobuf/releases
+
 go install golang.org/x/tools/cmd/goimports@latest
-export PATH="$(go env GOBIN):$PATH"
+export PATH="$(go env GOPATH)/bin:$PATH"
 ```
 
-If `go env GOBIN` is empty, use `$(go env GOPATH)/bin` instead. Run
-`goimports -h` to check that the executable is on `PATH`. The generator stops
-before writing files if it cannot find `goimports`.
+`go install` writes to `$(go env GOBIN)` when that variable is set, and to
+`$(go env GOPATH)/bin` otherwise. Check that both tools are on `PATH`:
+
+```bash
+command -v protoc && command -v goimports
+```
+
+The generator stops before writing files if it cannot find `goimports`, and it
+exits non-zero if `gofmt` or `goimports` fails on the generated output.
 
 Fetch the pinned proto dependencies and regenerate all clients:
 
@@ -368,27 +379,37 @@ Fetch the pinned proto dependencies and regenerate all clients:
 make dev
 ```
 
-Each dependency has a stamp file named after its configured version. Changing
-a `*_VERSION` value refetches that dependency; an unchanged version does
-nothing on the next `make dev`. To fetch a fresh checkout without editing the
-Makefile, pass the version explicitly:
-
-```bash
-make ALLORA_CHAIN_VERSION=v0.17.0 dev
-```
+Each dependency is a standalone clone under `proto-deps/`. Its stamp file
+records the remote URL, the pinned revision, and the commit the checkout holds.
+A run refetches when any of those disagrees with the current configuration or
+with the checkout's `HEAD`, so an interrupted run, a manual checkout, or a
+reverted pin all repair themselves. An unchanged pin does no network work.
 
 To regenerate from checkouts that are already present, run `make codegen`.
 
-To force every dependency to fetch its configured revision again, run:
+To fetch every dependency again at its configured revision, run:
 
 ```bash
 make proto-deps-update
 make codegen
 ```
 
-This target also creates missing checkouts on a fresh clone. It is the way to
-fetch a newer commit from `GOOGLEAPIS_VERSION=master`: ordinary `make dev`
-keeps an existing `master` stamp so an unrelated regeneration is reproducible.
+This target also creates missing checkouts on a fresh clone, and it discards
+local changes inside `proto-deps/`. It is the way to fetch a newer commit from
+`GOOGLEAPIS_VERSION=master`: ordinary `make dev` keeps an existing `master`
+stamp so an unrelated regeneration is reproducible.
+
+To build against a different revision, override the version variable. The
+override must differ from the Makefile default, or the existing stamp makes the
+run a no-op:
+
+```bash
+make ALLORA_CHAIN_VERSION=v0.16.0 dev
+```
+
+`make dev` on `master` needs the codegen template fix from pull request #31
+before the generated clients compile. Merge #31 first, or run `make dev` on a
+branch that contains it.
 
 ## Roadmap
 

@@ -77,7 +77,9 @@ func main() {
 			"  -f <file>   Proto file to process (repeatable)\n")
 	}
 
-	generateFromProtos(os.Args[1:])
+	if err := generateFromProtos(os.Args[1:]); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // stringSlice supports repeatable flags
@@ -89,7 +91,10 @@ func (s *stringSlice) Set(v string) error {
 	return nil
 }
 
-func generateFromProtos(args []string) {
+// generateFromProtos writes client wrappers for the proto files named by args.
+// It returns an error instead of exiting so callers can report a non-zero
+// status after partial work, and so tests can observe failures.
+func generateFromProtos(args []string) error {
 	fs := flag.NewFlagSet("generate", flag.ExitOnError)
 	var includes stringSlice
 	var files stringSlice
@@ -97,16 +102,16 @@ func generateFromProtos(args []string) {
 	fs.Var(&files, "f", "proto file")
 	_ = fs.Parse(args)
 	if len(files) == 0 {
-		log.Fatal("no proto files provided; pass at least one -f <file>")
+		return fmt.Errorf("no proto files provided; pass at least one -f <file>")
 	}
 	if err := requireGoimports(exec.LookPath); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	// Build descriptor set from all provided files
 	fds, err := buildFileDescriptorSetForFiles(files, includes)
 	if err != nil {
-		log.Fatalf("failed to build descriptor set: %v", err)
+		return fmt.Errorf("failed to build descriptor set: %w", err)
 	}
 
 	// Track generated files for post-generation formatting
@@ -144,7 +149,7 @@ func generateFromProtos(args []string) {
 
 	filesReg, err := protodesc.NewFiles(fds)
 	if err != nil {
-		log.Fatalf("failed to create files registry: %v", err)
+		return fmt.Errorf("failed to create files registry: %w", err)
 	}
 
 	fileSet := bcoll.NewSet[string]()
@@ -156,7 +161,7 @@ func generateFromProtos(args []string) {
 
 			relPath, err := filepath.Rel(include, file)
 			if err != nil {
-				log.Fatalf("failed to compute relative path for %s (include %s): %v", file, include, err)
+				return fmt.Errorf("failed to compute relative path for %s (include %s): %w", file, include, err)
 			}
 			fileSet.Add(relPath)
 		}
@@ -205,32 +210,32 @@ func generateFromProtos(args []string) {
 
 	if len(modules) == 0 {
 		log.Println("No modules discovered in provided protos")
-		return
+		return nil
 	}
 	for _, m := range modules {
 		fmt.Printf("Generating %s module...\n", m.ModuleName)
 
 		name := fmt.Sprintf("gen/wrapper/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientWrapperModuleTemplate); err != nil {
-			log.Fatalf("failed to generate wrapper client: %v", err)
+			return fmt.Errorf("failed to generate wrapper client: %w", err)
 		}
 		generatedFiles = append(generatedFiles, name)
 
 		name = fmt.Sprintf("gen/rest/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientRestModuleTemplate); err != nil {
-			log.Fatalf("failed to generate REST client: %v", err)
+			return fmt.Errorf("failed to generate REST client: %w", err)
 		}
 		generatedFiles = append(generatedFiles, name)
 
 		name = fmt.Sprintf("gen/grpc/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientGRPCModuleTemplate); err != nil {
-			log.Fatalf("failed to generate gRPC client: %v", err)
+			return fmt.Errorf("failed to generate gRPC client: %w", err)
 		}
 		generatedFiles = append(generatedFiles, name)
 
 		name = fmt.Sprintf("gen/interfaces/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientInterfaceModuleTemplate); err != nil {
-			log.Fatalf("failed to generate module client interface (%v): %v", m.ModuleName, err)
+			return fmt.Errorf("failed to generate module client interface (%v): %w", m.ModuleName, err)
 		}
 		generatedFiles = append(generatedFiles, name)
 	}
@@ -243,36 +248,38 @@ func generateFromProtos(args []string) {
 
 	name := "gen/interfaces/client.go"
 	if err := executeTemplate(data, name, clientInterfaceTemplate); err != nil {
-		log.Fatalf("failed to generate aggregated client: %v", err)
+		return fmt.Errorf("failed to generate aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
 	// Generate REST aggregated client
 	name = "gen/rest/client.go"
 	if err := executeTemplate(data, name, restAggregatedClientTemplate); err != nil {
-		log.Fatalf("failed to generate REST aggregated client: %v", err)
+		return fmt.Errorf("failed to generate REST aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
 	// Generate gRPC aggregated client
 	name = "gen/grpc/client.go"
 	if err := executeTemplate(data, name, clientGRPCTemplate); err != nil {
-		log.Fatalf("failed to generate gRPC aggregated client: %v", err)
+		return fmt.Errorf("failed to generate gRPC aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
 	name = "gen/wrapper/client.go"
 	if err := executeTemplate(data, name, clientWrapperTemplate); err != nil {
-		log.Fatalf("failed to generate gRPC aggregated client: %v", err)
+		return fmt.Errorf("failed to generate wrapper aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
-	// Format generated files with gofmt and goimports (if available)
+	// Formatting is part of generation: unformatted output is not a usable
+	// result, so a gofmt or goimports failure fails the run.
 	if err := formatGeneratedFiles(generatedFiles); err != nil {
-		log.Printf("warning: failed to format generated files: %v", err)
+		return fmt.Errorf("failed to format generated files: %w", err)
 	}
 
 	fmt.Println("Done generating wrappers from protos.")
+	return nil
 }
 
 func inferModuleNameFromProtoPackage(protoPkg string) string {

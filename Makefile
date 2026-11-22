@@ -43,85 +43,114 @@ CODEGEN_FILES := \
   $(ALLORA_CHAIN_DIR)/x/mint/proto/mint/v5/query.proto
 
 
-# Each stamp records one version. A different version refetches only that checkout.
-.PHONY: proto-deps-update-gogoproto proto-deps-update-cosmos-proto proto-deps-update-cosmos-sdk proto-deps-update-googleapis proto-deps-update-allora-chain
+# --- Proto dependency checkouts
+#
+# Each dependency is a standalone clone under $(PROTO_DEPS). The stamp file
+# <checkout>/.git/codegen.version holds three lines: the remote URL, the pinned
+# revision, and the commit the checkout holds. A run refetches when any of the
+# three disagrees with the current configuration or with the checkout's HEAD,
+# so an interrupted run, a manual checkout, or a reverted pin all repair
+# themselves. An unchanged pin costs a few local git calls and no network.
+#
+# The guard requires <checkout>/.git to be a directory and git to resolve the
+# checkout as its own work tree root. The expected root is built from the
+# physical parent directory plus the literal final component, so a symlink
+# pointing at the enclosing repository does not pass. Without both checks, a
+# plain directory or a symlink inside the enclosing repository would pass, and
+# the commands below would rewrite that repository's origin, fetch into it, and
+# reset its HEAD.
 
-proto-deps-update-gogoproto:
-	rm -f "$(GOGOPROTO_DIR)"/.git/codegen.version.*
-	$(MAKE) --no-print-directory "$(GOGOPROTO_DIR)/.git/codegen.version.$(GOGOPROTO_VERSION)"
+PROTO_DEPS_FORCE ?=
 
-proto-deps-update-cosmos-proto:
-	rm -f "$(COSMOS_PROTO_DIR)"/.git/codegen.version.*
-	$(MAKE) --no-print-directory "$(COSMOS_PROTO_DIR)/.git/codegen.version.$(COSMOS_PROTO_VERSION)"
-
-proto-deps-update-cosmos-sdk:
-	rm -f "$(COSMOS_SDK_DIR)"/.git/codegen.version.*
-	$(MAKE) --no-print-directory "$(COSMOS_SDK_DIR)/.git/codegen.version.$(COSMOS_SDK_VERSION)"
-
-proto-deps-update-googleapis:
-	rm -f "$(GOOGLEAPIS_DIR)"/.git/codegen.version.*
-	$(MAKE) --no-print-directory "$(GOOGLEAPIS_DIR)/.git/codegen.version.$(GOOGLEAPIS_VERSION)"
-
-proto-deps-update-allora-chain:
-	rm -f "$(ALLORA_CHAIN_DIR)"/.git/codegen.version.*
-	$(MAKE) --no-print-directory "$(ALLORA_CHAIN_DIR)/.git/codegen.version.$(ALLORA_CHAIN_VERSION)"
-
-define fetch_proto_dep
-	@mkdir -p "$(dir $(1))"
-	@if ! git -C "$(1)" rev-parse --git-dir >/dev/null 2>&1; then \
-		rm -rf "$(1)"; \
-		git init "$(1)"; \
-	fi
-	@if ! git -C "$(1)" remote get-url origin >/dev/null 2>&1; then \
-		git -C "$(1)" remote add origin "$(2)"; \
-	fi
-	git -C "$(1)" remote set-url origin "$(2)"
-	git -C "$(1)" fetch --depth 1 origin "$(3)"
-	git -C "$(1)" checkout --detach FETCH_HEAD
-	git -C "$(1)" reset --hard FETCH_HEAD
-	rm -f "$(4)"/codegen.version.*
-	touch "$@"
+define sync_proto_dep
+	@set -eu; \
+	dep_dir='$(1)'; dep_url='$(2)'; dep_pin='$(3)'; \
+	stamp="$$dep_dir/.git/codegen.version"; \
+	mkdir -p "$$(dirname "$$dep_dir")"; \
+	dep_root="$$(cd "$$(dirname "$$dep_dir")" && pwd -P)/$$(basename "$$dep_dir")"; \
+	if [ -d "$$dep_dir/.git" ] && \
+	   [ "$$(git -C "$$dep_dir" rev-parse --show-toplevel 2>/dev/null)" = "$$dep_root" ]; then \
+		:; \
+	else \
+		rm -rf "$$dep_dir"; \
+		git init -q "$$dep_dir"; \
+	fi; \
+	if git -C "$$dep_dir" remote get-url origin >/dev/null 2>&1; then \
+		git -C "$$dep_dir" remote set-url origin "$$dep_url"; \
+	else \
+		git -C "$$dep_dir" remote add origin "$$dep_url"; \
+	fi; \
+	head=$$(git -C "$$dep_dir" rev-parse --verify HEAD 2>/dev/null || true); \
+	if [ -z '$(PROTO_DEPS_FORCE)' ] && [ -f "$$stamp" ] && \
+	   [ "$$(sed -n 1p "$$stamp")" = "$$dep_url" ] && \
+	   [ "$$(sed -n 2p "$$stamp")" = "$$dep_pin" ] && \
+	   [ "$$(sed -n 3p "$$stamp")" = "$$head" ]; then \
+		echo "proto-deps: $$dep_dir is at $$dep_pin ($$head)"; \
+		exit 0; \
+	fi; \
+	echo "proto-deps: fetching $$dep_url $$dep_pin into $$dep_dir"; \
+	git -C "$$dep_dir" fetch --depth 1 origin "$$dep_pin"; \
+	git -C "$$dep_dir" clean -ffdxq; \
+	git -C "$$dep_dir" checkout --force --detach FETCH_HEAD; \
+	commit=$$(git -C "$$dep_dir" rev-parse HEAD); \
+	printf '%s\n%s\n%s\n' "$$dep_url" "$$dep_pin" "$$commit" > "$$stamp.tmp"; \
+	mv "$$stamp.tmp" "$$stamp"; \
+	echo "proto-deps: $$dep_dir is at $$dep_pin ($$commit)"
 endef
 
-$(GOGOPROTO_DIR)/.git/codegen.version.$(GOGOPROTO_VERSION):
-	$(call fetch_proto_dep,$(GOGOPROTO_DIR),https://github.com/cosmos/gogoproto,$(GOGOPROTO_VERSION),$(GOGOPROTO_DIR)/.git)
+.PHONY: proto-deps-gogoproto proto-deps-cosmos-proto proto-deps-cosmos-sdk proto-deps-googleapis proto-deps-allora-chain
 
-$(COSMOS_PROTO_DIR)/.git/codegen.version.$(COSMOS_PROTO_VERSION):
-	$(call fetch_proto_dep,$(COSMOS_PROTO_DIR),https://github.com/cosmos/cosmos-proto,$(COSMOS_PROTO_VERSION),$(COSMOS_PROTO_DIR)/.git)
+proto-deps-gogoproto:
+	$(call sync_proto_dep,$(GOGOPROTO_DIR),https://github.com/cosmos/gogoproto,$(GOGOPROTO_VERSION))
 
-$(COSMOS_SDK_DIR)/.git/codegen.version.$(COSMOS_SDK_VERSION):
-	$(call fetch_proto_dep,$(COSMOS_SDK_DIR),https://github.com/cosmos/cosmos-sdk,$(COSMOS_SDK_VERSION),$(COSMOS_SDK_DIR)/.git)
+proto-deps-cosmos-proto:
+	$(call sync_proto_dep,$(COSMOS_PROTO_DIR),https://github.com/cosmos/cosmos-proto,$(COSMOS_PROTO_VERSION))
 
-$(GOOGLEAPIS_DIR)/.git/codegen.version.$(GOOGLEAPIS_VERSION):
-	$(call fetch_proto_dep,$(GOOGLEAPIS_DIR),https://github.com/googleapis/googleapis,$(GOOGLEAPIS_VERSION),$(GOOGLEAPIS_DIR)/.git)
+proto-deps-cosmos-sdk:
+	$(call sync_proto_dep,$(COSMOS_SDK_DIR),https://github.com/cosmos/cosmos-sdk,$(COSMOS_SDK_VERSION))
 
-$(ALLORA_CHAIN_DIR)/.git/codegen.version.$(ALLORA_CHAIN_VERSION):
-	$(call fetch_proto_dep,$(ALLORA_CHAIN_DIR),https://github.com/allora-network/allora-chain,$(ALLORA_CHAIN_VERSION),$(ALLORA_CHAIN_DIR)/.git)
+proto-deps-googleapis:
+	$(call sync_proto_dep,$(GOOGLEAPIS_DIR),https://github.com/googleapis/googleapis,$(GOOGLEAPIS_VERSION))
+
+proto-deps-allora-chain:
+	$(call sync_proto_dep,$(ALLORA_CHAIN_DIR),https://github.com/allora-network/allora-chain,$(ALLORA_CHAIN_VERSION))
 
 .PHONY: proto-deps
 proto-deps: \
-  $(GOGOPROTO_DIR)/.git/codegen.version.$(GOGOPROTO_VERSION) \
-  $(COSMOS_PROTO_DIR)/.git/codegen.version.$(COSMOS_PROTO_VERSION) \
-  $(COSMOS_SDK_DIR)/.git/codegen.version.$(COSMOS_SDK_VERSION) \
-  $(GOOGLEAPIS_DIR)/.git/codegen.version.$(GOOGLEAPIS_VERSION) \
-  $(ALLORA_CHAIN_DIR)/.git/codegen.version.$(ALLORA_CHAIN_VERSION)
+  proto-deps-gogoproto \
+  proto-deps-cosmos-proto \
+  proto-deps-cosmos-sdk \
+  proto-deps-googleapis \
+  proto-deps-allora-chain
+
+.PHONY: proto-deps-update-gogoproto proto-deps-update-cosmos-proto proto-deps-update-cosmos-sdk proto-deps-update-googleapis proto-deps-update-allora-chain
+
+proto-deps-update-gogoproto: PROTO_DEPS_FORCE := 1
+proto-deps-update-gogoproto: proto-deps-gogoproto
+
+proto-deps-update-cosmos-proto: PROTO_DEPS_FORCE := 1
+proto-deps-update-cosmos-proto: proto-deps-cosmos-proto
+
+proto-deps-update-cosmos-sdk: PROTO_DEPS_FORCE := 1
+proto-deps-update-cosmos-sdk: proto-deps-cosmos-sdk
+
+proto-deps-update-googleapis: PROTO_DEPS_FORCE := 1
+proto-deps-update-googleapis: proto-deps-googleapis
+
+proto-deps-update-allora-chain: PROTO_DEPS_FORCE := 1
+proto-deps-update-allora-chain: proto-deps-allora-chain
 
 .PHONY: proto-deps-update
-proto-deps-update: \
-  proto-deps-update-gogoproto \
-  proto-deps-update-cosmos-proto \
-  proto-deps-update-cosmos-sdk \
-  proto-deps-update-googleapis \
-  proto-deps-update-allora-chain
-
+proto-deps-update: PROTO_DEPS_FORCE := 1
+proto-deps-update: proto-deps
 
 
 .PHONY: dev
-dev: proto-deps codegen
+dev: codegen
 	@echo "✅ Ready for development."
 
 .PHONY: codegen
-codegen:
+codegen: proto-deps
 	@echo "🤖 Generating clients into ./gen"
 	@go run cmd/codegen/main.go $(CODEGEN_INCLUDES) $(foreach f,$(CODEGEN_FILES),-f $(f))
 
