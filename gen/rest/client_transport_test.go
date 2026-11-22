@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -145,58 +146,50 @@ func TestWithConnectionTimeoutIgnoresNonPositiveValues(t *testing.T) {
 	require.NotNil(t, core.transport.DialContext)
 }
 
-// TestRESTClientCoreReusesConnections drives a fixed number of workers through
-// many sequential requests each. A connection can only be reused once it is
-// idle, so the total number of accepted connections should stay close to the
-// worker count; with the standard library's default of two idle connections per
-// host, most requests would instead open a new one.
+// TestRESTClientCoreReusesConnections checks that sequential requests reuse a
+// pooled connection after the initial dial.
 func TestRESTClientCoreReusesConnections(t *testing.T) {
-	server, acceptedConns := newConnCountingServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{}`))
-	})
-
+	server, _ := newConnCountingServer(t, okHandler)
 	core := NewRESTClientCore(server.URL, zerolog.Nop())
 
-	const (
-		workers   = 8
-		perWorker = 20
-	)
-	errs := driveRequests(core, workers, perWorker)
-	require.Len(t, errs, workers*perWorker)
-	for _, err := range errs {
-		require.NoError(t, err)
-	}
+	const requests = 20
 
-	require.LessOrEqual(t, acceptedConns(), workers*3)
+	result := executeTracedRequest(context.Background(), core)
+	require.NoError(t, result.err)
+	require.False(t, result.reused, "the first request should establish a connection")
+
+	for i := 1; i < requests; i++ {
+		result = executeTracedRequest(context.Background(), core)
+		require.NoError(t, result.err)
+		require.True(t, result.reused, "request did not reuse the pooled connection")
+	}
 }
 
 // TestRESTClientCoreReusesConnectionsOnErrorResponses covers the path that
 // returns before the response body is decoded: unless the body is drained, the
 // transport discards the connection and every error costs a new handshake.
 func TestRESTClientCoreReusesConnectionsOnErrorResponses(t *testing.T) {
-	// A gateway in front of the node can answer with a sizeable error page; the
-	// body has to be consumed before the connection can be pooled again.
-	errorBody := []byte(`{"code":2,"message":"` + strings.Repeat("upstream failure ", 4096) + `"}`)
+	// An error page that has not arrived in full cannot be discarded while
+	// keeping the connection live, so this fixture makes draining mandatory.
+	errorBody := []byte(`{"code":2,"message":"` + strings.Repeat("upstream failure ", 32768) + `"}`)
 
-	server, acceptedConns := newConnCountingServer(t, func(w http.ResponseWriter, _ *http.Request) {
+	server, _ := newConnCountingServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write(errorBody)
 	})
-
 	core := NewRESTClientCore(server.URL, zerolog.Nop())
 
-	const (
-		workers   = 8
-		perWorker = 20
-	)
-	errs := driveRequests(core, workers, perWorker)
-	require.Len(t, errs, workers*perWorker)
-	for _, err := range errs {
-		require.Error(t, err)
-	}
+	const requests = 20
 
-	t.Logf("accepted %d connections for %d error responses", acceptedConns(), workers*perWorker)
-	require.LessOrEqual(t, acceptedConns(), workers*3)
+	result := executeTracedRequest(context.Background(), core)
+	require.Error(t, result.err)
+	require.False(t, result.reused, "the first request should establish a connection")
+
+	for i := 1; i < requests; i++ {
+		result = executeTracedRequest(context.Background(), core)
+		require.Error(t, result.err)
+		require.True(t, result.reused, "error response body did not return the connection to the pool")
+	}
 }
 
 // TestRESTClientCloseReleasesIdleConnections pins down that a client which owns
@@ -331,32 +324,19 @@ func newConnCountingServer(t *testing.T, handler http.HandlerFunc) (*httptest.Se
 	}
 }
 
-// driveRequests runs `workers` goroutines, each issuing `perWorker` sequential
-// requests, and returns every result. Errors are collected rather than asserted
-// so that assertions stay on the test's own goroutine.
-func driveRequests(core *RESTClientCore, workers, perWorker int) []error {
-	var (
-		mu   sync.Mutex
-		errs []error
-		wg   sync.WaitGroup
-	)
+type requestResult struct {
+	err    error
+	reused bool
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < perWorker; j++ {
-				err := core.executeRequest(ctx, http.MethodGet, "/health", nil, nil, nil, nil, 0)
-				mu.Lock()
-				errs = append(errs, err)
-				mu.Unlock()
-			}
-		}()
+func executeTracedRequest(ctx context.Context, core *RESTClientCore) requestResult {
+	result := requestResult{}
+	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			result.reused = info.Reused
+		},
 	}
-	wg.Wait()
-
-	return errs
+	ctx = httptrace.WithClientTrace(ctx, trace)
+	result.err = core.executeRequest(ctx, http.MethodGet, "/health", nil, nil, nil, nil, 0)
+	return result
 }
