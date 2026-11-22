@@ -407,10 +407,6 @@ run a no-op:
 make ALLORA_CHAIN_VERSION=v0.16.0 dev
 ```
 
-`make dev` on `master` needs the codegen template fix from pull request #31
-before the generated clients compile. Merge #31 first, or run `make dev` on a
-branch that contains it.
-
 ## Roadmap
 
 - [ ] Complete protobuf type generation for Allora modules
