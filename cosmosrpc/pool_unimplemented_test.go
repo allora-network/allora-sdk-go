@@ -41,7 +41,8 @@ func notImplementedRESTEndpoint(t *testing.T) (string, *atomic.Int64) {
 // notImplementedGRPCEndpoint starts a gRPC endpoint that answers every method
 // with codes.Unimplemented, which is what a node returns for a method its
 // registered service does not implement. It returns the endpoint URL and a
-// counter of the calls it received.
+// counter of the calls it received. The cleanup reports unexpected Serve exits
+// instead of leaving a later connection timeout without its underlying cause.
 func notImplementedGRPCEndpoint(t *testing.T) (string, *atomic.Int64) {
 	t.Helper()
 
@@ -55,8 +56,18 @@ func notImplementedGRPCEndpoint(t *testing.T) (string, *atomic.Int64) {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	go func() { _ = server.Serve(lis) }()
-	t.Cleanup(server.Stop)
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- server.Serve(lis) }()
+	t.Cleanup(func() {
+		select {
+		case err := <-serveResult:
+			require.NoError(t, err, "gRPC test server on %s exited before the test ended; subsequent client connections time out", lis.Addr())
+		default:
+			server.Stop()
+			require.NoError(t, <-serveResult,
+				"gRPC test server on %s returned an error after Stop", lis.Addr())
+		}
+	})
 
 	return "grpc://" + lis.Addr().String(), &hits
 }
