@@ -13,6 +13,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestNewRESTClientCoreConfiguresConnectionPool(t *testing.T) {
@@ -263,7 +265,10 @@ func TestRESTClientCoreBoundsBodyDrainOnStalledPeer(t *testing.T) {
 	elapsed := time.Since(start)
 
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "HTTP error 500")
+	require.Equal(t, codes.Unknown, status.Code(err),
+		"a body that stalled after 500 must remain a non-status transport error")
+	require.NotEqual(t, codes.Internal, status.Code(err),
+		"a body that stalled after 500 must not masquerade as the node's response")
 	require.Less(t, elapsed, time.Second, "the drain must not wait out the client timeout")
 }
 

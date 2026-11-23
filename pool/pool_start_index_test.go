@@ -19,7 +19,12 @@ func TestNewClientPoolManagerStartIndex(t *testing.T) {
 		require.Equal(t, endpoint, client.url)
 		mgr.Close()
 	}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, zerolog.Nop(), 1)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, zerolog.Nop())
+	client, available := mgr.GetClientWithBackoff()
+	require.True(t, available)
+	require.NotNil(t, client)
+	require.Contains(t, []string{"grpc://a:1", "grpc://b:1"}, client.url,
+		"default selection must use a supplied client")
 	mgr.Close()
 
 	require.Panics(t, func() {

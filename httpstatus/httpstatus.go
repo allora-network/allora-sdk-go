@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -35,17 +36,29 @@ func GRPCCode(httpStatus int) (codes.Code, bool) {
 }
 
 // Error reads a bounded grpc-gateway status body and returns its gRPC status.
-// A missing, invalid, or unreadable body falls back to the unambiguous
-// HTTP-status mapping, or to a plain error for an ambiguous status.
+// Failed reads and drain timeouts return the transport error. A missing or
+// invalid body uses the unambiguous HTTP-status mapping, or a plain error for
+// an ambiguous status.
 func Error(resp *http.Response, maxBytes int64, maxDuration time.Duration) error {
 	msg := fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status)
 
 	originalBody := resp.Body
-	timer := time.AfterFunc(maxDuration, func() { _ = originalBody.Close() })
+	timerFired := atomic.Bool{}
+	timer := time.AfterFunc(maxDuration, func() {
+		timerFired.Store(true)
+		_ = originalBody.Close()
+	})
 	body, err := io.ReadAll(io.LimitReader(originalBody, maxBytes))
+	timedOut := timerFired.Load()
 	timer.Stop()
 	restoreBody(resp, originalBody, body)
-	if err == nil {
+	if err != nil || timedOut {
+		if err == nil {
+			err = io.EOF
+		}
+		return fmt.Errorf("read HTTP error response body: %w", err)
+	}
+	{
 		var gatewayStatus struct {
 			Code    *uint32 `json:"code"`
 			Message string  `json:"message"`
