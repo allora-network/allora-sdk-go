@@ -201,8 +201,11 @@ func generateFromProtos(args []string) error {
 
 		protoPkg := string(fd.Package())
 		info, ok := pkgToGo[protoPkg]
+		if protoPkg == "" {
+			return fmt.Errorf("proto file %q has no package declaration", file)
+		}
 		if !ok || info.importPath == "" {
-			continue
+			return fmt.Errorf("proto file %q has no go_package import path for package %q", file, protoPkg)
 		}
 
 		moduleName := inferModuleNameFromProtoPackage(protoPkg)
@@ -234,7 +237,7 @@ func generateFromProtos(args []string) error {
 	})
 
 	if len(modules) == 0 {
-		return fmt.Errorf("provided proto files contain no services with methods")
+		return fmt.Errorf("no modules generated from provided proto files: %s", strings.Join(files, ", "))
 	}
 	for _, m := range modules {
 		fmt.Printf("Generating %s module...\n", m.ModuleName)
@@ -336,7 +339,13 @@ func computeImportAlias(importPath, moduleName, pkgName string) string {
 }
 
 func buildFileDescriptorSetForFiles(files []string, includeDirs []string) (*descriptorpb.FileDescriptorSet, error) {
-	tmpFile := filepath.Join(os.TempDir(), "descriptor-set.pb")
+	tempDir, err := os.MkdirTemp("", "allora-codegen-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create descriptor temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tmpFile := filepath.Join(tempDir, "descriptor-set.pb")
 	args := []string{}
 	for _, inc := range includeDirs {
 		args = append(args, "-I", inc)
