@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -34,7 +33,7 @@ func TestMain(m *testing.M) {
 // --descriptor_set_out and reports any problem on stderr.
 func runFakeProtoc(args []string) int {
 	out := ""
-	noServices := slices.Contains(args, fakeProtocNoServicesArg)
+	noServices := false
 	for i := 0; i < len(args)-1; i++ {
 		if args[i] == "-I" && args[i+1] == fakeProtocNoServicesArg {
 			noServices = true
