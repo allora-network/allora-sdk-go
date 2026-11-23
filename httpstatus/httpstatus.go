@@ -40,10 +40,11 @@ func GRPCCode(httpStatus int) (codes.Code, bool) {
 func Error(resp *http.Response, maxBytes int64, maxDuration time.Duration) error {
 	msg := fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status)
 
-	timer := time.AfterFunc(maxDuration, func() { _ = resp.Body.Close() })
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
+	originalBody := resp.Body
+	timer := time.AfterFunc(maxDuration, func() { _ = originalBody.Close() })
+	body, err := io.ReadAll(io.LimitReader(originalBody, maxBytes))
 	timer.Stop()
-	restoreBody(resp, body)
+	restoreBody(resp, originalBody, body)
 	if err == nil {
 		var gatewayStatus struct {
 			Code    *uint32 `json:"code"`
@@ -61,6 +62,18 @@ func Error(resp *http.Response, maxBytes int64, maxDuration time.Duration) error
 	return fmt.Errorf("%s", msg)
 }
 
-func restoreBody(resp *http.Response, body []byte) {
-	resp.Body = io.NopCloser(bytes.NewReader(body))
+type prefixReadCloser struct {
+	io.Reader
+	closeOriginal io.Closer
+}
+
+func (b *prefixReadCloser) Close() error {
+	return b.closeOriginal.Close()
+}
+
+func restoreBody(resp *http.Response, original io.ReadCloser, body []byte) {
+	resp.Body = &prefixReadCloser{
+		Reader:        bytes.NewReader(body),
+		closeOriginal: original,
+	}
 }

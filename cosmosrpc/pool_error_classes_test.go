@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,8 +25,10 @@ func restEndpoint(t *testing.T, httpStatus int) (string, *atomic.Int64) {
 	t.Helper()
 
 	var hits atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/emissions/") {
+			hits.Add(1)
+		}
 		w.WriteHeader(httpStatus)
 	}))
 	t.Cleanup(server.Close)
@@ -72,7 +75,7 @@ func TestPoolRESTStatusClasses(t *testing.T) {
 			p := NewClientPool([]Client{
 				rest.NewRESTClient(urlA, logger),
 				rest.NewRESTClient(urlB, logger),
-			}, logger)
+			}, logger, 0)
 			t.Cleanup(func() { _ = p.Close() })
 
 			_, err := p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),
@@ -92,17 +95,18 @@ func TestPoolRESTStatusClasses(t *testing.T) {
 	}
 }
 
-// TestPoolRESTRateLimitFailsOverToHealthyEndpoint exercises a limited first
-// endpoint under either initial round-robin position. The caller gets the
-// healthy endpoint's answer, with exactly one request to each endpoint.
+// TestPoolRESTRateLimitFailsOverToHealthyEndpoint starts on a rate-limited
+// endpoint. The next healthy endpoint serves the caller's answer.
 func TestPoolRESTRateLimitFailsOverToHealthyEndpoint(t *testing.T) {
 	logger := zerolog.Nop()
 
 	limitedURL, limitedHits := restEndpoint(t, http.StatusTooManyRequests)
 
 	var healthyHits atomic.Int64
-	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		healthyHits.Add(1)
+	healthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/emissions/") {
+			healthyHits.Add(1)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"is_topic_worker_whitelist_enabled":true}`))
 	}))
@@ -111,17 +115,9 @@ func TestPoolRESTRateLimitFailsOverToHealthyEndpoint(t *testing.T) {
 	p := NewClientPool([]Client{
 		rest.NewRESTClient(limitedURL, logger),
 		rest.NewRESTClient(healthy.URL, logger),
-	}, logger)
+	}, logger, 0)
 	t.Cleanup(func() { _ = p.Close() })
 
-	// Advance the healthy endpoint when it would go first. The following call
-	// always starts on the rate-limited endpoint and exercises failover.
-	if p.GetHealthStatus()["current_client"] == healthy.URL {
-		response, err := p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),
-			&emissionstypes.IsTopicWorkerWhitelistEnabledRequest{TopicId: 1})
-		require.NoError(t, err)
-		require.True(t, response.IsTopicWorkerWhitelistEnabled)
-	}
 	resp, err := p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),
 		&emissionstypes.IsTopicWorkerWhitelistEnabledRequest{TopicId: 1})
 
@@ -142,7 +138,7 @@ func TestPoolRESTUnimplementedIsTerminal(t *testing.T) {
 	p := NewClientPool([]Client{
 		rest.NewRESTClient(urlA, logger),
 		rest.NewRESTClient(urlB, logger),
-	}, logger)
+	}, logger, 0)
 	t.Cleanup(func() { _ = p.Close() })
 
 	_, err := p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),
@@ -173,8 +169,10 @@ func TestPoolRESTMessageErrorClasses(t *testing.T) {
 			logger := zerolog.Nop()
 			newEndpoint := func() (*httptest.Server, *atomic.Int64) {
 				var hits atomic.Int64
-				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-					hits.Add(1)
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if strings.HasPrefix(r.URL.Path, "/emissions/") {
+						hits.Add(1)
+					}
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusTooManyRequests)
 					_, _ = w.Write([]byte(tc.body))
@@ -188,7 +186,7 @@ func TestPoolRESTMessageErrorClasses(t *testing.T) {
 			p := NewClientPool([]Client{
 				rest.NewRESTClient(serverA.URL, logger),
 				rest.NewRESTClient(serverB.URL, logger),
-			}, logger)
+			}, logger, 0)
 			t.Cleanup(func() { _ = p.Close() })
 			start := time.Now()
 

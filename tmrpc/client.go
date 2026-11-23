@@ -164,13 +164,13 @@ type clientPool struct {
 	poolManager *pool.ClientPoolManager[Client]
 }
 
-// NewPool constructs a pool from the provided clients. The pool will panic if
-// no clients are supplied.
-func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
+// NewClientPool constructs a CometBFT pool. One optional startIndex selects
+// the first endpoint and follows NewClientPoolManager's validation.
+func NewClientPool(clients []Client, logger zerolog.Logger, startIndex ...int) *clientPool {
 	poolLogger := logger.With().Str("component", "tmrpc_pool").Logger()
 	return &clientPool{
 		logger:      poolLogger,
-		poolManager: pool.NewClientPoolManager(clients, poolLogger),
+		poolManager: pool.NewClientPoolManager(clients, poolLogger, startIndex...),
 	}
 }
 

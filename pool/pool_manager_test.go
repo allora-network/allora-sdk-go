@@ -32,7 +32,7 @@ func (f *fakeParticipant) HealthCheck(ctx context.Context) error { return nil }
 func TestExecuteWithRetryPerAttemptDeadline(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 	mgr.SetRequestTimeout(60 * time.Millisecond)
 
@@ -79,7 +79,7 @@ func TestExecuteWithRetryPerAttemptDeadline(t *testing.T) {
 func TestExecuteWithRetryCallerCancelPropagates(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 	mgr.SetRequestTimeout(10 * time.Second) // long; caller cancel must win
 
@@ -111,7 +111,7 @@ func TestExecuteWithRetryCallerCancelPropagates(t *testing.T) {
 func TestExecuteWithRetryUnimplementedIsTerminal(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 
 	var calls int
@@ -149,7 +149,7 @@ func TestExecuteWithRetryEndpointFaultsStillFailOver(t *testing.T) {
 		t.Run(code.String(), func(t *testing.T) {
 			logger := zerolog.Nop()
 			clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-			mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+			mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 			defer mgr.Close()
 
 			var calls int

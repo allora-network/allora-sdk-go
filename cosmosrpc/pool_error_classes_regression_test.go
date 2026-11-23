@@ -56,15 +56,8 @@ func TestPoolGRPCInvalidArgumentFailsOverToState(t *testing.T) {
 	clientHeld, err := sdkgrpc.NewGRPCClient(config.EndpointConfig{URL: urlHeld, Protocol: config.ProtocolGRPC}, logger)
 	require.NoError(t, err)
 
-	p := NewClientPool([]Client{clientMissing, clientHeld}, logger)
+	p := NewClientPool([]Client{clientMissing, clientHeld}, logger, 0)
 	t.Cleanup(func() { _ = p.Close() })
-	if current := p.GetHealthStatus()["current_client"]; current == urlHeld {
-		// Start on the missing state whether the manager selected A or B. The
-		// healthy answer also advances the manager to the missing endpoint.
-		response, err := p.Gov().Vote(context.Background(), &govv1.QueryVoteRequest{ProposalId: 1})
-		require.NoError(t, err)
-		require.NotNil(t, response.Vote)
-	}
 
 	response, err := p.Gov().Vote(context.Background(), &govv1.QueryVoteRequest{ProposalId: 1})
 

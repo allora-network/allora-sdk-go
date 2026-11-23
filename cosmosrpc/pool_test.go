@@ -48,7 +48,7 @@ func TestNewClientPoolSharesManager(t *testing.T) {
 		&fakeCosmosClient{url: "grpc://b:9090", node: failNode},
 	}
 
-	p := NewClientPool(clients, logger)
+	p := NewClientPool(clients, logger, 0)
 	defer func() { require.NoError(t, p.Close()) }()
 
 	// Drive the EXECUTING path: a failing Config call routes through the

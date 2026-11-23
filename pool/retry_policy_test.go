@@ -73,9 +73,8 @@ func TestClassifyRetryTable(t *testing.T) {
 
 			logger := zerolog.Nop()
 			clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-			mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+			mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 			defer mgr.Close()
-			mgr.currentIndex = 0
 
 			var calls int
 			_, err := ExecuteWithRetry(context.Background(), mgr, &logger,
@@ -135,7 +134,7 @@ func TestClassifyRetryAttemptDeadlineIsEndpointFault(t *testing.T) {
 func TestExecuteWithRetryCallerCancelDoesNotCoolEndpoint(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -168,9 +167,8 @@ func TestExecuteWithRetryFailOverOnlyKeepsEndpointsActive(t *testing.T) {
 func testFailOverOnlyKeepsEndpointsActive(t *testing.T, first int) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, first)
 	defer mgr.Close()
-	mgr.currentIndex = first
 
 	var calls int
 	result, err := ExecuteWithRetry(context.Background(), mgr, &logger,
@@ -203,7 +201,7 @@ func testFailOverOnlyKeepsEndpointsActive(t *testing.T, first int) {
 func TestExecuteWithRetryDefinitiveAnswerNamesEndpoint(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 
 	_, err := ExecuteWithRetry(context.Background(), mgr, &logger,
@@ -224,7 +222,7 @@ func TestExecuteWithRetryDefinitiveAnswerNamesEndpoint(t *testing.T) {
 // against the previous one with the jitter band removed.
 func TestExpDelayGrowsWithAttempt(t *testing.T) {
 	logger := zerolog.Nop()
-	mgr := NewClientPoolManager[*fakeParticipant]([]*fakeParticipant{{url: "grpc://a:1"}}, logger)
+	mgr := NewClientPoolManager[*fakeParticipant]([]*fakeParticipant{{url: "grpc://a:1"}}, logger, 0)
 	defer mgr.Close()
 
 	// jitterFrac is 0.1, so a delay is within ±10% of its nominal value.
@@ -247,7 +245,7 @@ func TestExpDelayGrowsWithAttempt(t *testing.T) {
 func TestApplyBackoffPenaltyIsIdempotentWithinWindow(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 
 	first := mgr.ApplyBackoffPenalty(clients[0], mgr.ExpDelay(0))

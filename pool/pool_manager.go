@@ -79,8 +79,17 @@ type backoffState struct {
 	until    time.Time
 }
 
-// NewClientPoolManager creates a new client pool manager with the provided clients
-func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger) *ClientPoolManager[T] {
+// NewClientPoolManager creates a pool from clients. It chooses a random start
+// by default. One optional startIndex selects the first client for workloads
+// that need a repeatable start. Negative indexes and indexes at or beyond the
+// client count panic; more than one index is also invalid.
+func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger, startIndex ...int) *ClientPoolManager[T] {
+	if len(startIndex) > 1 {
+		panic("client pool accepts at most one start index")
+	}
+	if len(startIndex) == 1 && (startIndex[0] < 0 || startIndex[0] >= len(clients)) {
+		panic("client pool start index is out of range")
+	}
 	clientInfos := make([]ClientInfo[T], len(clients))
 	for i, client := range clients {
 		clientInfos[i] = ClientInfo[T]{
@@ -90,9 +99,11 @@ func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger)
 		}
 	}
 
-	// Use random starting offset to distribute initial load
+	// An explicit start bypasses the random offset used to distribute load.
 	startOffset := 0
-	if len(clients) > 1 {
+	if len(startIndex) == 1 {
+		startOffset = startIndex[0]
+	} else if len(clients) > 1 {
 		startOffset = int(time.Now().UnixNano()) % len(clients)
 	}
 
@@ -774,14 +785,14 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			continue
 		}
 
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return zero, ctxErr
-		}
 		lastOutcome = "success"
 		metrics.ObserveRPCRequest(protocol, endpoint, service, method, lastOutcome, attemptCount, attemptDuration)
 		metrics.ObserveRPCAttempts(protocol, service, method, lastOutcome, attemptCount)
 		poolManager.ReportHealth(aggregatedClient, attemptCount, float64(attemptDuration.Milliseconds()), true)
 		poolManager.ClearBackoff(aggregatedClient)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
 
 		logger.Debug().
 			Str("endpoint", endpoint).

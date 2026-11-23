@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -28,8 +29,10 @@ func notImplementedRESTEndpoint(t *testing.T) (string, *atomic.Int64) {
 	t.Helper()
 
 	var hits atomic.Int64
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/emissions/") {
+			hits.Add(1)
+		}
 		w.WriteHeader(http.StatusNotImplemented)
 		_, _ = w.Write([]byte(`{"code":12,"message":"Not Implemented"}`))
 	}))
@@ -74,7 +77,7 @@ func TestPoolTreatsRESTNotImplementedAsTerminal(t *testing.T) {
 	p := NewClientPool([]Client{
 		rest.NewRESTClient(urlA, logger),
 		rest.NewRESTClient(urlB, logger),
-	}, logger)
+	}, logger, 0)
 	t.Cleanup(func() { _ = p.Close() })
 
 	_, err := p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),
@@ -115,7 +118,7 @@ func TestPoolTreatsGRPCUnimplementedAsTerminal(t *testing.T) {
 	clientB, err := sdkgrpc.NewGRPCClient(config.EndpointConfig{URL: urlB, Protocol: config.ProtocolGRPC}, logger)
 	require.NoError(t, err)
 
-	p := NewClientPool([]Client{clientA, clientB}, logger)
+	p := NewClientPool([]Client{clientA, clientB}, logger, 0)
 	t.Cleanup(func() { _ = p.Close() })
 
 	_, err = p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),
@@ -147,8 +150,10 @@ func TestPoolStillFailsOverOnServerError(t *testing.T) {
 	logger := zerolog.Nop()
 
 	var hits atomic.Int64
-	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		hits.Add(1)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/emissions/") {
+			hits.Add(1)
+		}
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"code":13,"message":"Internal"}`))
 	})
@@ -160,7 +165,7 @@ func TestPoolStillFailsOverOnServerError(t *testing.T) {
 	p := NewClientPool([]Client{
 		rest.NewRESTClient(serverA.URL, logger),
 		rest.NewRESTClient(serverB.URL, logger),
-	}, logger)
+	}, logger, 0)
 	t.Cleanup(func() { _ = p.Close() })
 
 	_, err := p.Emissions().IsTopicWorkerWhitelistEnabled(context.Background(),

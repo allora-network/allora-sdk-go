@@ -28,9 +28,8 @@ func TestExecuteWithRetryDefinitiveErrorsFailOverWithoutPenalty(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := zerolog.Nop()
 			clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-			mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+			mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 			defer mgr.Close()
-			mgr.currentIndex = 0
 
 			var callsA, callsB int
 			result, err := ExecuteWithRetry(context.Background(), mgr, &logger,
@@ -62,9 +61,8 @@ func TestExecuteWithRetryDefinitiveErrorsFailOverWithoutPenalty(t *testing.T) {
 func TestQueryFailsOnEachEndpoint(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
-	mgr.currentIndex = 0
 
 	var calls int
 	_, err := ExecuteWithRetry(context.Background(), mgr, &logger,
@@ -100,7 +98,7 @@ func TestExecuteWithRetryCallerCancellationWinsErrorRace(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := zerolog.Nop()
 			mgr := NewClientPoolManager[*fakeParticipant](
-				[]*fakeParticipant{{url: "grpc://a:1"}}, logger)
+				[]*fakeParticipant{{url: "grpc://a:1"}}, logger, 0)
 			defer mgr.Close()
 
 			ctx, cancel := context.WithCancel(context.Background())

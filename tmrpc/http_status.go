@@ -2,6 +2,7 @@ package tmrpc
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync/atomic"
 
@@ -16,17 +17,24 @@ type httpStatusRecorderKey struct{}
 // client method. CometBFT has no typed status field in its returned error, so
 // this typed request-local record avoids extracting a status from error text.
 type httpStatusRecorder struct {
+	ctx    context.Context
 	status atomic.Int32
 }
 
 func withHTTPStatusRecorder(ctx context.Context) (context.Context, *httpStatusRecorder) {
-	recorder := &httpStatusRecorder{}
+	recorder := &httpStatusRecorder{ctx: ctx}
 	return context.WithValue(ctx, httpStatusRecorderKey{}, recorder), recorder
 }
 
 func (r *httpStatusRecorder) error(err error) error {
 	if err == nil {
 		return nil
+	}
+	if ctxErr := r.ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
 	}
 	httpStatus := int(r.status.Load())
 	if code, ok := httpstatus.GRPCCode(httpStatus); ok {

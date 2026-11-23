@@ -22,8 +22,10 @@ type clientPool struct {
 
 var _ ClientPool = (*clientPool)(nil)
 
-func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
-	mgr := pool.NewClientPoolManager(clients, logger)
+// NewClientPool creates a Cosmos pool. One optional startIndex selects the
+// first endpoint and follows the same validation as NewClientPoolManager.
+func NewClientPool(clients []Client, logger zerolog.Logger, startIndex ...int) *clientPool {
+	mgr := pool.NewClientPoolManager(clients, logger, startIndex...)
 	return &clientPool{
 		WrapperClient: wrapper.NewWrapperClient(mgr, logger),
 		poolManager:   mgr,
