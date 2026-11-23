@@ -16,7 +16,6 @@ import (
 	"strings"
 	"text/template"
 
-	bcoll "github.com/brynbellomy/go-utils/coll"
 	annotations "google.golang.org/genproto/googleapis/api/annotations"
 
 	"google.golang.org/protobuf/proto"
@@ -166,31 +165,44 @@ func generateFromProtos(args []string) error {
 		return fmt.Errorf("failed to create files registry: %w", err)
 	}
 
-	fileSet := bcoll.NewSet[string]()
+	inputFiles := map[string]protoreflect.FileDescriptor{}
 	for _, file := range files {
 		for _, include := range includes {
-			if !strings.HasPrefix(file, include) {
-				continue
-			}
-
 			relPath, err := filepath.Rel(include, file)
 			if err != nil {
 				return fmt.Errorf("failed to compute relative path for %s (include %s): %w", file, include, err)
 			}
-			fileSet.Add(relPath)
+			if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
+				continue
+			}
+
+			fd, err := filesReg.FindFileByPath(filepath.ToSlash(relPath))
+			if err != nil {
+				continue
+			}
+			inputFiles[file] = fd
+			break
+		}
+		fd, ok := inputFiles[file]
+		if !ok {
+			return fmt.Errorf("proto file %q could not be resolved under the include paths", file)
+		}
+		if fd == nil {
+			return fmt.Errorf("proto file %q produced no descriptor", file)
 		}
 	}
 
 	var modules []ModuleInfo
-	filesReg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !fileSet.Has(fd.Path()) {
-			return true
+	for _, file := range files {
+		fd := inputFiles[file]
+		if fd.Services().Len() == 0 {
+			return fmt.Errorf("proto file %q contains no services", file)
 		}
 
 		protoPkg := string(fd.Package())
 		info, ok := pkgToGo[protoPkg]
 		if !ok || info.importPath == "" {
-			return true
+			continue
 		}
 
 		moduleName := inferModuleNameFromProtoPackage(protoPkg)
@@ -215,16 +227,14 @@ func generateFromProtos(args []string) error {
 				Methods:     methods,
 			})
 		}
-		return true
-	})
+	}
 
 	slices.SortFunc(modules, func(a, b ModuleInfo) int {
 		return strings.Compare(a.ImportPath, b.ImportPath)
 	})
 
 	if len(modules) == 0 {
-		log.Println("No modules discovered in provided protos")
-		return nil
+		return fmt.Errorf("provided proto files contain no services with methods")
 	}
 	for _, m := range modules {
 		fmt.Printf("Generating %s module...\n", m.ModuleName)

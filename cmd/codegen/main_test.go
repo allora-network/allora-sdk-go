@@ -143,6 +143,66 @@ func TestGenerateFromProtosSucceedsWithFakeTools(t *testing.T) {
 	}
 }
 
+func TestGenerateFromProtosFailsWithoutResolvedInputs(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
+
+	bin := t.TempDir()
+	writeExecutable(t, filepath.Join(bin, "protoc"), "#!/bin/sh\nexit 0\n")
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	missing := filepath.Join(t.TempDir(), "missing.proto")
+	include := t.TempDir()
+	err := generateFromProtos([]string{"-I", include, "-f", missing, "-I", include, "-f", missing})
+	if err == nil {
+		t.Fatal("expected an unresolved proto file to fail generation")
+	}
+	for _, want := range []string{missing, "include paths"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(work, "gen")); !os.IsNotExist(statErr) {
+		t.Fatalf("generation wrote output for an unresolved input: %v", statErr)
+	}
+}
+
+func TestGenerateFromProtosFailsWithoutServices(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
+
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	include := filepath.Join(t.TempDir(), "include")
+	if err := os.Mkdir(include, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	proto := filepath.Join(include, "query.proto")
+	if err := os.WriteFile(proto, []byte(testProto), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := generateFromProtos([]string{"-I", include, "-I", fakeProtocNoServicesArg, "-f", proto})
+	if err == nil {
+		t.Fatal("expected zero services to fail generation")
+	}
+	if !strings.Contains(err.Error(), "no services") {
+		t.Fatalf("error %q does not mention missing services", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(work, "gen")); !os.IsNotExist(statErr) {
+		t.Fatalf("generation wrote output with zero services: %v", statErr)
+	}
+}
+
 // TestGenerateFromProtosReturnsParseError proves an unparseable flag is
 // reported to the caller instead of exiting the process.
 func TestGenerateFromProtosReturnsParseError(t *testing.T) {

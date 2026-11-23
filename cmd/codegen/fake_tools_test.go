@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,6 +17,9 @@ import (
 // the generator's protoc call runs without the real compiler and without any
 // external command the restricted PATH would not provide.
 const fakeProtocEnv = "CODEGEN_FAKE_PROTOC"
+
+// fakeProtocNoServicesArg marks an include path that requests no services.
+const fakeProtocNoServicesArg = "no-services-for-fake-protoc"
 
 // TestMain serves as the fake protoc when the test binary is re-executed
 // through the symlink that writeFakeProtoc installs.
@@ -30,6 +34,12 @@ func TestMain(m *testing.M) {
 // --descriptor_set_out and reports any problem on stderr.
 func runFakeProtoc(args []string) int {
 	out := ""
+	noServices := slices.Contains(args, fakeProtocNoServicesArg)
+	for i := 0; i < len(args)-1; i++ {
+		if args[i] == "-I" && args[i+1] == fakeProtocNoServicesArg {
+			noServices = true
+		}
+	}
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "--descriptor_set_out=") {
 			out = strings.TrimPrefix(arg, "--descriptor_set_out=")
@@ -39,7 +49,11 @@ func runFakeProtoc(args []string) int {
 		fmt.Fprintln(os.Stderr, "fake protoc: no --descriptor_set_out")
 		return 1
 	}
-	data, err := proto.Marshal(testDescriptorSet())
+	descriptorSet := testDescriptorSet()
+	if noServices {
+		descriptorSet.File[0].Service = nil
+	}
+	data, err := proto.Marshal(descriptorSet)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fake protoc: %v\n", err)
 		return 1
