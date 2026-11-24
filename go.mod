@@ -10,7 +10,7 @@ require (
 	cosmossdk.io/x/evidence v0.1.1
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/upgrade v0.1.4
-	github.com/allora-network/allora-chain v0.17.0
+	github.com/allora-network/allora-chain v0.17.1-0.20261113151226-a67f2c37667c
 	github.com/brynbellomy/go-utils v0.0.0-20261027065848-feb02fda1ecd
 	github.com/cometbft/cometbft v0.38.21
 	github.com/cosmos/cosmos-sdk v0.50.14
@@ -59,7 +59,7 @@ require (
 	github.com/cosmos/cosmos-db v1.1.1 // indirect
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
 	github.com/cosmos/gogogateway v1.2.0 // indirect
-	github.com/cosmos/iavl v1.2.2 // indirect
+	github.com/cosmos/iavl v1.2.6 // indirect
 	github.com/cosmos/ibc-go/modules/capability v1.0.1 // indirect
 	github.com/cosmos/ics23/go v0.11.0 // indirect
 	github.com/cosmos/ledger-cosmos-go v0.14.0 // indirect
