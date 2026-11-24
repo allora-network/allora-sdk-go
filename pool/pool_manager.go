@@ -31,8 +31,6 @@ type ClientPoolManager[T PoolParticipant] struct {
 	coolingThreshold         float64
 	minActiveStreak          int
 	startReactivatedSuccRate float64
-	rateLimitDelayIncrease   time.Duration
-	maxRateLimitDelay        time.Duration
 	logger                   zerolog.Logger
 
 	backMu     sync.Mutex
@@ -51,12 +49,11 @@ type PoolParticipant interface {
 
 // ClientInfo wraps an Client with health tracking metadata
 type ClientInfo[T PoolParticipant] struct {
-	Client         T
-	MaxRetries     int
-	successRate    float64
-	latEWMA        float64 // exponential-weighted moving average in milliseconds
-	healthStreak   int
-	rateLimitDelay time.Duration
+	Client       T
+	MaxRetries   int
+	successRate  float64
+	latEWMA      float64 // exponential-weighted moving average in milliseconds
+	healthStreak int
 }
 
 const (
@@ -65,8 +62,6 @@ const (
 	defaultClientCoolingThreshold         = 0.5
 	defaultClientMinActiveStreak          = 3
 	defaultClientStartReactivatedSuccRate = 0.8
-	defaultClientRateLimitDelayIncrease   = 100 * time.Millisecond
-	defaultClientMaxRateLimitDelay        = 2 * time.Second
 
 	// Backoff constants
 	defaultBaseDelay  = 100 * time.Millisecond
@@ -115,8 +110,6 @@ func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger,
 		coolingThreshold:         defaultClientCoolingThreshold,
 		minActiveStreak:          defaultClientMinActiveStreak,
 		startReactivatedSuccRate: defaultClientStartReactivatedSuccRate,
-		rateLimitDelayIncrease:   defaultClientRateLimitDelayIncrease,
-		maxRateLimitDelay:        defaultClientMaxRateLimitDelay,
 		logger:                   logger.With().Str("component", "client_pool_manager").Logger(),
 
 		// Initialize backoff management
@@ -263,39 +256,6 @@ func (cpm *ClientPoolManager[T]) ReportHealth(client T, tries int, latencyMS flo
 	} else {
 		cpm.sortCooling()
 	}
-}
-
-// UpdateRateLimitDelay increases the rate limit delay for a client
-func (cpm *ClientPoolManager[T]) UpdateRateLimitDelay(client T) {
-	cpm.mu.Lock()
-	defer cpm.mu.Unlock()
-
-	clientURL := client.GetEndpointURL()
-
-	// Check active pool
-	for i := range cpm.active {
-		if cpm.active[i].Client.GetEndpointURL() == clientURL {
-			cpm.active[i].rateLimitDelay = cpm.increaseRateLimit(cpm.active[i].rateLimitDelay)
-			return
-		}
-	}
-
-	// Check cooling pool
-	for i := range cpm.cooling {
-		if cpm.cooling[i].Client.GetEndpointURL() == clientURL {
-			cpm.cooling[i].rateLimitDelay = cpm.increaseRateLimit(cpm.cooling[i].rateLimitDelay)
-			return
-		}
-	}
-}
-
-// Helper methods (reused from NodeManager)
-func (cpm *ClientPoolManager[T]) increaseRateLimit(current time.Duration) time.Duration {
-	newDelay := current + cpm.rateLimitDelayIncrease
-	if newDelay > cpm.maxRateLimitDelay {
-		return cpm.maxRateLimitDelay
-	}
-	return newDelay
 }
 
 func (cpm *ClientPoolManager[T]) coolClientByIndex(index int) {
@@ -555,30 +515,6 @@ func (cpm *ClientPoolManager[T]) GetMaxRetries(client T) int {
 	}
 
 	return 2 // Default fallback
-}
-
-// GetRateLimitDelay returns the current rate limit delay for a client
-func (cpm *ClientPoolManager[T]) GetRateLimitDelay(client T) time.Duration {
-	cpm.mu.RLock()
-	defer cpm.mu.RUnlock()
-
-	clientURL := client.GetEndpointURL()
-
-	// Check active pool first
-	for i := range cpm.active {
-		if cpm.active[i].Client.GetEndpointURL() == clientURL {
-			return cpm.active[i].rateLimitDelay
-		}
-	}
-
-	// Check cooling pool
-	for i := range cpm.cooling {
-		if cpm.cooling[i].Client.GetEndpointURL() == clientURL {
-			return cpm.cooling[i].rateLimitDelay
-		}
-	}
-
-	return 0
 }
 
 // ExpDelay calculates exponential delay for retry attempt i
