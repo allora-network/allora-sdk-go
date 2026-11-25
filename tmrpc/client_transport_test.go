@@ -21,8 +21,9 @@ func TestNewPooledHTTPClientConfiguresConnectionPool(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 7*time.Second, client.Timeout)
 
-	transport, ok := client.Transport.(*http.Transport)
+	recorder, ok := client.Transport.(*httpStatusTransport)
 	require.True(t, ok)
+	transport := recorder.next
 
 	// The intended sizes are spelled out rather than read back from the
 	// constants that configure them, so that shrinking the pool towards the
