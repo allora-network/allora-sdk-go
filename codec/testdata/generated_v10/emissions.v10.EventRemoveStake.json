@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventRemoveStake",
+    "attributes": [
+      {
+        "key": "amount",
+        "value": "\"36004\"",
+        "index": false
+      },
+      {
+        "key": "delegator",
+        "value": "\"unstake-delegator\"",
+        "index": false
+      },
+      {
+        "key": "reputer",
+        "value": "\"unstake-reputer\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"36\"",
+        "index": false
+      },
+      {
+        "key": "topic_stake",
+        "value": "\"36005\"",
+        "index": false
+      }
+    ]
+  }
+]

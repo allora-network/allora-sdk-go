@@ -28,7 +28,7 @@ type TxParams struct {
 // Note: ChainID, AccountNumber, and Sequence must still be set by the caller
 func DefaultTxParams() *TxParams {
 	return &TxParams{
-		GasLimit:  200000, // Standard gas limit for simple transfers
+		GasLimit:  200000,                                        // Standard gas limit for simple transfers
 		FeeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)), // Default fee
 	}
 }

@@ -24,6 +24,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Check formatting
+        run: |
+          # Word splitting passes the tracked file paths to gofmt.
+          # shellcheck disable=SC2046
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "These Go files need formatting:"
+            echo "$unformatted"
+            exit 1
+          fi
+
       - name: Build
         run: go build ./...
 

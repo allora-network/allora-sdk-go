@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventInfererNetworkRegretSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"inferer-regret\"]",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"133\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"133\"",
+        "index": false
+      },
+      {
+        "key": "regrets",
+        "value": "[\"5.000000000000000002\"]",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"55\"",
+        "index": false
+      }
+    ]
+  }
+]

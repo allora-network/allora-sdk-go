@@ -1,0 +1,37 @@
+[
+  {
+    "type": "emissions.v10.EventRewardPayoutFailed",
+    "attributes": [
+      {
+        "key": "actor_type",
+        "value": "\"ACTOR_TYPE_REPUTER\"",
+        "index": false
+      },
+      {
+        "key": "address",
+        "value": "\"unpaid-reputer\"",
+        "index": false
+      },
+      {
+        "key": "amount",
+        "value": "\"22.000000000000000003\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"110\"",
+        "index": false
+      },
+      {
+        "key": "reason",
+        "value": "\"REWARD_PAYOUT_FAILURE_REASON_ACCOUNT_SEND\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"30\"",
+        "index": false
+      }
+    ]
+  }
+]

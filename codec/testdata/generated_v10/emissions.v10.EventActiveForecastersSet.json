@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventActiveForecastersSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"active-forecaster-a\"]",
+        "index": false
+      },
+      {
+        "key": "discarded_addresses",
+        "value": "[\"discarded-forecaster-b\",\"discarded-forecaster-c\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"120\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"120\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"42\"",
+        "index": false
+      }
+    ]
+  }
+]

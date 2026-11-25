@@ -24,9 +24,9 @@ const (
 
 // Wallet represents an Allora wallet with a private key and address
 type Wallet struct {
-	PrivKey cryptotypes.PrivKey
-	PubKey  cryptotypes.PubKey
-	Address sdk.AccAddress
+	PrivKey  cryptotypes.PrivKey
+	PubKey   cryptotypes.PubKey
+	Address  sdk.AccAddress
 	Mnemonic string
 }
 

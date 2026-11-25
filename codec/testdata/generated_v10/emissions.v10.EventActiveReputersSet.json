@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventActiveReputersSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"active-reputer-a\",\"active-reputer-b\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"118\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"118\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"40\"",
+        "index": false
+      }
+    ]
+  }
+]

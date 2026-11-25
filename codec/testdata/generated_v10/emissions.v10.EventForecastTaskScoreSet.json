@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventForecastTaskScoreSet",
+    "attributes": [
+      {
+        "key": "nonce",
+        "value": "\"115\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"115\"",
+        "index": false
+      },
+      {
+        "key": "score",
+        "value": "\"3.000000000000000007\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"37\"",
+        "index": false
+      }
+    ]
+  }
+]

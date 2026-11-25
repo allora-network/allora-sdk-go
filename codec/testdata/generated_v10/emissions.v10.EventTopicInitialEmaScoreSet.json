@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventTopicInitialEmaScoreSet",
+    "attributes": [
+      {
+        "key": "actor_type",
+        "value": "\"ACTOR_TYPE_FORECASTER\"",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"137\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"137\"",
+        "index": false
+      },
+      {
+        "key": "score",
+        "value": "\"5.000000000000000006\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"59\"",
+        "index": false
+      }
+    ]
+  }
+]

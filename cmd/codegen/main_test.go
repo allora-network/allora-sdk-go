@@ -143,6 +143,157 @@ func TestGenerateFromProtosSucceedsWithFakeTools(t *testing.T) {
 	}
 }
 
+func TestGenerateFromProtosFailsWithoutResolvedInputs(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
+
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	missing := filepath.Join(t.TempDir(), "missing.proto")
+	include := t.TempDir()
+	err := generateFromProtos([]string{"-I", include, "-f", missing, "-I", include, "-f", missing})
+	if err == nil {
+		t.Fatal("expected an unresolved proto file to fail generation")
+	}
+	for _, want := range []string{missing, "include paths"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(work, "gen")); !os.IsNotExist(statErr) {
+		t.Fatalf("generation wrote output for an unresolved input: %v", statErr)
+	}
+}
+
+func TestGenerateFromProtosFailsWithoutServices(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
+
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	include := filepath.Join(t.TempDir(), "include")
+	if err := os.Mkdir(include, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	proto := filepath.Join(include, "query.proto")
+	if err := os.WriteFile(proto, []byte(testProto), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := generateFromProtos([]string{"-I", include, "-I", fakeProtocNoServicesArg, "-f", proto})
+	if err == nil {
+		t.Fatal("expected zero services to fail generation")
+	}
+	if !strings.Contains(err.Error(), "no services") {
+		t.Fatalf("error %q does not mention missing services", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(work, "gen")); !os.IsNotExist(statErr) {
+		t.Fatalf("generation wrote output with zero services: %v", statErr)
+	}
+}
+
+func TestBuildFileDescriptorSetForFilesUsesPrivateTemporaryDirectory(t *testing.T) {
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	t.Setenv("TMPDIR", t.TempDir())
+	stalePath := filepath.Join(os.TempDir(), "descriptor-set.pb")
+	stale := []byte("stale descriptor data")
+	if err := os.WriteFile(stalePath, stale, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fds, err := buildFileDescriptorSetForFiles([]string{"query.proto"}, nil)
+	if err != nil {
+		t.Fatalf("building descriptor set: %v", err)
+	}
+	if len(fds.File) != 1 || len(fds.File[0].Service) != 1 {
+		t.Fatalf("descriptor set was not read from the current run: %v", fds)
+	}
+	contents, err := os.ReadFile(stalePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != string(stale) {
+		t.Fatal("generator used the shared descriptor-set path")
+	}
+	if matches, err := filepath.Glob(os.Getenv("TMPDIR") + "/allora-codegen-*"); err != nil {
+		t.Fatal(err)
+	} else if len(matches) != 0 {
+		t.Fatalf("descriptor temp directory remains: %v", matches)
+	}
+}
+
+func TestGenerateFromProtosFailsWithoutGoPackage(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
+
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	args := append(testGenerateArgs(t), "-I", fakeProtocWithoutGoPackageArg)
+	err := generateFromProtos(args)
+	if err == nil {
+		t.Fatal("expected a missing go_package to fail generation")
+	}
+	for _, want := range []string{"go_package", "query.proto"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(work, "gen")); !os.IsNotExist(statErr) {
+		t.Fatalf("generation wrote output without go_package: %v", statErr)
+	}
+}
+
+func TestGenerateFromProtosReportsAllFilesWithoutModules(t *testing.T) {
+	work := t.TempDir()
+	restore := chdir(t, work)
+	defer restore()
+
+	bin := t.TempDir()
+	writeFakeProtoc(t, bin)
+	writeFakeGofmt(t, bin)
+	writeExecutable(t, filepath.Join(bin, "goimports"), "#!/bin/sh\nexit 0\n")
+	restorePath := setPath(t, bin)
+	defer restorePath()
+
+	args := append(testGenerateArgs(t), "-I", fakeProtocEmptyServiceArg)
+	err := generateFromProtos(args)
+	if err == nil {
+		t.Fatal("expected an empty service to leave no modules")
+	}
+	proto := args[3]
+	for _, want := range []string{"no modules", proto} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "no services") {
+		t.Fatalf("error %q incorrectly blames the absence of services", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(work, "gen")); !os.IsNotExist(statErr) {
+		t.Fatalf("generation wrote output without modules: %v", statErr)
+	}
+}
+
 // TestGenerateFromProtosReturnsParseError proves an unparseable flag is
 // reported to the caller instead of exiting the process.
 func TestGenerateFromProtosReturnsParseError(t *testing.T) {

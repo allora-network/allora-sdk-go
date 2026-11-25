@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventForecasterNetworkRegretSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"forecaster-regret\"]",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"134\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"134\"",
+        "index": false
+      },
+      {
+        "key": "regrets",
+        "value": "[\"5.000000000000000003\"]",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"56\"",
+        "index": false
+      }
+    ]
+  }
+]

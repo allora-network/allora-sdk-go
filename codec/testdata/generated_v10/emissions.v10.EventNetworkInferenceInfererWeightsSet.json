@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventNetworkInferenceInfererWeightsSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"weight-inferer-a\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"121\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"121\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"45\"",
+        "index": false
+      },
+      {
+        "key": "weights",
+        "value": "[\"4.000000000000000005\"]",
+        "index": false
+      }
+    ]
+  }
+]
