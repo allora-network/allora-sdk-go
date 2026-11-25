@@ -31,8 +31,6 @@ type ClientPoolManager[T PoolParticipant] struct {
 	coolingThreshold         float64
 	minActiveStreak          int
 	startReactivatedSuccRate float64
-	rateLimitDelayIncrease   time.Duration
-	maxRateLimitDelay        time.Duration
 	logger                   zerolog.Logger
 
 	backMu     sync.Mutex
@@ -51,12 +49,11 @@ type PoolParticipant interface {
 
 // ClientInfo wraps an Client with health tracking metadata
 type ClientInfo[T PoolParticipant] struct {
-	Client         T
-	MaxRetries     int
-	successRate    float64
-	latEWMA        float64 // exponential-weighted moving average in milliseconds
-	healthStreak   int
-	rateLimitDelay time.Duration
+	Client       T
+	MaxRetries   int
+	successRate  float64
+	latEWMA      float64 // exponential-weighted moving average in milliseconds
+	healthStreak int
 }
 
 const (
@@ -65,8 +62,6 @@ const (
 	defaultClientCoolingThreshold         = 0.5
 	defaultClientMinActiveStreak          = 3
 	defaultClientStartReactivatedSuccRate = 0.8
-	defaultClientRateLimitDelayIncrease   = 100 * time.Millisecond
-	defaultClientMaxRateLimitDelay        = 2 * time.Second
 
 	// Backoff constants
 	defaultBaseDelay  = 100 * time.Millisecond
@@ -79,8 +74,17 @@ type backoffState struct {
 	until    time.Time
 }
 
-// NewClientPoolManager creates a new client pool manager with the provided clients
-func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger) *ClientPoolManager[T] {
+// NewClientPoolManager creates a pool from clients. It chooses a random start
+// by default. One optional startIndex selects the first client for workloads
+// that need a repeatable start. Negative indexes and indexes at or beyond the
+// client count panic; more than one index is also invalid.
+func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger, startIndex ...int) *ClientPoolManager[T] {
+	if len(startIndex) > 1 {
+		panic("client pool accepts at most one start index")
+	}
+	if len(startIndex) == 1 && (startIndex[0] < 0 || startIndex[0] >= len(clients)) {
+		panic("client pool start index is out of range")
+	}
 	clientInfos := make([]ClientInfo[T], len(clients))
 	for i, client := range clients {
 		clientInfos[i] = ClientInfo[T]{
@@ -90,9 +94,11 @@ func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger)
 		}
 	}
 
-	// Use random starting offset to distribute initial load
+	// An explicit start bypasses the random offset used to distribute load.
 	startOffset := 0
-	if len(clients) > 1 {
+	if len(startIndex) == 1 {
+		startOffset = startIndex[0]
+	} else if len(clients) > 1 {
 		startOffset = int(time.Now().UnixNano()) % len(clients)
 	}
 
@@ -104,8 +110,6 @@ func NewClientPoolManager[T PoolParticipant](clients []T, logger zerolog.Logger)
 		coolingThreshold:         defaultClientCoolingThreshold,
 		minActiveStreak:          defaultClientMinActiveStreak,
 		startReactivatedSuccRate: defaultClientStartReactivatedSuccRate,
-		rateLimitDelayIncrease:   defaultClientRateLimitDelayIncrease,
-		maxRateLimitDelay:        defaultClientMaxRateLimitDelay,
 		logger:                   logger.With().Str("component", "client_pool_manager").Logger(),
 
 		// Initialize backoff management
@@ -252,39 +256,6 @@ func (cpm *ClientPoolManager[T]) ReportHealth(client T, tries int, latencyMS flo
 	} else {
 		cpm.sortCooling()
 	}
-}
-
-// UpdateRateLimitDelay increases the rate limit delay for a client
-func (cpm *ClientPoolManager[T]) UpdateRateLimitDelay(client T) {
-	cpm.mu.Lock()
-	defer cpm.mu.Unlock()
-
-	clientURL := client.GetEndpointURL()
-
-	// Check active pool
-	for i := range cpm.active {
-		if cpm.active[i].Client.GetEndpointURL() == clientURL {
-			cpm.active[i].rateLimitDelay = cpm.increaseRateLimit(cpm.active[i].rateLimitDelay)
-			return
-		}
-	}
-
-	// Check cooling pool
-	for i := range cpm.cooling {
-		if cpm.cooling[i].Client.GetEndpointURL() == clientURL {
-			cpm.cooling[i].rateLimitDelay = cpm.increaseRateLimit(cpm.cooling[i].rateLimitDelay)
-			return
-		}
-	}
-}
-
-// Helper methods (reused from NodeManager)
-func (cpm *ClientPoolManager[T]) increaseRateLimit(current time.Duration) time.Duration {
-	newDelay := current + cpm.rateLimitDelayIncrease
-	if newDelay > cpm.maxRateLimitDelay {
-		return cpm.maxRateLimitDelay
-	}
-	return newDelay
 }
 
 func (cpm *ClientPoolManager[T]) coolClientByIndex(index int) {
@@ -546,30 +517,6 @@ func (cpm *ClientPoolManager[T]) GetMaxRetries(client T) int {
 	return 2 // Default fallback
 }
 
-// GetRateLimitDelay returns the current rate limit delay for a client
-func (cpm *ClientPoolManager[T]) GetRateLimitDelay(client T) time.Duration {
-	cpm.mu.RLock()
-	defer cpm.mu.RUnlock()
-
-	clientURL := client.GetEndpointURL()
-
-	// Check active pool first
-	for i := range cpm.active {
-		if cpm.active[i].Client.GetEndpointURL() == clientURL {
-			return cpm.active[i].rateLimitDelay
-		}
-	}
-
-	// Check cooling pool
-	for i := range cpm.cooling {
-		if cpm.cooling[i].Client.GetEndpointURL() == clientURL {
-			return cpm.cooling[i].rateLimitDelay
-		}
-	}
-
-	return 0
-}
-
 // ExpDelay calculates exponential delay for retry attempt i
 func (cpm *ClientPoolManager[T]) ExpDelay(attempt int) time.Duration {
 	d := float64(cpm.baseDelay) * math.Pow(2, float64(attempt))
@@ -652,22 +599,29 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 ) (_ Result, err error) {
 	overallStart := time.Now()
 	service, method := deriveRPCOperation()
+	var zero Result
 	maxAttempts := len(poolManager.active) + len(poolManager.cooling)
 	if maxAttempts == 0 {
-		var zero Result
 		metrics.ObserveRPCRequest("unknown", "none", service, method, "no_client_available", 0, 0)
 		metrics.ObserveRPCAttempts("unknown", service, method, "no_client_available", 0)
-		return zero, fmt.Errorf("no clients available")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
+		return zero, fmt.Errorf("%s: no clients available", method)
 	}
 
 	var (
 		attempts     int
 		lastErr      error
+		lastEndpoint string
 		lastOutcome  = "no_client_available"
 		lastProtocol string
 	)
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
 		aggregatedClient, available := poolManager.GetClientWithBackoff()
 		if !available {
 			if backoffDuration := poolManager.GetShortestBackoff(); backoffDuration > 0 {
@@ -701,6 +655,7 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		lastProtocol = string(aggregatedClient.GetProtocol())
 		protocol := lastProtocol
 		endpoint := aggregatedClient.GetEndpointURL()
+		lastEndpoint = endpoint
 		attemptStart := time.Now()
 
 		// Give each attempt its own deadline so a slow endpoint cannot burn the
@@ -719,6 +674,37 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			outcome := classifyAttemptError(operationErr)
 			lastOutcome = outcome
 			metrics.ObserveRPCRequest(protocol, endpoint, service, method, outcome, attemptCount, attemptDuration)
+
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return zero, ctxErr
+			}
+			switch classifyRetry(operationErr, ctx) {
+			case returnToCaller:
+				// Unimplemented is terminal: endpoints in one pool serve the
+				// same coordinated chain upgrade. The failure says nothing about
+				// endpoint health, so the pool applies no penalty.
+				metrics.ObserveRPCAttempts(protocol, service, method, outcome, attemptCount)
+				logger.Debug().
+					Err(operationErr).
+					Str("endpoint", endpoint).
+					Int("attempt", attemptCount).
+					Dur("duration", attemptDuration).
+					Msg("definitive answer from endpoint, not retrying")
+				return zero, fmt.Errorf("%s failed on %s: %w", method, endpoint, operationErr)
+
+			case failOverOnly:
+				// Pruned or lagging state and peer cancellation can differ
+				// between healthy endpoints. Try another without a penalty.
+				logger.Debug().
+					Err(operationErr).
+					Str("endpoint", endpoint).
+					Int("attempt", attemptCount).
+					Dur("duration", attemptDuration).
+					Msg("endpoint could not answer this request, trying next client without a health penalty")
+				lastErr = operationErr
+				continue
+			}
+
 			logger.Debug().
 				Err(operationErr).
 				Str("endpoint", endpoint).
@@ -729,6 +715,9 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			poolManager.ReportHealth(aggregatedClient, attemptCount, float64(attemptDuration.Milliseconds()), false)
 			poolManager.ApplyBackoffPenalty(aggregatedClient, poolManager.ExpDelay(attempt))
 			lastErr = operationErr
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return zero, ctxErr
+			}
 			continue
 		}
 
@@ -737,6 +726,9 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		metrics.ObserveRPCAttempts(protocol, service, method, lastOutcome, attemptCount)
 		poolManager.ReportHealth(aggregatedClient, attemptCount, float64(attemptDuration.Milliseconds()), true)
 		poolManager.ClearBackoff(aggregatedClient)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
 
 		logger.Debug().
 			Str("endpoint", endpoint).
@@ -747,21 +739,29 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		return result, nil
 	}
 
-	var zero Result
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return zero, ctxErr
+	}
 	if attempts == 0 {
 		metrics.ObserveRPCRequest("unknown", "none", service, method, lastOutcome, 0, time.Since(overallStart))
 		metrics.ObserveRPCAttempts("unknown", service, method, lastOutcome, 0)
-		return zero, fmt.Errorf("no clients available")
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return zero, ctxErr
+		}
+		return zero, fmt.Errorf("%s: no clients available", method)
 	}
 
 	protocol := lastProtocol
 	metrics.ObserveRPCAttempts(protocol, service, method, lastOutcome, attempts)
 
 	if lastErr != nil {
-		return zero, fmt.Errorf("all clients failed, last error: %w", lastErr)
+		return zero, fmt.Errorf("%s failed on %s: %w", method, lastEndpoint, lastErr)
 	}
 
-	return zero, fmt.Errorf("no clients available")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return zero, ctxErr
+	}
+	return zero, fmt.Errorf("%s: no clients available", method)
 }
 
 func deriveRPCOperation() (service, method string) {

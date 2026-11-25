@@ -27,7 +27,7 @@ func New{{ .ModuleName | title }}ClientWrapper(poolManager *pool.ClientPoolManag
 
 {{range .Methods}}{{if .Comment}}// {{ .Comment }}{{end}}
 func (c *{{ $.ModuleName | title }}ClientWrapper) {{ .Name }}(ctx context.Context, req *{{ $.PackageName }}.{{ .RequestType }}, opts ...config.CallOpt) (*{{ $.PackageName }}.{{ .ResponseType }}, error) {
-    return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(client interfaces.CosmosClient) (*{{ $.PackageName }}.{{ .ResponseType }}, error) {
+    return pool.ExecuteWithRetry(ctx, c.poolManager, &c.logger, func(ctx context.Context, client interfaces.CosmosClient) (*{{ $.PackageName }}.{{ .ResponseType }}, error) {
         return client.{{ $.ModuleName | title }}().{{ .Name }}(ctx, req, opts...)
     })
 }
