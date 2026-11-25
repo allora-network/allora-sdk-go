@@ -67,6 +67,7 @@ func newPooledHTTPClient(remote string, timeout time.Duration) (*http.Client, er
 	}
 
 	if transport, ok := client.Transport.(*http.Transport); ok {
+		// CometBFT reads and closes response bodies; wrapping this transport requires rechecking that contract.
 		transport.MaxIdleConns = maxIdleConns
 		transport.MaxIdleConnsPerHost = maxIdleConnsPerHost
 		transport.IdleConnTimeout = idleConnTimeout
