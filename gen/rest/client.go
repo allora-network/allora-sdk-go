@@ -20,14 +20,13 @@ import (
 	cmtservice "github.com/cosmos/cosmos-sdk/client/grpc/cmtservice"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 	"github.com/rs/zerolog"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/cosmos/gogoproto/jsonpb"
 	"github.com/cosmos/gogoproto/proto"
 
 	"github.com/allora-network/allora-sdk-go/config"
 	"github.com/allora-network/allora-sdk-go/gen/interfaces"
+	"github.com/allora-network/allora-sdk-go/httpstatus"
 	"github.com/allora-network/allora-sdk-go/metrics"
 )
 
@@ -358,24 +357,15 @@ func drainAndClose(body io.ReadCloser) {
 	_ = body.Close()
 }
 
-// httpStatusError converts a non-200 response into an error that carries the
-// gRPC status code the node meant. A grpc-gateway node reports an unimplemented
-// method as HTTP 501 with a body of {"code":12,...}, where 12 is
-// codes.Unimplemented; without the translation the caller sees an opaque string
-// and cannot tell "this node does not serve this method" from "this node is
-// broken".
+// httpStatusError uses the gateway's gRPC status body when it contains a valid
+// code. It restores the bytes for drainAndClose so the connection drain has the
+// same byte and time bounds whether or not the body carried a status.
 //
-// Only 501 is translated. A 404 is ambiguous: grpc-gateway also uses it for
-// codes.NotFound, which is an ordinary answer to a query about a resource that
-// does not exist, and a node whose REST routes are mounted under a different
-// prefix answers 404 to everything. Neither is a statement that the method is
-// unimplemented, so 404 keeps its plain-error shape.
+// Without a status body, only unambiguous HTTP statuses translate. Statuses
+// 400, 404, 408, 409, 500 and 502 can mean different gRPC codes or a proxy
+// failure, so they remain plain errors that the pool penalises.
 func httpStatusError(resp *http.Response) error {
-	msg := fmt.Sprintf("HTTP error %d: %s", resp.StatusCode, resp.Status)
-	if resp.StatusCode == http.StatusNotImplemented {
-		return status.Error(codes.Unimplemented, msg)
-	}
-	return errors.New(msg)
+	return httpstatus.Error(resp, maxDrainBytes, maxDrainDuration)
 }
 
 func (c *RESTClientCore) executeRequest(

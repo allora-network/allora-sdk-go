@@ -32,7 +32,7 @@ func (f *fakeParticipant) HealthCheck(ctx context.Context) error { return nil }
 func TestExecuteWithRetryPerAttemptDeadline(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 	mgr.SetRequestTimeout(60 * time.Millisecond)
 
@@ -79,7 +79,7 @@ func TestExecuteWithRetryPerAttemptDeadline(t *testing.T) {
 func TestExecuteWithRetryCallerCancelPropagates(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 	mgr.SetRequestTimeout(10 * time.Second) // long; caller cancel must win
 
@@ -111,7 +111,7 @@ func TestExecuteWithRetryCallerCancelPropagates(t *testing.T) {
 func TestExecuteWithRetryUnimplementedIsTerminal(t *testing.T) {
 	logger := zerolog.Nop()
 	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 	defer mgr.Close()
 
 	var calls int
@@ -134,22 +134,22 @@ func TestExecuteWithRetryUnimplementedIsTerminal(t *testing.T) {
 	}
 }
 
-// TestExecuteWithRetryOtherCodesStillFailOver guards the other side of that
-// rule: every other error class keeps its current behaviour, so a failing
-// endpoint is still penalised and the next one is tried.
-func TestExecuteWithRetryOtherCodesStillFailOver(t *testing.T) {
+// TestExecuteWithRetryEndpointFaultsStillFailOver pins the endpoint-fault
+// class: a node that is down, panicking, or too slow is penalised and the next
+// endpoint is tried. The per-code table in retry_policy_test.go covers the
+// remaining codes.
+func TestExecuteWithRetryEndpointFaultsStillFailOver(t *testing.T) {
 	for _, code := range []codes.Code{
 		codes.Unavailable,
 		codes.Internal,
 		codes.DeadlineExceeded,
-		codes.InvalidArgument,
-		codes.NotFound,
-		codes.Unknown,
+		codes.FailedPrecondition,
+		codes.DataLoss,
 	} {
 		t.Run(code.String(), func(t *testing.T) {
 			logger := zerolog.Nop()
 			clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
-			mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+			mgr := NewClientPoolManager[*fakeParticipant](clients, logger, 0)
 			defer mgr.Close()
 
 			var calls int
