@@ -1,0 +1,12 @@
+[
+  {
+    "type": "emissions.v10.EventTopicForecasterWhitelistDisabled",
+    "attributes": [
+      {
+        "key": "topic_id",
+        "value": "\"27\"",
+        "index": false
+      }
+    ]
+  }
+]

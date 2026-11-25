@@ -1,0 +1,37 @@
+[
+  {
+    "type": "emissions.v10.EventTopicStatusChanged",
+    "attributes": [
+      {
+        "key": "is_active",
+        "value": "true",
+        "index": false
+      },
+      {
+        "key": "min_weight",
+        "value": "\"4.000000000000000002\"",
+        "index": false
+      },
+      {
+        "key": "reason",
+        "value": "\"TOPIC_STATUS_CHANGE_REASON_ACTIVATED_BY_FUNDING\"",
+        "index": false
+      },
+      {
+        "key": "threshold_weight",
+        "value": "\"4.000000000000000003\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"43\"",
+        "index": false
+      },
+      {
+        "key": "weight",
+        "value": "\"4.000000000000000001\"",
+        "index": false
+      }
+    ]
+  }
+]

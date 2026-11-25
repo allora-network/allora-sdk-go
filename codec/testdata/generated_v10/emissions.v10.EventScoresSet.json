@@ -1,0 +1,37 @@
+[
+  {
+    "type": "emissions.v10.EventScoresSet",
+    "attributes": [
+      {
+        "key": "actor_type",
+        "value": "\"ACTOR_TYPE_FORECASTER\"",
+        "index": false
+      },
+      {
+        "key": "addresses",
+        "value": "[\"score-forecaster\"]",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"143\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"143\"",
+        "index": false
+      },
+      {
+        "key": "scores",
+        "value": "[\"123.456789012345678901\"]",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"64\"",
+        "index": false
+      }
+    ]
+  }
+]

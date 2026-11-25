@@ -1,0 +1,42 @@
+[
+  {
+    "type": "emissions.v10.EventRewardsSettled",
+    "attributes": [
+      {
+        "key": "actor_type",
+        "value": "\"ACTOR_TYPE_INFERER_UNSPECIFIED\"",
+        "index": false
+      },
+      {
+        "key": "addresses",
+        "value": "[\"reward-inferer\"]",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"141\"",
+        "index": false
+      },
+      {
+        "key": "block_height_tx",
+        "value": "\"142\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"141\"",
+        "index": false
+      },
+      {
+        "key": "rewards",
+        "value": "[\"10.000000000000000125\"]",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"63\"",
+        "index": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventDelegateRewardShareUpdated",
+    "attributes": [
+      {
+        "key": "nonce",
+        "value": "\"116\"",
+        "index": false
+      },
+      {
+        "key": "reputer",
+        "value": "\"delegate-reputer\"",
+        "index": false
+      },
+      {
+        "key": "reward_per_share",
+        "value": "\"3.000000000000000008\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"38\"",
+        "index": false
+      }
+    ]
+  }
+]

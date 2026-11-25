@@ -1,0 +1,37 @@
+[
+  {
+    "type": "emissions.v10.EventListeningCoefficientsSet",
+    "attributes": [
+      {
+        "key": "actor_type",
+        "value": "\"ACTOR_TYPE_FORECASTER\"",
+        "index": false
+      },
+      {
+        "key": "addresses",
+        "value": "[\"listening-forecaster\"]",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"132\"",
+        "index": false
+      },
+      {
+        "key": "coefficients",
+        "value": "[\"5.000000000000000001\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"132\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"54\"",
+        "index": false
+      }
+    ]
+  }
+]

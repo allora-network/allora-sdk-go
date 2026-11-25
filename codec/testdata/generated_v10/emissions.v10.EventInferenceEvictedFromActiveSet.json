@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventInferenceEvictedFromActiveSet",
+    "attributes": [
+      {
+        "key": "evicted_inferer",
+        "value": "\"evicted-inferer\"",
+        "index": false
+      },
+      {
+        "key": "evicting_inferer",
+        "value": "\"evicting-inferer\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"106\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"22\"",
+        "index": false
+      }
+    ]
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventAddStake",
+    "attributes": [
+      {
+        "key": "amount",
+        "value": "\"35004\"",
+        "index": false
+      },
+      {
+        "key": "delegator",
+        "value": "\"stake-delegator\"",
+        "index": false
+      },
+      {
+        "key": "reputer",
+        "value": "\"stake-reputer\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"35\"",
+        "index": false
+      },
+      {
+        "key": "topic_stake",
+        "value": "\"35005\"",
+        "index": false
+      }
+    ]
+  }
+]

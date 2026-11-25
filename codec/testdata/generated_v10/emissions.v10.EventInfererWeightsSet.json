@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventInfererWeightsSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"inferer-weight\"]",
+        "index": false
+      },
+      {
+        "key": "block_height",
+        "value": "\"139\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"139\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"61\"",
+        "index": false
+      },
+      {
+        "key": "weights",
+        "value": "[\"5.000000000000000008\"]",
+        "index": false
+      }
+    ]
+  }
+]

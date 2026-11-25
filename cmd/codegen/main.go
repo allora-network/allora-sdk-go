@@ -2,19 +2,20 @@ package main
 
 import (
 	_ "embed"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
-    "slices"
+	"slices"
 	"strings"
 	"text/template"
 
-	bcoll "github.com/brynbellomy/go-utils/coll"
 	annotations "google.golang.org/genproto/googleapis/api/annotations"
 
 	"google.golang.org/protobuf/proto"
@@ -69,15 +70,17 @@ type ModuleInfo struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("Usage: go run cmd/codegen/main.go <command> [args...]\n" +
-			"Commands:\n" +
-			"  generate [flags]       Generate wrappers from .proto files\n\n" +
-			"Flags for generate:\n" +
-			"  -I <path>   Include directory (repeatable)\n" +
-			"  -f <file>   Proto file to process (repeatable)\n")
+		log.Fatal(usage)
 	}
 
-	generateFromProtos(os.Args[1:])
+	err := generateFromProtos(os.Args[1:])
+	if errors.Is(err, flag.ErrHelp) {
+		fmt.Print(usage)
+		return
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // stringSlice supports repeatable flags
@@ -89,21 +92,39 @@ func (s *stringSlice) Set(v string) error {
 	return nil
 }
 
-func generateFromProtos(args []string) {
-	fs := flag.NewFlagSet("generate", flag.ExitOnError)
+// usage is the text main prints when it is called without arguments.
+const usage = "Usage: go run cmd/codegen/main.go <command> [args...]\n" +
+	"Commands:\n" +
+	"  generate [flags]       Generate wrappers from .proto files\n\n" +
+	"Flags for generate:\n" +
+	"  -I <path>   Include directory (repeatable)\n" +
+	"  -f <file>   Proto file to process (repeatable)\n"
+
+// generateFromProtos writes client wrappers for the proto files named by args.
+// It returns an error instead of exiting so callers can report a non-zero
+// status after partial work, and so tests can observe failures. A -h request
+// returns flag.ErrHelp with no output, leaving usage printing to the caller.
+func generateFromProtos(args []string) error {
+	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	var includes stringSlice
 	var files stringSlice
 	fs.Var(&includes, "I", "include path")
 	fs.Var(&files, "f", "proto file")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return fmt.Errorf("parsing generate flags: %w", err)
+	}
 	if len(files) == 0 {
-		log.Fatal("no proto files provided; pass at least one -f <file>")
+		return fmt.Errorf("no proto files provided; pass at least one -f <file>")
+	}
+	if err := requireGoimports(exec.LookPath); err != nil {
+		return err
 	}
 
 	// Build descriptor set from all provided files
 	fds, err := buildFileDescriptorSetForFiles(files, includes)
 	if err != nil {
-		log.Fatalf("failed to build descriptor set: %v", err)
+		return fmt.Errorf("failed to build descriptor set: %w", err)
 	}
 
 	// Track generated files for post-generation formatting
@@ -141,34 +162,50 @@ func generateFromProtos(args []string) {
 
 	filesReg, err := protodesc.NewFiles(fds)
 	if err != nil {
-		log.Fatalf("failed to create files registry: %v", err)
+		return fmt.Errorf("failed to create files registry: %w", err)
 	}
 
-	fileSet := bcoll.NewSet[string]()
+	inputFiles := map[string]protoreflect.FileDescriptor{}
 	for _, file := range files {
 		for _, include := range includes {
-			if !strings.HasPrefix(file, include) {
+			relPath, err := filepath.Rel(include, file)
+			if err != nil {
+				return fmt.Errorf("failed to compute relative path for %s (include %s): %w", file, include, err)
+			}
+			if relPath == ".." || strings.HasPrefix(relPath, ".."+string(filepath.Separator)) {
 				continue
 			}
 
-			relPath, err := filepath.Rel(include, file)
+			fd, err := filesReg.FindFileByPath(filepath.ToSlash(relPath))
 			if err != nil {
-				log.Fatalf("failed to compute relative path for %s (include %s): %v", file, include, err)
+				continue
 			}
-			fileSet.Add(relPath)
+			inputFiles[file] = fd
+			break
+		}
+		fd, ok := inputFiles[file]
+		if !ok {
+			return fmt.Errorf("proto file %q could not be resolved under the include paths", file)
+		}
+		if fd == nil {
+			return fmt.Errorf("proto file %q produced no descriptor", file)
 		}
 	}
 
 	var modules []ModuleInfo
-	filesReg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !fileSet.Has(fd.Path()) {
-			return true
+	for _, file := range files {
+		fd := inputFiles[file]
+		if fd.Services().Len() == 0 {
+			return fmt.Errorf("proto file %q contains no services", file)
 		}
 
 		protoPkg := string(fd.Package())
 		info, ok := pkgToGo[protoPkg]
+		if protoPkg == "" {
+			return fmt.Errorf("proto file %q has no package declaration", file)
+		}
 		if !ok || info.importPath == "" {
-			return true
+			return fmt.Errorf("proto file %q has no go_package import path for package %q", file, protoPkg)
 		}
 
 		moduleName := inferModuleNameFromProtoPackage(protoPkg)
@@ -181,9 +218,9 @@ func generateFromProtos(args []string) {
 				continue
 			}
 
-            slices.SortFunc(methods, func(a, b ClientMethod) int {
-                return strings.Compare(a.Name, b.Name)
-            })
+			slices.SortFunc(methods, func(a, b ClientMethod) int {
+				return strings.Compare(a.Name, b.Name)
+			})
 
 			modules = append(modules, ModuleInfo{
 				ModuleName:  moduleName,
@@ -193,41 +230,39 @@ func generateFromProtos(args []string) {
 				Methods:     methods,
 			})
 		}
-		return true
+	}
+
+	slices.SortFunc(modules, func(a, b ModuleInfo) int {
+		return strings.Compare(a.ImportPath, b.ImportPath)
 	})
 
-    slices.SortFunc(modules, func(a, b ModuleInfo) int {
-        return strings.Compare(a.ImportPath, b.ImportPath)
-    })
-
 	if len(modules) == 0 {
-		log.Println("No modules discovered in provided protos")
-		return
+		return fmt.Errorf("no modules generated from provided proto files: %s", strings.Join(files, ", "))
 	}
 	for _, m := range modules {
 		fmt.Printf("Generating %s module...\n", m.ModuleName)
 
 		name := fmt.Sprintf("gen/wrapper/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientWrapperModuleTemplate); err != nil {
-			log.Fatalf("failed to generate wrapper client: %v", err)
+			return fmt.Errorf("failed to generate wrapper client: %w", err)
 		}
 		generatedFiles = append(generatedFiles, name)
 
 		name = fmt.Sprintf("gen/rest/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientRestModuleTemplate); err != nil {
-			log.Fatalf("failed to generate REST client: %v", err)
+			return fmt.Errorf("failed to generate REST client: %w", err)
 		}
 		generatedFiles = append(generatedFiles, name)
 
 		name = fmt.Sprintf("gen/grpc/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientGRPCModuleTemplate); err != nil {
-			log.Fatalf("failed to generate gRPC client: %v", err)
+			return fmt.Errorf("failed to generate gRPC client: %w", err)
 		}
 		generatedFiles = append(generatedFiles, name)
 
 		name = fmt.Sprintf("gen/interfaces/client.%s.go", m.ModuleName)
 		if err := executeTemplate(m, name, clientInterfaceModuleTemplate); err != nil {
-			log.Fatalf("failed to generate module client interface (%v): %v", m.ModuleName, err)
+			return fmt.Errorf("failed to generate module client interface (%v): %w", m.ModuleName, err)
 		}
 		generatedFiles = append(generatedFiles, name)
 	}
@@ -240,36 +275,38 @@ func generateFromProtos(args []string) {
 
 	name := "gen/interfaces/client.go"
 	if err := executeTemplate(data, name, clientInterfaceTemplate); err != nil {
-		log.Fatalf("failed to generate aggregated client: %v", err)
+		return fmt.Errorf("failed to generate aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
 	// Generate REST aggregated client
 	name = "gen/rest/client.go"
 	if err := executeTemplate(data, name, restAggregatedClientTemplate); err != nil {
-		log.Fatalf("failed to generate REST aggregated client: %v", err)
+		return fmt.Errorf("failed to generate REST aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
 	// Generate gRPC aggregated client
 	name = "gen/grpc/client.go"
 	if err := executeTemplate(data, name, clientGRPCTemplate); err != nil {
-		log.Fatalf("failed to generate gRPC aggregated client: %v", err)
+		return fmt.Errorf("failed to generate gRPC aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
 	name = "gen/wrapper/client.go"
 	if err := executeTemplate(data, name, clientWrapperTemplate); err != nil {
-		log.Fatalf("failed to generate gRPC aggregated client: %v", err)
+		return fmt.Errorf("failed to generate wrapper aggregated client: %w", err)
 	}
 	generatedFiles = append(generatedFiles, name)
 
-	// Format generated files with gofmt and goimports (if available)
+	// Formatting is part of generation: unformatted output is not a usable
+	// result, so a gofmt or goimports failure fails the run.
 	if err := formatGeneratedFiles(generatedFiles); err != nil {
-		log.Printf("warning: failed to format generated files: %v", err)
+		return fmt.Errorf("failed to format generated files: %w", err)
 	}
 
 	fmt.Println("Done generating wrappers from protos.")
+	return nil
 }
 
 func inferModuleNameFromProtoPackage(protoPkg string) string {
@@ -302,7 +339,13 @@ func computeImportAlias(importPath, moduleName, pkgName string) string {
 }
 
 func buildFileDescriptorSetForFiles(files []string, includeDirs []string) (*descriptorpb.FileDescriptorSet, error) {
-	tmpFile := filepath.Join(os.TempDir(), "descriptor-set.pb")
+	tempDir, err := os.MkdirTemp("", "allora-codegen-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create descriptor temp directory: %w", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	tmpFile := filepath.Join(tempDir, "descriptor-set.pb")
 	args := []string{}
 	for _, inc := range includeDirs {
 		args = append(args, "-I", inc)
@@ -481,8 +524,15 @@ func executeTemplate(this any, outfile string, tmpl string) error {
 	return nil
 }
 
+// requireGoimports checks that generation can produce compile-ready imports.
+func requireGoimports(lookPath func(string) (string, error)) error {
+	if _, err := lookPath("goimports"); err != nil {
+		return fmt.Errorf("goimports is required in PATH; install it with: go install golang.org/x/tools/cmd/goimports@latest")
+	}
+	return nil
+}
+
 // formatGeneratedFiles runs gofmt and goimports over the provided files.
-// If goimports is not installed, it is skipped with a warning.
 func formatGeneratedFiles(files []string) error {
 	if len(files) == 0 {
 		return nil
@@ -490,20 +540,14 @@ func formatGeneratedFiles(files []string) error {
 
 	fmt.Printf("Formatting %d generated files...\n", len(files))
 
-	// Run: gofmt -w <files...>
 	gofmtArgs := append([]string{"-w"}, files...)
 	if out, err := exec.Command("gofmt", gofmtArgs...).CombinedOutput(); err != nil {
 		return fmt.Errorf("gofmt failed: %v, output: %s", err, string(out))
 	}
 
-	// Run: goimports -w <files...> (if available)
-	if _, err := exec.LookPath("goimports"); err == nil {
-		goimportsArgs := append([]string{"-w"}, files...)
-		if out, err := exec.Command("goimports", goimportsArgs...).CombinedOutput(); err != nil {
-			return fmt.Errorf("goimports failed: %v, output: %s", err, string(out))
-		}
-	} else {
-		log.Printf("goimports not found in PATH; skipping goimports. Install with: go install golang.org/x/tools/cmd/goimports@latest")
+	goimportsArgs := append([]string{"-w"}, files...)
+	if out, err := exec.Command("goimports", goimportsArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("goimports failed: %v, output: %s", err, string(out))
 	}
 
 	return nil
