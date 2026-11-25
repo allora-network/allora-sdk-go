@@ -138,9 +138,9 @@ type TxParamsBuilder struct {
 // NewTxParamsBuilder creates a new TxParamsBuilder
 func NewTxParamsBuilder(ctx context.Context, client Client) *TxParamsBuilder {
 	return &TxParamsBuilder{
-		ctx:      ctx,
-		client:   client,
-		gasLimit: 200000, // Default
+		ctx:       ctx,
+		client:    client,
+		gasLimit:  200000,                                        // Default
 		feeAmount: sdk.NewCoins(sdk.NewInt64Coin("uallo", 5000)), // Default
 	}
 }
