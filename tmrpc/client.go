@@ -72,6 +72,9 @@ func newPooledHTTPClient(remote string, timeout time.Duration) (*http.Client, er
 		transport.IdleConnTimeout = idleConnTimeout
 	}
 
+	if transport, ok := client.Transport.(*http.Transport); ok {
+		client.Transport = &httpStatusTransport{next: transport}
+	}
 	if timeout > 0 {
 		client.Timeout = timeout
 	}
@@ -101,23 +104,33 @@ func (c *httpClient) GetProtocol() config.Protocol {
 }
 
 func (c *httpClient) BlockResults(ctx context.Context, height *int64) (*coretypes.ResultBlockResults, error) {
-	return c.http.BlockResults(ctx, height)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.BlockResults(ctx, height)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) Block(ctx context.Context, height *int64) (*coretypes.ResultBlock, error) {
-	return c.http.Block(ctx, height)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.Block(ctx, height)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) Commit(ctx context.Context, height *int64) (*coretypes.ResultCommit, error) {
-	return c.http.Commit(ctx, height)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.Commit(ctx, height)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) ABCIQuery(ctx context.Context, path string, data []byte) (*coretypes.ResultABCIQuery, error) {
-	return c.http.ABCIQuery(ctx, path, data)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.ABCIQuery(ctx, path, data)
+	return result, recorder.error(err)
 }
 
 func (c *httpClient) Status(ctx context.Context) (*coretypes.ResultStatus, error) {
-	return c.http.Status(ctx)
+	ctx, recorder := withHTTPStatusRecorder(ctx)
+	result, err := c.http.Status(ctx)
+	return result, recorder.error(err)
 }
 
 // Close stops the websocket client and releases the connections idling in the
@@ -151,13 +164,13 @@ type clientPool struct {
 	poolManager *pool.ClientPoolManager[Client]
 }
 
-// NewPool constructs a pool from the provided clients. The pool will panic if
-// no clients are supplied.
-func NewClientPool(clients []Client, logger zerolog.Logger) *clientPool {
+// NewClientPool constructs a CometBFT pool. One optional startIndex selects
+// the first endpoint and follows NewClientPoolManager's validation.
+func NewClientPool(clients []Client, logger zerolog.Logger, startIndex ...int) *clientPool {
 	poolLogger := logger.With().Str("component", "tmrpc_pool").Logger()
 	return &clientPool{
 		logger:      poolLogger,
-		poolManager: pool.NewClientPoolManager(clients, poolLogger),
+		poolManager: pool.NewClientPoolManager(clients, poolLogger, startIndex...),
 	}
 }
 
