@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventForecastEvictedFromActiveSet",
+    "attributes": [
+      {
+        "key": "evicted_forecaster",
+        "value": "\"evicted-forecaster\"",
+        "index": false
+      },
+      {
+        "key": "evicting_forecaster",
+        "value": "\"evicting-forecaster\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"107\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"23\"",
+        "index": false
+      }
+    ]
+  }
+]

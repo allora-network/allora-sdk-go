@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventTopicWeightUpdatedAfterStakeChange",
+    "attributes": [
+      {
+        "key": "new_weight",
+        "value": "\"3.000000000000000004\"",
+        "index": false
+      },
+      {
+        "key": "topic_fee_revenue",
+        "value": "\"34004\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"34\"",
+        "index": false
+      },
+      {
+        "key": "topic_stake",
+        "value": "\"34003\"",
+        "index": false
+      }
+    ]
+  }
+]

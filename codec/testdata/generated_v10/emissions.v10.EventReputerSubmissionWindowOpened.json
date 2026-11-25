@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventReputerSubmissionWindowOpened",
+    "attributes": [
+      {
+        "key": "nonce",
+        "value": "\"128\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"128\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"51\"",
+        "index": false
+      },
+      {
+        "key": "window_end_block",
+        "value": "\"129\"",
+        "index": false
+      }
+    ]
+  }
+]

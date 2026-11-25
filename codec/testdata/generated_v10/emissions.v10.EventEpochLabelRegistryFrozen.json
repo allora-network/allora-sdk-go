@@ -1,0 +1,32 @@
+[
+  {
+    "type": "emissions.v10.EventEpochLabelRegistryFrozen",
+    "attributes": [
+      {
+        "key": "labels",
+        "value": "[\"label-alpha\",\"label-beta\",\"label-gamma\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"131\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"131\"",
+        "index": false
+      },
+      {
+        "key": "registry_size",
+        "value": "\"3\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"53\"",
+        "index": false
+      }
+    ]
+  }
+]
