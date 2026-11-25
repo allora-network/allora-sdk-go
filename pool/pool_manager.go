@@ -652,9 +652,9 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 ) (_ Result, err error) {
 	overallStart := time.Now()
 	service, method := deriveRPCOperation()
+	var zero Result
 	maxAttempts := len(poolManager.active) + len(poolManager.cooling)
 	if maxAttempts == 0 {
-		var zero Result
 		metrics.ObserveRPCRequest("unknown", "none", service, method, "no_client_available", 0, 0)
 		metrics.ObserveRPCAttempts("unknown", service, method, "no_client_available", 0)
 		return zero, fmt.Errorf("no clients available")
@@ -719,6 +719,23 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 			outcome := classifyAttemptError(operationErr)
 			lastOutcome = outcome
 			metrics.ObserveRPCRequest(protocol, endpoint, service, method, outcome, attemptCount, attemptDuration)
+
+			if isTerminalError(operationErr) {
+				// The endpoint answered. It does not serve this method, which
+				// says nothing about its health, so the pool neither cools it
+				// nor backs it off. Asking the remaining endpoints the same
+				// question only multiplies the wait before the caller learns
+				// the method is unavailable.
+				metrics.ObserveRPCAttempts(protocol, service, method, outcome, attemptCount)
+				logger.Debug().
+					Err(operationErr).
+					Str("endpoint", endpoint).
+					Int("attempt", attemptCount).
+					Dur("duration", attemptDuration).
+					Msg("operation is not implemented by this endpoint, not retrying")
+				return zero, fmt.Errorf("%s is not implemented by %s: %w", method, endpoint, operationErr)
+			}
+
 			logger.Debug().
 				Err(operationErr).
 				Str("endpoint", endpoint).
@@ -747,7 +764,6 @@ func ExecuteWithRetry[T PoolParticipant, Result any](
 		return result, nil
 	}
 
-	var zero Result
 	if attempts == 0 {
 		metrics.ObserveRPCRequest("unknown", "none", service, method, lastOutcome, 0, time.Since(overallStart))
 		metrics.ObserveRPCAttempts("unknown", service, method, lastOutcome, 0)
@@ -801,6 +817,16 @@ func deriveRPCOperation() (service, method string) {
 		method = "unknown"
 	}
 	return service, method
+}
+
+// isTerminalError reports whether err is a definitive answer from a reachable
+// endpoint rather than a sign that the endpoint is failing. A node that does
+// not serve a method answers codes.Unimplemented (gRPC) or HTTP 501 (REST,
+// translated to the same code by the REST client); the endpoint is healthy, so
+// retrying the same question elsewhere cannot help and must not cost the
+// endpoint its health score.
+func isTerminalError(err error) bool {
+	return status.Code(err) == codes.Unimplemented
 }
 
 func classifyAttemptError(err error) string {

@@ -8,6 +8,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/allora-network/allora-sdk-go/config"
 )
@@ -100,4 +102,67 @@ func TestExecuteWithRetryCallerCancelPropagates(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, errors.Is(err, context.Canceled),
 		"caller cancellation must propagate, got %v", err)
+}
+
+// TestExecuteWithRetryUnimplementedIsTerminal pins that codes.Unimplemented
+// ends the request on the first endpoint. The endpoint answered; it simply does
+// not serve the method, so the pool must not cool it, must not back it off, and
+// must not ask the other endpoints the same question.
+func TestExecuteWithRetryUnimplementedIsTerminal(t *testing.T) {
+	logger := zerolog.Nop()
+	clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
+	mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+	defer mgr.Close()
+
+	var calls int
+	_, err := ExecuteWithRetry(context.Background(), mgr, &logger,
+		func(_ context.Context, c *fakeParticipant) (struct{}, error) {
+			calls++
+			return struct{}{}, status.Error(codes.Unimplemented, "unknown method")
+		})
+
+	require.Error(t, err)
+	require.Equal(t, codes.Unimplemented, status.Code(err),
+		"the caller must be able to tell an unimplemented method from a broken endpoint, got %v", err)
+	require.Equal(t, 1, calls, "an unimplemented method must not be retried on the other endpoints")
+
+	health := mgr.GetHealthStatus()
+	require.Equal(t, 2, health["active_clients"], "an unimplemented method must not cool a healthy endpoint")
+	require.Equal(t, 0, health["cooling_clients"])
+	for _, c := range clients {
+		require.Zero(t, mgr.IsClientInBackoff(c), "an unimplemented method must not back an endpoint off")
+	}
+}
+
+// TestExecuteWithRetryOtherCodesStillFailOver guards the other side of that
+// rule: every other error class keeps its current behaviour, so a failing
+// endpoint is still penalised and the next one is tried.
+func TestExecuteWithRetryOtherCodesStillFailOver(t *testing.T) {
+	for _, code := range []codes.Code{
+		codes.Unavailable,
+		codes.Internal,
+		codes.DeadlineExceeded,
+		codes.InvalidArgument,
+		codes.NotFound,
+		codes.Unknown,
+	} {
+		t.Run(code.String(), func(t *testing.T) {
+			logger := zerolog.Nop()
+			clients := []*fakeParticipant{{url: "grpc://a:1"}, {url: "grpc://b:1"}}
+			mgr := NewClientPoolManager[*fakeParticipant](clients, logger)
+			defer mgr.Close()
+
+			var calls int
+			_, err := ExecuteWithRetry(context.Background(), mgr, &logger,
+				func(_ context.Context, c *fakeParticipant) (struct{}, error) {
+					calls++
+					return struct{}{}, status.Error(code, "boom")
+				})
+
+			require.Error(t, err)
+			require.Equal(t, 2, calls, "%v must still be retried on the other endpoint", code)
+			require.Equal(t, 0, mgr.GetHealthStatus()["active_clients"],
+				"%v must still cool the failing endpoints", code)
+		})
+	}
 }
