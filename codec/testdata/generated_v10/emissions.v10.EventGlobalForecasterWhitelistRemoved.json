@@ -1,0 +1,12 @@
+[
+  {
+    "type": "emissions.v10.EventGlobalForecasterWhitelistRemoved",
+    "attributes": [
+      {
+        "key": "address",
+        "value": "\"global-forecaster-removed\"",
+        "index": false
+      }
+    ]
+  }
+]

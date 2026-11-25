@@ -26,6 +26,7 @@ import (
 
     "github.com/allora-network/allora-sdk-go/config"
     "github.com/allora-network/allora-sdk-go/gen/interfaces"
+    "github.com/allora-network/allora-sdk-go/httpstatus"
     "github.com/allora-network/allora-sdk-go/metrics"
 )
 
@@ -273,6 +274,17 @@ func drainAndClose(body io.ReadCloser) {
     _ = body.Close()
 }
 
+// httpStatusError uses the gateway's gRPC status body when it contains a valid
+// code. It restores the bytes for drainAndClose so the connection drain has the
+// same byte and time bounds whether or not the body carried a status.
+//
+// Without a status body, only unambiguous HTTP statuses translate. Statuses
+// 400, 404, 408, 409, 500 and 502 can mean different gRPC codes or a proxy
+// failure, so they remain plain errors that the pool penalises.
+func httpStatusError(resp *http.Response) error {
+    return httpstatus.Error(resp, maxDrainBytes, maxDrainDuration)
+}
+
 func (c *RESTClientCore) executeRequest(
     ctx context.Context,
     httpMethod, httpPath string,
@@ -347,7 +359,7 @@ func (c *RESTClientCore) executeRequest(
     defer drainAndClose(resp.Body)
 
     if resp.StatusCode != http.StatusOK {
-        return errors.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
+        return httpStatusError(resp)
     }
 
     if response != nil {

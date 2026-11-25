@@ -1,0 +1,17 @@
+[
+  {
+    "type": "emissions.v10.EventTopicForecasterWhitelistAdded",
+    "attributes": [
+      {
+        "key": "address",
+        "value": "\"topic-forecaster-added\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"28\"",
+        "index": false
+      }
+    ]
+  }
+]

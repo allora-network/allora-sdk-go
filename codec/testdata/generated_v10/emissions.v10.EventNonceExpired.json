@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventNonceExpired",
+    "attributes": [
+      {
+        "key": "actor_type",
+        "value": "\"ACTOR_TYPE_REPUTER\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"114\"",
+        "index": false
+      },
+      {
+        "key": "reason",
+        "value": "\"NONCE_EXPIRED_REASON_CLOSE_FAILED\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"33\"",
+        "index": false
+      }
+    ]
+  }
+]
