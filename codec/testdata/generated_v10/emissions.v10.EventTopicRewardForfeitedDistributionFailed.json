@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventTopicRewardForfeitedDistributionFailed",
+    "attributes": [
+      {
+        "key": "amount",
+        "value": "\"32002\"",
+        "index": false
+      },
+      {
+        "key": "epoch",
+        "value": "\"112\"",
+        "index": false
+      },
+      {
+        "key": "reward_nonce",
+        "value": "\"113\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"32\"",
+        "index": false
+      }
+    ]
+  }
+]

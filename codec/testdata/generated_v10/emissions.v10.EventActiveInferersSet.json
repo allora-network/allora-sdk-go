@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventActiveInferersSet",
+    "attributes": [
+      {
+        "key": "addresses",
+        "value": "[\"active-inferer-a\",\"active-inferer-b\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"119\"",
+        "index": false
+      },
+      {
+        "key": "nonce_block_height",
+        "value": "\"119\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"41\"",
+        "index": false
+      }
+    ]
+  }
+]

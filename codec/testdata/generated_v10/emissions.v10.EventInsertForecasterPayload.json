@@ -1,0 +1,42 @@
+[
+  {
+    "type": "emissions.v10.EventInsertForecasterPayload",
+    "attributes": [
+      {
+        "key": "admission_outcome",
+        "value": "\"PAYLOAD_ADMISSION_OUTCOME_NO_ELEMENTS_ACCEPTED\"",
+        "index": false
+      },
+      {
+        "key": "extra_data",
+        "value": "\"AwSBgg==\"",
+        "index": false
+      },
+      {
+        "key": "forecaster",
+        "value": "\"forecaster-payload\"",
+        "index": false
+      },
+      {
+        "key": "inferer_addresses",
+        "value": "[\"forecast-inferer-a\",\"forecast-inferer-b\"]",
+        "index": false
+      },
+      {
+        "key": "inferer_values",
+        "value": "[\"51.000000000000000001\",\"52.000000000000000002\"]",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"104\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"20\"",
+        "index": false
+      }
+    ]
+  }
+]

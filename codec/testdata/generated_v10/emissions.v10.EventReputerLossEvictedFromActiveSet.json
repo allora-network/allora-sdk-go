@@ -1,0 +1,27 @@
+[
+  {
+    "type": "emissions.v10.EventReputerLossEvictedFromActiveSet",
+    "attributes": [
+      {
+        "key": "evicted_reputer",
+        "value": "\"evicted-reputer\"",
+        "index": false
+      },
+      {
+        "key": "evicting_reputer",
+        "value": "\"evicting-reputer\"",
+        "index": false
+      },
+      {
+        "key": "nonce",
+        "value": "\"108\"",
+        "index": false
+      },
+      {
+        "key": "topic_id",
+        "value": "\"24\"",
+        "index": false
+      }
+    ]
+  }
+]
