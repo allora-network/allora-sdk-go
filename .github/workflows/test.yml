@@ -35,6 +35,16 @@ jobs:
             exit 1
           fi
 
+      - name: Set up pinned tools
+        uses: jdx/mise-action@v3
+        with:
+          install: false
+
+      - name: Check generated mocks
+        run: |
+          make mocks
+          git diff --exit-code mocks/
+
       - name: Build
         run: go build ./...
 
